@@ -457,8 +457,13 @@ function voiceFor(lang){
   return voices.find(v => String(v.lang || "").toLowerCase().replace("_", "-").startsWith(pre)) || null;
 }
 
+// גבול עליון להמתנה לסיום הקראה. "כל הכבוד!" נמשך כשנייה, אז בדרך כלל
+// onend מקדים אותו הרבה והמספר הזה לא בא לידי ביטוי.
+const SPEAK_TIMEOUT = 3000;
+
 function speak(text, lang, onDone){
-  const done = ()=>{ if(onDone) onDone(); };
+  let called = false;
+  const done = ()=>{ if(called) return; called = true; if(onDone) onDone(); };
   if(!("speechSynthesis" in window)){ done(); return; }
   if(!voices.length) refreshVoices();
   const v = voiceFor(lang);
@@ -472,6 +477,10 @@ function speak(text, lang, onDone){
   if(v) u.voice = v;
   u.onend = done;
   u.onerror = done;
+  // onend הוא הבטחה רופפת: ביטול באמצע, מעבר לרקע, או דפדפן שפשוט שותק
+  // בלי לדווח — ובלי גבול זמן הילד נשאר תקוע מול ה-🎉 ולא עובר למילה הבאה.
+  // done חסין לקריאה כפולה, אז מי שמגיע ראשון קובע.
+  setTimeout(done, SPEAK_TIMEOUT);
   speechSynthesis.speak(u);
 }
 
