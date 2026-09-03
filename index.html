@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Say the word</title>
+<meta name="description" content="English word pronunciation practice app for kids with voice recognition and speech synthesis.">
+<meta property="og:title" content="Say the word">
+<meta property="og:description" content="English word pronunciation practice app for kids with voice recognition and speech synthesis.">
+<script src="./vosk.js"></script>
+<style>
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+    background:#EAF6FF; color:#1B2140;
+    display:flex; flex-direction:column; align-items:center;
+    padding:14px; gap:12px; -webkit-user-select:none; user-select:none;
+  }
+  #stars{font-size:26px; letter-spacing:3px; min-height:32px}
+  #picture{
+    flex:1; width:100%; max-width:520px;
+    display:flex; align-items:center; justify-content:center;
+    background:#fff; border:5px solid #1B2140; border-radius:32px;
+    font-size:clamp(90px,38vw,220px); line-height:1; cursor:pointer;
+  }
+  #picture:active{background:#FFF8E1}
+  #picture.good{background:#DFF7E7}
+  #picture.again{background:#FFECEC}
+  #word{font-size:15px; color:#8B93AD; min-height:20px; direction:ltr}
+  #buttons{display:flex; gap:12px; width:100%; max-width:520px; direction:ltr}
+  button{
+    font:inherit; color:inherit; border:5px solid #1B2140;
+    border-radius:24px; cursor:pointer; background:#fff;
+  }
+  #buttons button{
+    flex:1; font-size:44px; line-height:1; padding:18px 0;
+  }
+  button:active{transform:translateY(2px)}
+  button[disabled]{opacity:.45}
+  #say{flex:2; background:#FFD65A}
+  #say.listening{background:#FF6B8A; color:#fff}
+  #say.listening span{animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.35}}
+  #loading{width:100%; max-width:520px; display:flex; flex-direction:column; gap:6px}
+  #loading[hidden]{display:none}
+  #bar{height:16px; border:3px solid #1B2140; border-radius:10px; background:#fff; overflow:hidden}
+  #fill{display:block; height:100%; width:0; background:#FFD65A; transition:width .2s}
+  #loadtext{font-size:14px; color:#8B93AD; text-align:center}
+  #note{font-size:14px; color:#B23A00; text-align:center; min-height:20px}
+  #openPanel{
+    flex:0 0 auto; font-size:15px; padding:8px 14px; border:2px solid #B9C2D8;
+    border-radius:12px; background:#fff; color:#4A5480;
+  }
+  #overlay{
+    position:fixed; inset:0; background:rgba(27,33,64,.45);
+    display:flex; align-items:flex-end; justify-content:center; z-index:20;
+    padding:12px;
+  }
+  #overlay[hidden]{display:none}
+  #panel{
+    width:100%; max-width:520px; max-height:min(88dvh,760px);
+    background:#fff; border:5px solid #1B2140; border-radius:28px;
+    display:flex; flex-direction:column; overflow:hidden;
+    padding:16px 16px 12px; gap:10px;
+  }
+  #panel h2{margin:0; font-size:22px}
+  #panelHead{display:flex; align-items:flex-start; justify-content:space-between; gap:8px}
+  #panelMeta{font-size:13px; color:#8B93AD; margin:4px 0 0}
+  #closePanel{
+    width:40px; height:40px; border-width:2px; border-radius:12px; font-size:22px; line-height:1;
+    flex:0 0 auto;
+  }
+  #search{
+    width:100%; font:inherit; font-size:16px; padding:10px 12px;
+    border:2px solid #B9C2D8; border-radius:12px; background:#EAF6FF;
+  }
+  #hint{font-size:12px; color:#8B93AD; margin:0}
+  #catalog{
+    max-height:180px; overflow:auto; background:#EAF6FF; border-radius:16px; padding:8px;
+    display:grid; grid-template-columns:repeat(6,1fr); gap:4px;
+  }
+  #catalog button{
+    border:0; background:transparent; border-radius:12px; padding:6px 2px;
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+    font-size:22px; line-height:1;
+  }
+  #catalog button:hover{background:#fff}
+  #catalog button.taken{opacity:.4}
+  #catalog .ename{font-size:10px; color:#4A5480; direction:ltr; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  #panelErr{font-size:13px; color:#B23A00; min-height:16px; margin:0}
+  #wordList{list-style:none; margin:0; padding:0; overflow:auto; flex:1; display:flex; flex-direction:column; gap:6px}
+  #wordList li{
+    display:flex; align-items:center; gap:8px;
+    border:2px solid #E3E8F4; border-radius:16px; padding:6px 8px; background:#fff;
+  }
+  #wordList li.current{border-color:#1B2140; background:#FFF4C2}
+  #wordList .pic{font-size:28px; width:40px; text-align:center}
+  #wordList .w{flex:1; direction:ltr; text-align:left; font-size:16px}
+  #wordList .ops{display:flex; gap:2px}
+  #wordList .ops button{
+    width:34px; height:34px; border-width:0; border-radius:10px; font-size:16px; background:transparent;
+  }
+  #resetBtn{
+    border-width:2px; border-color:#B9C2D8; border-radius:12px; padding:8px 12px;
+    font-size:14px; background:#fff; color:#4A5480; align-self:flex-start;
+  }
+</style>
+</head>
+<body>
+
+<div id="stars"></div>
+<div id="picture">🐶</div>
+<div id="word"></div>
+
+<div id="loading" hidden>
+  <div id="bar"><i id="fill"></i></div>
+  <div id="loadtext"></div>
+</div>
+
+<div id="buttons">
+  <button id="hear">🔊</button>
+  <button id="say" disabled><span>⏳</span></button>
+  <button id="next">⏭️</button>
+</div>
+
+<div id="note"></div>
+<button id="openPanel" type="button">אוצר המילים</button>
+
+<div id="overlay" hidden>
+  <div id="panel">
+    <div id="panelHead">
+      <div>
+        <h2>אוצר המילים</h2>
+        <p id="panelMeta"></p>
+      </div>
+      <button id="closePanel" type="button" aria-label="סגירה">×</button>
+    </div>
+    <input id="search" type="search" placeholder="חיפוש, למשל lion" autocomplete="off">
+    <p id="hint">לחצו על תמונה כדי להוסיף. המילה באנגלית קבועה.</p>
+    <div id="catalog"></div>
+    <p id="panelErr"></p>
+    <ul id="wordList"></ul>
+    <button id="resetBtn" type="button">איפוס לברירת מחדל</button>
+  </div>
+</div>
+
+<script>
+const MODEL_URL = new URL("model.tar.gz", location.href).href;
+const CACHE = "say-the-word-v2";
+
+const PAIRS = [
+  ["🐶","dog"],
+  ["🐱","cat"],
+  ["🐭","mouse"],
+  ["🐹","hamster"],
+  ["🐰","rabbit"],
+  ["🦊","fox"],
+  ["🐻","bear"],
+  ["🐼","panda"],
+  ["🐨","koala"],
+  ["🐯","tiger"],
+  ["🦁","lion"],
+  ["🐮","cow"],
+  ["🐷","pig"],
+  ["🐸","frog"],
+  ["🐵","monkey"],
+  ["🐔","chicken"],
+  ["🐧","penguin"],
+  ["🐦","bird"],
+  ["🐤","chick"],
+  ["🦆","duck"],
+  ["🦉","owl"],
+  ["🦇","bat"],
+  ["🐺","wolf"],
+  ["🐗","boar"],
+  ["🐴","horse"],
+  ["🦄","unicorn"],
+  ["🐝","bee"],
+  ["🦋","butterfly"],
+  ["🐛","bug"],
+  ["🐌","snail"],
+  ["🐞","ladybug"],
+  ["🐜","ant"],
+  ["🪲","beetle"],
+  ["🐢","turtle"],
+  ["🐍","snake"],
+  ["🦎","lizard"],
+  ["🐙","octopus"],
+  ["🦑","squid"],
+  ["🦐","shrimp"],
+  ["🦞","lobster"],
+  ["🦀","crab"],
+  ["🐟","fish"],
+  ["🐬","dolphin"],
+  ["🐳","whale"],
+  ["🦈","shark"],
+  ["🐊","crocodile"],
+  ["🐆","leopard"],
+  ["🦓","zebra"],
+  ["🦍","gorilla"],
+  ["🦧","orangutan"],
+  ["🐘","elephant"],
+  ["🦛","hippo"],
+  ["🦏","rhino"],
+  ["🐪","camel"],
+  ["🦒","giraffe"],
+  ["🦘","kangaroo"],
+  ["🦬","bison"],
+  ["🐂","ox"],
+  ["🐏","ram"],
+  ["🐑","sheep"],
+  ["🦙","llama"],
+  ["🐐","goat"],
+  ["🦌","deer"],
+  ["🐩","poodle"],
+  ["🐓","rooster"],
+  ["🦃","turkey"],
+  ["🦚","peacock"],
+  ["🦜","parrot"],
+  ["🦢","swan"],
+  ["🦩","flamingo"],
+  ["🕊️","dove"],
+  ["🦝","raccoon"],
+  ["🦨","skunk"],
+  ["🦡","badger"],
+  ["🦦","otter"],
+  ["🦥","sloth"],
+  ["🦔","hedgehog"],
+  ["🍎","apple"],
+  ["🍐","pear"],
+  ["🍊","orange"],
+  ["🍋","lemon"],
+  ["🍌","banana"],
+  ["🍉","watermelon"],
+  ["🍇","grapes"],
+  ["🍓","strawberry"],
+  ["🫐","blueberry"],
+  ["🍒","cherry"],
+  ["🍑","peach"],
+  ["🥭","mango"],
+  ["🍍","pineapple"],
+  ["🥥","coconut"],
+  ["🥝","kiwi"],
+  ["🍅","tomato"],
+  ["🍆","eggplant"],
+  ["🥑","avocado"],
+  ["🥦","broccoli"],
+  ["🥒","cucumber"],
+  ["🌶️","pepper"],
+  ["🌽","corn"],
+  ["🥕","carrot"],
+  ["🫒","olive"],
+  ["🧄","garlic"],
+  ["🧅","onion"],
+  ["🥔","potato"],
+  ["🍞","bread"],
+  ["🥨","pretzel"],
+  ["🧀","cheese"],
+  ["🥚","egg"],
+  ["🧈","butter"],
+  ["🥞","pancake"],
+  ["🧇","waffle"],
+  ["🥓","bacon"],
+  ["🥩","steak"],
+  ["🍗","drumstick"],
+  ["🌭","hotdog"],
+  ["🍔","burger"],
+  ["🍟","fries"],
+  ["🍕","pizza"],
+  ["🥪","sandwich"],
+  ["🌮","taco"],
+  ["🌯","burrito"],
+  ["🧆","falafel"],
+  ["🥗","salad"],
+  ["🍝","pasta"],
+  ["🍜","noodles"],
+  ["🍲","soup"],
+  ["🍛","curry"],
+  ["🍣","sushi"],
+  ["🥟","dumpling"],
+  ["🦪","oyster"],
+  ["🍚","rice"],
+  ["🥧","pie"],
+  ["🧁","cupcake"],
+  ["🎂","cake"],
+  ["🍭","lollipop"],
+  ["🍬","candy"],
+  ["🍫","chocolate"],
+  ["🍿","popcorn"],
+  ["🍩","donut"],
+  ["🍪","cookie"],
+  ["🥜","peanut"],
+  ["🍯","honey"],
+  ["🥛","milk"],
+  ["☕","coffee"],
+  ["🍵","tea"],
+  ["🧃","juice"],
+  ["🧊","ice"],
+  ["🥄","spoon"],
+  ["🍴","fork"],
+  ["🥣","bowl"],
+  ["☀️","sun"],
+  ["🌙","moon"],
+  ["⭐","star"],
+  ["🌈","rainbow"],
+  ["☁️","cloud"],
+  ["❄️","snow"],
+  ["🔥","fire"],
+  ["💧","water"],
+  ["🌊","wave"],
+  ["🌸","flower"],
+  ["🌼","daisy"],
+  ["🌻","sunflower"],
+  ["🌺","hibiscus"],
+  ["🌹","rose"],
+  ["🌷","tulip"],
+  ["🌱","seed"],
+  ["🌳","tree"],
+  ["🌴","palm"],
+  ["🌵","cactus"],
+  ["🍀","clover"],
+  ["🍁","leaf"],
+  ["🌍","earth"],
+  ["🏠","house"],
+  ["🏫","school"],
+  ["🏥","hospital"],
+  ["🏰","castle"],
+  ["⛺","tent"],
+  ["🚗","car"],
+  ["🚕","taxi"],
+  ["🚌","bus"],
+  ["🚜","tractor"],
+  ["🚲","bike"],
+  ["🛴","scooter"],
+  ["✈️","plane"],
+  ["🚀","rocket"],
+  ["🚁","helicopter"],
+  ["⛵","boat"],
+  ["🚢","ship"],
+  ["🚂","train"],
+  ["⚽","ball"],
+  ["🏀","basketball"],
+  ["🏈","football"],
+  ["⚾","baseball"],
+  ["🎾","tennis"],
+  ["🏐","volleyball"],
+  ["🪁","kite"],
+  ["🎮","game"],
+  ["🎲","dice"],
+  ["🧩","puzzle"],
+  ["🧸","teddy"],
+  ["🎈","balloon"],
+  ["🎁","gift"],
+  ["🎨","paint"],
+  ["🎬","movie"],
+  ["🎤","mic"],
+  ["🎧","headphones"],
+  ["🎹","piano"],
+  ["🥁","drum"],
+  ["🎷","sax"],
+  ["🎺","trumpet"],
+  ["🎸","guitar"],
+  ["🎻","violin"],
+  ["📖","book"],
+  ["✏️","pencil"],
+  ["🎒","bag"],
+  ["👓","glasses"],
+  ["👟","shoe"],
+  ["🧢","hat"],
+  ["👑","crown"],
+  ["💍","ring"],
+  ["⌚","watch"],
+  ["📱","phone"],
+  ["💻","computer"],
+  ["📷","camera"],
+  ["⏰","clock"],
+  ["🔑","key"],
+  ["💡","lamp"],
+  ["🛏️","bed"],
+  ["🪑","chair"],
+  ["🚪","door"],
+  ["🪟","window"],
+  ["🧼","soap"],
+  ["👧","girl"],
+  ["👦","boy"],
+  ["👩","woman"],
+  ["👨","man"],
+  ["👶","baby"]
+];
+const WORD_BY_EMOJI = Object.fromEntries(PAIRS);
+
+const DEFAULT_WORDS = [
+  {emoji:"🐶", word:"dog"},
+  {emoji:"🐱", word:"cat"},
+  {emoji:"🐟", word:"fish"},
+  {emoji:"🐦", word:"bird"},
+  {emoji:"🍎", word:"apple"},
+  {emoji:"🍌", word:"banana"},
+  {emoji:"🎂", word:"cake"},
+  {emoji:"💧", word:"water"},
+  {emoji:"☀️", word:"sun"},
+  {emoji:"🌸", word:"flower"},
+  {emoji:"🏠", word:"house"},
+  {emoji:"⚽", word:"ball"},
+  {emoji:"🚗", word:"car"},
+  {emoji:"📖", word:"book"},
+  {emoji:"👟", word:"shoe"},
+  {emoji:"🌙", word:"moon"}
+];
+
+const $ = id => document.getElementById(id);
+let words = load() || DEFAULT_WORDS.slice();
+let i = 0, stars = 0, editing = -1;
+
+let model = null, rec = null;
+let ctx = null, srcNode = null, procNode = null, sinkNode = null;
+let active = false, timer = null;
+
+function load(){
+  try{
+    const data = JSON.parse(localStorage.getItem("words"));
+    if(!Array.isArray(data) || !data.length) return null;
+    return data.map(item => {
+      const emoji = String(item.emoji || "");
+      const mapped = WORD_BY_EMOJI[emoji];
+      const word = mapped || String(item.word || "").trim().toLowerCase();
+      return {emoji, word};
+    }).filter(w => w.emoji && w.word);
+  }catch(e){ return null; }
+}
+function save(){ try{ localStorage.setItem("words", JSON.stringify(words)); }catch(e){} }
+
+function word(){ return words[i].word; }
+function show(){
+  $("picture").textContent = words[i].emoji;
+  $("picture").className = "";
+  $("word").textContent = word();
+  $("note").textContent = "";
+}
+
+const EN = "en-US";   // המילה שמתרגלים
+const HE = "he-IL";   // המשוב לילד
+
+let voices = [];
+function refreshVoices(){
+  try{ voices = speechSynthesis.getVoices() || []; }catch(e){ voices = []; }
+}
+if("speechSynthesis" in window){
+  refreshVoices();
+  // רשימת הקולות מגיעה מאוחר בחלק מהדפדפנים, ולפעמים יותר מפעם אחת.
+  speechSynthesis.addEventListener("voiceschanged", refreshVoices);
+}
+function voiceFor(lang){
+  const pre = lang.slice(0, 2).toLowerCase();
+  return voices.find(v => String(v.lang || "").toLowerCase().replace("_", "-").startsWith(pre)) || null;
+}
+
+function speak(text, lang, onDone){
+  const done = ()=>{ if(onDone) onDone(); };
+  if(!("speechSynthesis" in window)){ done(); return; }
+  if(!voices.length) refreshVoices();
+  const v = voiceFor(lang);
+  // אין קול עברי במכשיר? שותקים. הדפדפן היה מקריא עברית בקול אנגלי ויוצא ג'יבריש,
+  // והמשוב החזותי — הצבע, ה-🎉 והכוכבים — ממשיך לעבוד גם בלי קול.
+  if(lang === HE && !v){ setTimeout(done, 500); return; }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang;
+  u.rate = lang === HE ? 0.95 : 0.8;
+  if(v) u.voice = v;
+  u.onend = done;
+  u.onerror = done;
+  speechSynthesis.speak(u);
+}
+
+function progress(pct, label){
+  $("loading").hidden = false;
+  $("fill").style.width = pct + "%";
+  $("loadtext").textContent = label;
+}
+
+async function fetchModel(){
+  if(!("caches" in window) || !("body" in Response.prototype)) return;
+  const cache = await caches.open(CACHE);
+  if(await cache.match(MODEL_URL)) return;
+
+  const res = await fetch(MODEL_URL);
+  if(!res.ok) throw new Error("HTTP " + res.status);
+  const total = Number(res.headers.get("Content-Length")) || 0;
+  const reader = res.body.getReader();
+  const chunks = [];
+  let got = 0;
+  for(;;){
+    const {done, value} = await reader.read();
+    if(done) break;
+    chunks.push(value);
+    got += value.length;
+    if(total){
+      const pct = Math.round(got / total * 100);
+      progress(pct, "מתכוננים… " + pct + "%");
+    }else{
+      progress(0, "מתכוננים… " + (got / 1048576).toFixed(0) + " MB");
+    }
+  }
+  await cache.put(MODEL_URL, new Response(new Blob(chunks),
+    {headers:{"Content-Type":"application/gzip"}}));
+}
+
+function controlled(){
+  if(!("serviceWorker" in navigator) || navigator.serviceWorker.controller){
+    return Promise.resolve();
+  }
+  return new Promise(done=>{
+    navigator.serviceWorker.addEventListener("controllerchange", done, {once:true});
+    setTimeout(done, 3000);
+  });
+}
+
+async function loadModel(){
+  try{
+    if(typeof Vosk === "undefined") throw new Error("vosk-browser did not load");
+    progress(0, "מתכוננים… זה קורה פעם אחת");
+    await controlled();
+    await fetchModel();
+    progress(100, "עוד רגע…");
+    model = await Vosk.createModel(MODEL_URL);
+    $("loading").hidden = true;
+    $("say").disabled = false;
+    $("say").querySelector("span").textContent = "🎤";
+  }catch(err){
+    $("loading").hidden = true;
+    $("note").textContent = "לא הצלחנו לטעון את מנוע הדיבור. בדקו את model.tar.gz";
+    console.error(err);
+  }
+}
+
+function grammar(){
+  return JSON.stringify(words.map(w=>w.word).concat(["[unk]"]));
+}
+
+function buildRecognizer(){
+  if(!model || !ctx) return;
+  if(rec){ try{ rec.remove(); }catch(e){} rec = null; }
+  rec = new model.KaldiRecognizer(ctx.sampleRate, grammar());
+  rec.on("result", msg=>{
+    if(!active) return;
+    const heard = ((msg && msg.result && msg.result.text) || "")
+      .split(/\s+/).filter(t => t && t !== "[unk]");
+    // רעש רקע, נשימה או "אממ" מזוהים כ-[unk]. זה לא ניסיון, ממשיכים להקשיב עד הטיימר.
+    if(!heard.length) return;
+    finish(heard.includes(word()));
+  });
+}
+
+async function ensureAudio(){
+  if(ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1}
+  });
+  srcNode = ctx.createMediaStreamSource(stream);
+  procNode = ctx.createScriptProcessor(4096, 1, 1);
+  procNode.onaudioprocess = e=>{
+    // המפענח מקבל אודיו רק בזמן ניסיון. בשאר הזמן המיקרופון פתוח אבל שום דבר לא מעובד.
+    if(rec && active){ try{ rec.acceptWaveform(e.inputBuffer); }catch(err){} }
+  };
+  sinkNode = ctx.createGain();
+  sinkNode.gain.value = 0;
+  srcNode.connect(procNode);
+  procNode.connect(sinkNode);
+  sinkNode.connect(ctx.destination);
+  buildRecognizer();
+}
+
+async function listen(){
+  if(active || !model) return;
+  try{ await ensureAudio(); }
+  catch(err){ $("note").textContent = "צריך לאשר את המיקרופון."; return; }
+
+  $("note").textContent = "";
+  active = true;
+  $("say").classList.add("listening");
+  timer = setTimeout(()=>finish(false), 4000);
+}
+
+function finish(ok){
+  if(!active) return;
+  active = false;
+  clearTimeout(timer);
+  // מאפס את המפענח כדי שהניסיון הבא יתחיל נקי. התוצאה שחוזרת מכאן נבלעת כי active כבר כבוי.
+  if(rec){ try{ rec.retrieveFinalResult(); }catch(err){} }
+  $("say").classList.remove("listening");
+  ok ? good() : again();
+}
+
+function good(){
+  stars = Math.min(stars+1, 10);
+  $("stars").textContent = "⭐".repeat(stars);
+  $("picture").className = "good";
+  $("picture").textContent = "🎉";
+  speak("כל הכבוד!", HE, ()=>setTimeout(next, 400));
+}
+function again(){
+  $("picture").className = "again";
+  speak("נסו שוב", HE, ()=>setTimeout(()=>{ $("picture").className = ""; }, 600));
+}
+function next(){
+  i = (i + 1) % words.length;
+  show();
+}
+
+function takenSet(){
+  return new Set(words.map(w => w.word));
+}
+
+function setErr(msg){ $("panelErr").textContent = msg || ""; }
+
+function applyWords(nextWords, nextIndex){
+  const before = words.slice();
+  words = nextWords;
+  if(ctx){
+    try{ buildRecognizer(); }
+    catch(err){
+      words = before;
+      buildRecognizer();
+      setErr("המודל לא מכיר את המילה הזו.");
+      return false;
+    }
+  }
+  save();
+  if(typeof nextIndex === "number") i = nextIndex;
+  if(i >= words.length) i = 0;
+  show();
+  renderPanel();
+  return true;
+}
+
+function addEmoji(emoji){
+  const w = WORD_BY_EMOJI[emoji];
+  if(!w){ setErr("אין מילה באנגלית לתמונה הזו."); return; }
+  if(takenSet().has(w)){ setErr("״" + w + "״ כבר ברשימה."); return; }
+  setErr("");
+  applyWords(words.concat([{emoji, word:w}]), words.length);
+}
+
+function replaceEmoji(index, emoji){
+  const w = WORD_BY_EMOJI[emoji];
+  if(!w){ setErr("אין מילה באנגלית לתמונה הזו."); return; }
+  if(words.some((item, n) => item.word === w && n !== index)){
+    setErr("״" + w + "״ כבר ברשימה.");
+    return;
+  }
+  const nextWords = words.slice();
+  nextWords[index] = {emoji, word:w};
+  editing = -1;
+  setErr("");
+  applyWords(nextWords, i);
+}
+
+function removeAt(index){
+  if(words.length <= 1){ setErr("צריך לפחות מילה אחת."); return; }
+  const nextWords = words.filter((_, n) => n !== index);
+  let nextI = i;
+  if(index < i) nextI = i - 1;
+  if(nextI >= nextWords.length) nextI = 0;
+  if(editing === index) editing = -1;
+  setErr("");
+  applyWords(nextWords, nextI);
+}
+
+function moveAt(index, dir){
+  const j = index + dir;
+  if(j < 0 || j >= words.length) return;
+  const nextWords = words.slice();
+  const a = nextWords[index];
+  nextWords[index] = nextWords[j];
+  nextWords[j] = a;
+  let nextI = i;
+  if(i === index) nextI = j;
+  else if(i === j) nextI = index;
+  applyWords(nextWords, nextI);
+}
+
+function renderCatalog(){
+  const q = $("search").value.trim().toLowerCase();
+  const taken = takenSet();
+  const box = $("catalog");
+  box.innerHTML = "";
+  const list = PAIRS.filter(([e,w]) => !q || w.includes(q) || e.includes(q));
+  if(!list.length){
+    const p = document.createElement("p");
+    p.id = "hint";
+    p.textContent = "אין תמונה שמתאימה לחיפוש.";
+    p.style.gridColumn = "1 / -1";
+    p.style.padding = "16px";
+    p.style.textAlign = "center";
+    box.appendChild(p);
+    return;
+  }
+  list.forEach(([emoji, w]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.title = w;
+    if(taken.has(w) && editing < 0) b.className = "taken";
+    b.innerHTML = emoji + '<span class="ename">' + w + "</span>";
+    b.addEventListener("click", ()=>{
+      if(editing >= 0) replaceEmoji(editing, emoji);
+      else addEmoji(emoji);
+    });
+    box.appendChild(b);
+  });
+}
+
+function renderList(){
+  const ul = $("wordList");
+  ul.innerHTML = "";
+  words.forEach((item, n) => {
+    const li = document.createElement("li");
+    if(n === i) li.className = "current";
+    const jump = document.createElement("button");
+    jump.type = "button";
+    jump.style.flex = "1";
+    jump.style.display = "flex";
+    jump.style.alignItems = "center";
+    jump.style.gap = "8px";
+    jump.style.border = "0";
+    jump.style.background = "transparent";
+    jump.style.borderRadius = "12px";
+    jump.style.padding = "0";
+    jump.innerHTML = '<span class="pic">' + item.emoji + '</span><span class="w">' + item.word + "</span>";
+    jump.addEventListener("click", ()=>{
+      i = n;
+      show();
+      closePanel();
+    });
+    const ops = document.createElement("div");
+    ops.className = "ops";
+    const up = document.createElement("button");
+    up.type = "button"; up.textContent = "▲"; up.disabled = n === 0;
+    up.addEventListener("click", ()=>moveAt(n, -1));
+    const down = document.createElement("button");
+    down.type = "button"; down.textContent = "▼"; down.disabled = n === words.length - 1;
+    down.addEventListener("click", ()=>moveAt(n, 1));
+    const del = document.createElement("button");
+    del.type = "button"; del.textContent = "🗑"; del.disabled = words.length <= 1;
+    del.addEventListener("click", ()=>removeAt(n));
+    ops.append(up, down, del);
+    li.append(jump, ops);
+    ul.appendChild(li);
+  });
+}
+
+function renderPanel(){
+  $("panelMeta").textContent = words.length + " מילים בתרגול. נשמר במכשיר הזה.";
+  $("hint").textContent = editing >= 0
+    ? "בחרו תמונה אחרת. המילה באנגלית תתחלף איתה."
+    : "לחצו על תמונה כדי להוסיף. המילה באנגלית קבועה.";
+  renderCatalog();
+  renderList();
+}
+
+function openPanel(){
+  editing = -1;
+  setErr("");
+  $("search").value = "";
+  $("overlay").hidden = false;
+  renderPanel();
+}
+function closePanel(){
+  $("overlay").hidden = true;
+  editing = -1;
+}
+
+$("picture").addEventListener("click", ()=>speak(word(), EN));
+$("hear").addEventListener("click", ()=>speak(word(), EN));
+$("say").addEventListener("click", listen);
+$("next").addEventListener("click", next);
+$("openPanel").addEventListener("click", openPanel);
+$("closePanel").addEventListener("click", closePanel);
+$("overlay").addEventListener("click", e=>{ if(e.target.id === "overlay") closePanel(); });
+$("search").addEventListener("input", renderCatalog);
+$("resetBtn").addEventListener("click", ()=>{
+  if(!confirm("לחזור ל־16 המילים המקוריות?")) return;
+  editing = -1;
+  setErr("");
+  applyWords(DEFAULT_WORDS.slice(), 0);
+});
+
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+// מבקש מהדפדפן לא למחוק את המטמון (המודל, 29MB) כשנגמר מקום. בלי חלון אישור;
+// אם הדפדפן מסרב, פשוט ממשיכים.
+if(navigator.storage && navigator.storage.persist){
+  navigator.storage.persist().catch(()=>{});
+}
+
+show();
+loadModel();
+</script>
+</body>
+</html>

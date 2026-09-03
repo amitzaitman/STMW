@@ -1,0 +1,10 @@
+{
+  "name": "Say the word",
+  "description": "English word pronunciation practice app for kids with voice recognition and speech synthesis.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
