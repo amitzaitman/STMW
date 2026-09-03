@@ -8,6 +8,15 @@
 <meta name="description" content="English word pronunciation practice app for kids with voice recognition and speech synthesis.">
 <meta property="og:title" content="Say the word">
 <meta property="og:description" content="English word pronunciation practice app for kids with voice recognition and speech synthesis.">
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#FFD65A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Say the word">
+<link rel="icon" type="image/svg+xml" href="./icon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <script src="./vosk.js"></script>
 <style>
   *{box-sizing:border-box}
@@ -48,11 +57,26 @@
   #bar{height:16px; border:3px solid #1B2140; border-radius:10px; background:#fff; overflow:hidden}
   #fill{display:block; height:100%; width:0; background:#FFD65A; transition:width .2s}
   #loadtext{font-size:14px; color:#8B93AD; text-align:center}
-  #note{font-size:14px; color:#B23A00; text-align:center; min-height:20px}
-  #openPanel{
-    flex:0 0 auto; font-size:15px; padding:8px 14px; border:2px solid #B9C2D8;
-    border-radius:12px; background:#fff; color:#4A5480;
+  #topBar{
+    width:100%; max-width:520px; display:flex; align-items:center;
+    justify-content:center; position:relative; min-height:44px;
   }
+  #stars{font-size:26px; letter-spacing:3px; min-height:32px; text-align:center}
+  #openSettings{
+    position:absolute; left:0; top:50%; transform:translateY(-50%);
+    width:42px; height:42px; border:2px solid #B9C2D8;
+    border-radius:14px; background:#fff; color:#4A5480; font-size:20px;
+    display:flex; align-items:center; justify-content:center; padding:0;
+    cursor:pointer;
+  }
+  #openSettings:active{transform:translateY(calc(-50% + 2px)); background:#EAF0FF}
+  #note{font-size:14px; color:#B23A00; text-align:center; min-height:20px}
+  #settingsActions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  #installBtn{
+    border-width:2px; border-color:#2B6CB0; border-radius:12px; padding:8px 12px;
+    font-size:14px; background:#EBF8FF; color:#2B6CB0; font-weight:600;
+  }
+  #installBtn[hidden]{display:none}
   #overlay{
     position:fixed; inset:0; background:rgba(27,33,64,.45);
     display:flex; align-items:flex-end; justify-content:center; z-index:20;
@@ -110,7 +134,10 @@
 </head>
 <body>
 
-<div id="stars"></div>
+<div id="topBar">
+  <div id="stars"></div>
+  <button id="openSettings" type="button" aria-label="הגדרות ואוצר מילים" title="הגדרות">⚙️</button>
+</div>
 <div id="picture">🐶</div>
 <div id="word"></div>
 
@@ -126,23 +153,25 @@
 </div>
 
 <div id="note"></div>
-<button id="openPanel" type="button">אוצר המילים</button>
 
 <div id="overlay" hidden>
   <div id="panel">
     <div id="panelHead">
       <div>
-        <h2>אוצר המילים</h2>
+        <h2>⚙️ הגדרות</h2>
         <p id="panelMeta"></p>
       </div>
       <button id="closePanel" type="button" aria-label="סגירה">×</button>
+    </div>
+    <div id="settingsActions">
+      <button id="installBtn" type="button" hidden>📲 התקנת אפליקציה למכשיר</button>
+      <button id="resetBtn" type="button">🔄 איפוס מילים לברירת מחדל</button>
     </div>
     <input id="search" type="search" placeholder="חיפוש, למשל lion" autocomplete="off">
     <p id="hint">לחצו על תמונה כדי להוסיף. המילה באנגלית קבועה.</p>
     <div id="catalog"></div>
     <p id="panelErr"></p>
     <ul id="wordList"></ul>
-    <button id="resetBtn" type="button">איפוס לברירת מחדל</button>
   </div>
 </div>
 
@@ -777,7 +806,7 @@ $("picture").addEventListener("click", ()=>speak(word(), EN));
 $("hear").addEventListener("click", ()=>speak(word(), EN));
 $("say").addEventListener("click", listen);
 $("next").addEventListener("click", next);
-$("openPanel").addEventListener("click", openPanel);
+$("openSettings").addEventListener("click", openPanel);
 $("closePanel").addEventListener("click", closePanel);
 $("overlay").addEventListener("click", e=>{ if(e.target.id === "overlay") closePanel(); });
 $("search").addEventListener("input", renderCatalog);
@@ -791,6 +820,45 @@ $("resetBtn").addEventListener("click", ()=>{
 if("serviceWorker" in navigator){
   navigator.serviceWorker.register("sw.js").catch(()=>{});
 }
+
+// PWA Install prompt
+let deferredPrompt = null;
+const installBtn = $("installBtn");
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator && window.navigator.standalone);
+const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+
+if (!isStandalone) {
+  window.addEventListener("beforeinstallprompt", e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (installBtn) installBtn.hidden = false;
+  });
+
+  if (isIOS && installBtn) {
+    installBtn.hidden = false;
+  }
+}
+
+window.addEventListener("appinstalled", () => {
+  if (installBtn) installBtn.hidden = true;
+  deferredPrompt = null;
+});
+
+if (installBtn) {
+  installBtn.addEventListener("click", async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice && choice.outcome === "accepted") {
+        installBtn.hidden = true;
+      }
+      deferredPrompt = null;
+    } else if (isIOS) {
+      setErr("להתקנה ב־iPhone/iPad: לחצו על שיתוף ⎋ בספארי ובחרו 'הוספה למסך הבית'.");
+    }
+  });
+}
+
 // מבקש מהדפדפן לא למחוק את המטמון (המודל, 29MB) כשנגמר מקום. בלי חלון אישור;
 // אם הדפדפן מסרב, פשוט ממשיכים.
 if(navigator.storage && navigator.storage.persist){

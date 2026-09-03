@@ -20,6 +20,8 @@ app.use(express.static(__dirname, {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('model.tar.gz')) {
       res.setHeader('Content-Type', 'application/gzip');
+    } else if (filePath.endsWith('manifest.json')) {
+      res.setHeader('Content-Type', 'application/manifest+json');
     }
   }
 }));

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFDE6A"/>
+      <stop offset="100%" stop-color="#FFCA3A"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#1B2140" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded card -->
+  <rect width="512" height="512" rx="128" fill="url(#bg)"/>
+
+  <!-- Ears -->
+  <ellipse cx="140" cy="190" rx="55" ry="75" fill="#B87333" transform="rotate(-20 140 190)"/>
+  <ellipse cx="140" cy="190" rx="35" ry="50" fill="#EEA096" transform="rotate(-20 140 190)"/>
+
+  <ellipse cx="372" cy="190" rx="55" ry="75" fill="#B87333" transform="rotate(20 372 190)"/>
+  <ellipse cx="372" cy="190" rx="35" ry="50" fill="#EEA096" transform="rotate(20 372 190)"/>
+
+  <!-- Head -->
+  <circle cx="256" cy="270" r="140" fill="#FFFFFF" stroke="#1B2140" stroke-width="12" filter="url(#shadow)"/>
+
+  <!-- Cheeks -->
+  <circle cx="170" cy="290" r="22" fill="#FFB6C1" opacity="0.8"/>
+  <circle cx="342" cy="290" r="22" fill="#FFB6C1" opacity="0.8"/>
+
+  <!-- Eyes -->
+  <circle cx="205" cy="245" r="16" fill="#1B2140"/>
+  <circle cx="211" cy="239" r="6" fill="#FFFFFF"/>
+
+  <circle cx="307" cy="245" r="16" fill="#1B2140"/>
+  <circle cx="313" cy="239" r="6" fill="#FFFFFF"/>
+
+  <!-- Snout -->
+  <ellipse cx="256" cy="315" rx="50" ry="38" fill="#FFF5E6"/>
+  <!-- Nose -->
+  <polygon points="256,290 236,310 276,310" fill="#1B2140"/>
+  <path d="M 256,310 L 256,326 M 256,326 Q 242,336 232,326 M 256,326 Q 270,336 280,326" stroke="#1B2140" stroke-width="6" stroke-linecap="round" fill="none"/>
+
+  <!-- Badge with Microphone -->
+  <circle cx="385" cy="385" r="65" fill="#FFFFFF" stroke="#1B2140" stroke-width="10"/>
+  <rect x="372" y="348" width="26" height="42" rx="13" fill="#FF6B8A"/>
+  <path d="M 364,370 Q 364,402 385,402 Q 406,402 406,370" fill="none" stroke="#1B2140" stroke-width="6" stroke-linecap="round"/>
+  <line x1="385" y1="402" x2="385" y2="418" stroke="#1B2140" stroke-width="6" stroke-linecap="round"/>
+  <line x1="372" y1="418" x2="398" y2="418" stroke="#1B2140" stroke-width="6" stroke-linecap="round"/>
+</svg>
