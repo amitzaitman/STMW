@@ -413,6 +413,9 @@ const DEFAULT_WORDS = [
 const $ = id => document.getElementById(id);
 let words = load() || DEFAULT_WORDS.slice();
 let i = 0, stars = 0, editing = -1;
+// words הוא הרשימה הקנונית: היא נשמרת, והיא מה שמוצג בחלונית הניהול.
+// לכן לא מערבבים אותה עצמה אלא מחזיקים תור השמעה נפרד של אינדקסים אליה.
+let queue = [];
 
 let model = null, rec = null;
 let ctx = null, srcNode = null, procNode = null, sinkNode = null;
@@ -616,8 +619,33 @@ function again(){
   $("picture").className = "again";
   speak("נסו שוב", HE, ()=>setTimeout(()=>{ $("picture").className = ""; }, 600));
 }
+// סיבוב = תמורה מלאה של כל המילים, כל אחת בדיוק פעם אחת. תור ולא הגרלה
+// בכל צעד, אחרת מילה אחת חוזרת שלוש פעמים ברצף ואחרת לא מופיעה בכלל.
+// avoidFirst מונע את המקרה היחיד שהתמורה לא מכסה: סיבוב חדש שנפתח במילה
+// שהרגע הייתה על המסך, שנראה כמו תקלה ולא כמו הגרלה.
+function reshuffle(avoidFirst){
+  queue = words.map((_, n) => n);
+  for(let n = queue.length - 1; n > 0; n--){
+    const m = Math.floor(Math.random() * (n + 1));
+    [queue[n], queue[m]] = [queue[m], queue[n]];
+  }
+  if(queue.length > 1 && queue[0] === avoidFirst){
+    [queue[0], queue[queue.length - 1]] = [queue[queue.length - 1], queue[0]];
+  }
+}
+
+function startRound(){
+  reshuffle();
+  const n = queue.shift();
+  i = typeof n === "number" ? n : 0;
+  show();
+}
+
 function next(){
-  i = (i + 1) % words.length;
+  if(!queue.length) reshuffle(i);
+  const n = queue.shift();
+  // מילה אחת ברשימה: התמורה היא [0], ופשוט נשארים עליה.
+  if(typeof n === "number") i = n;
   show();
 }
 
@@ -642,6 +670,9 @@ function applyWords(nextWords, nextIndex){
   save();
   if(typeof nextIndex === "number") i = nextIndex;
   if(i >= words.length) i = 0;
+  // התור מחזיק אינדקסים ל-words. אחרי הוספה, מחיקה או הזזה הם מצביעים על
+  // מילים אחרות, אז פותחים סיבוב חדש במקום לתקן אותם אחד-אחד.
+  reshuffle(i);
   show();
   renderPanel();
   return true;
@@ -807,7 +838,7 @@ if(navigator.storage && navigator.storage.persist){
   navigator.storage.persist().catch(()=>{});
 }
 
-show();
+startRound();
 loadModel();
 </script>
 </body>
