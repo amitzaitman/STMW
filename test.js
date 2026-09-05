@@ -1,0 +1,243 @@
+/* בדיקות לאפליקציה. הרצה: npm test
+   דורש דפדפן: npm install && npx playwright install chromium
+
+   הבדיקות כאן הן לא כיסוי שלם — הן המקומות שכבר נשברו פעם אחת.
+   כל קבוצה מסבירה למה היא קיימת. */
+
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const DIR = path.dirname(fileURLToPath(import.meta.url));
+
+const TYPES = {
+  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png",
+  ".gz": "application/gzip"
+};
+
+// שרת סטטי קטן, קרוב ככל האפשר למה ש-GitHub Pages עושה.
+function staticServer(){
+  return http.createServer((req, res) => {
+    const rel = decodeURIComponent(req.url.split("?")[0]).replace(/^\/+/, "") || "index.html";
+    const file = path.join(DIR, rel);
+    if(!file.startsWith(DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){
+      res.writeHead(404, {"Content-Type": "text/plain"});
+      return res.end("not found");
+    }
+    res.writeHead(200, {"Content-Type": TYPES[path.extname(file)] || "application/octet-stream"});
+    fs.createReadStream(file).pipe(res);
+  });
+}
+
+let passed = 0, failed = [];
+function check(name, ok, detail){
+  if(ok){ passed++; console.log("  ✓ " + name); }
+  else { failed.push(name); console.log("  ✗ " + name + (detail !== undefined ? "\n      " + JSON.stringify(detail) : "")); }
+}
+function group(title){ console.log("\n" + title); }
+
+async function main(){
+  let chromium;
+  try { ({ chromium } = await import("playwright")); }
+  catch { console.error("playwright חסר. הריצו: npm install && npx playwright install chromium"); process.exit(1); }
+
+  const server = staticServer();
+  await new Promise(r => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  const browser = await chromium.launch();
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", e => errors.push("pageerror: " + e.message));
+  page.on("console", m => { if(m.type() === "error") errors.push("console: " + m.text()); });
+
+  await page.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(1200);
+
+  // --------------------------------------------------------------
+  group("טעינה");
+  // words.js נטען מכתובת עם ?v=, ופעם אחת הוא חזר כ-HTML במקום כסקריפט.
+  check("מאגר המילים נטען", await page.evaluate(() => PAIRS.length) === 237);
+  check("יש מילים לתרגול", await page.evaluate(() => words.length) > 0);
+  check("מוצגת מילה על המסך", (await page.textContent("#word")).length > 0);
+
+  // --------------------------------------------------------------
+  group("מנוע ההתאמה");
+  // הניקוד הוא מספר אחד, וההחלטה היא השוואה אחת מולו. אלה התכונות
+  // שחייבות להישמר גם אם הנוסחה תשתנה.
+  const wrongAccepted = await page.evaluate(() => {
+    const bad = [];
+    for(const [target, spoken] of [["dog","cat"],["lion","house"],["sun","moon"],["apple","car"]])
+      for(let th = 30; th <= 95; th += 5)
+        for(const conf of [null, 0.5, 0.9, 1])
+          if(scoreToken(spoken, conf, target) >= th) bad.push(`${spoken}/${target} th=${th}`);
+    return bad;
+  });
+  check("מילה שגויה לא מתקבלת באף אחוז", wrongAccepted.length === 0, wrongAccepted.slice(0, 5));
+
+  const nonMonotonic = await page.evaluate(() => {
+    const bad = [];
+    for(const [target, spoken] of [["dog","dog"],["cat","kat"],["butterfly","butterf"],["banana","banan"]])
+      for(const conf of [null, 0.4, 0.7, 1]){
+        const score = scoreToken(spoken, conf, target);
+        let prev = true;
+        for(let th = 30; th <= 95; th += 5){
+          const now = score >= th;
+          if(now && !prev) bad.push(`${spoken}/${target} conf=${conf} th=${th}`);
+          prev = now;
+        }
+      }
+    return bad;
+  });
+  check("העלאת האחוז רק מקשה", nonMonotonic.length === 0, nonMonotonic);
+
+  const scores = await page.evaluate(() => ({
+    exact:    scoreToken("dog", 0.9, "dog"),
+    phonetic: scoreToken("kat", 0.9, "cat"),
+    prefix:   scoreToken("butterf", 0.9, "butterfly"),
+    partial:  scoreToken("dog", PARTIAL_CONFIDENCE, "dog"),
+    junk:     scoreToken("[unk]", 0.9, "dog")
+  }));
+  check("זיהוי מדויק נמדד בביטחון המנוע", scores.exact === 90, scores);
+  check("התאמה פונטית לא עוברת רף גבוה", scores.phonetic === 88 && scores.phonetic < 90, scores);
+  check("התאמת קידומת מתחת להתאמה פונטית", scores.prefix === 80, scores);
+  check("זיהוי מדויק בתוצאה חלקית לא עובר 90", scores.partial === 85, scores);
+  check("רעש לא מקבל ניקוד", scores.junk === 0, scores);
+
+  // --------------------------------------------------------------
+  group("רמת ההתאמה");
+  // האחוז הוא המצב היחיד. שלושת הכפתורים רק קובעים אותו.
+  await page.click("#openSettings");
+  await page.waitForTimeout(150);
+  for(const [id, want] of [["btnLevelLenient",45], ["btnLevelNormal",70], ["btnLevelStrict",90]]){
+    await page.click("#" + id);
+    check(`הכפתור ${id} קובע ${want}%`, await page.evaluate(() => matchThreshold) === want);
+  }
+  const windows = await page.evaluate(() => {
+    const before = matchThreshold, out = [];
+    for(const th of [30, 50, 70, 90, 95]){ matchThreshold = th; out.push(listenWindowMs()); }
+    matchThreshold = before;
+    return out;
+  });
+  check("חלון ההקשבה מתקצר ככל שהאחוז עולה",
+        windows.every((v, n) => n === 0 || v < windows[n - 1]), windows);
+
+  await page.evaluate(() => { const s = $("matchThresholdSlider"); s.value = 55; s.dispatchEvent(new Event("input")); });
+  check("הסליידר מעדכן את התווית", (await page.textContent("#matchLevelBadge")).includes("55%"));
+  check("הסליידר נשמר", JSON.parse(await page.evaluate(() => localStorage.getItem("speech_match_config"))).threshold === 55);
+
+  // הגדרה שנשמרה בפורמט הישן, עם level, חייבת להמשיך לעבוד.
+  await page.evaluate(() => localStorage.setItem("speech_match_config", JSON.stringify({level:"strict", threshold:90})));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(800);
+  check("הגדרה מהפורמט הישן נטענת", await page.evaluate(() => matchThreshold) === 90);
+
+  // --------------------------------------------------------------
+  group("מאגר המילים");
+  // הקטלוג נבנה פעם אחת והסינון רק מסתיר. הבדיקה מודדת מה באמת מוצג
+  // ולא את התכונה hidden — כי display של הכפתור יכול לגבור עליה.
+  await page.click("#openSettings");
+  await page.click("#openWordsViewBtn");
+  await page.click("#openCatalogBtn");
+  await page.waitForTimeout(250);
+  // נמדד לפי display בפועל: התכונה hidden לבדה לא מוכיחה שמשהו הוסתר,
+  // כי כלל display על הכפתור גובר עליה.
+  await page.evaluate(() => {
+    window.visibleCatalogItems = () =>
+      [...document.querySelectorAll("#catalog .catalog-item")]
+        .filter(b => getComputedStyle(b).display !== "none").length;
+  });
+  const built = await page.evaluate(() => document.querySelectorAll("#catalog .catalog-item").length);
+  check("כל המאגר נבנה", built === 237, built);
+
+  await page.fill("#search", "lion");
+  await page.waitForTimeout(150);
+  check("סינון מסתיר בפועל", await page.evaluate(() => visibleCatalogItems()) === 1);
+  check("הצמתים לא נבנים מחדש",
+        await page.evaluate(() => document.querySelectorAll("#catalog .catalog-item").length) === built);
+
+  await page.fill("#search", "zzzz");
+  await page.waitForTimeout(150);
+  check("אין תוצאות — מוצגת הודעה",
+        await page.evaluate(() => visibleCatalogItems() === 0 && !$("catalogEmpty").hidden));
+
+  await page.fill("#search", "lion");
+  await page.waitForTimeout(150);
+  const wordsBefore = await page.evaluate(() => words.length);
+  await page.click("#catalog .catalog-item:not([hidden])");
+  await page.waitForTimeout(250);
+  check("הוספת מילה מהמאגר", await page.evaluate(() => words.length) === wordsBefore + 1);
+  check("המילה מסומנת כבתרגול", await page.evaluate(() => !!document.querySelector('.catalog-item[data-word="lion"].in-list')));
+  await page.click("#catalog .catalog-item:not([hidden])");
+  await page.waitForTimeout(200);
+  check("לחיצה חוזרת לא מוסיפה פעמיים", await page.evaluate(() => words.length) === wordsBefore + 1);
+
+  // --------------------------------------------------------------
+  group("רשימת התרגול");
+  await page.click("#backToWordsBtn");
+  await page.waitForTimeout(200);
+  check("אין סגנון בתוך JS על השורות",
+        await page.evaluate(() => document.querySelectorAll("#wordList [style]").length) === 0);
+  await page.click("#wordList li .speak-word-btn");
+  await page.waitForTimeout(150);
+  check("השמעה לא סוגרת את החלונית", await page.evaluate(() => $("overlay").hidden) === false);
+
+  const rowsBefore = await page.locator("#wordList li").count();
+  await page.click("#wordList li .del-word-btn");
+  await page.waitForTimeout(250);
+  check("מחיקת מילה", await page.locator("#wordList li").count() === rowsBefore - 1);
+
+  await page.click("#wordList li .jump");
+  await page.waitForTimeout(200);
+  check("לחיצה על מילה קופצת אליה וסוגרת", await page.evaluate(() => $("overlay").hidden) === true);
+
+  // --------------------------------------------------------------
+  group("הודעה נעלמת");
+  await page.click("#toggleSound");
+  await page.waitForTimeout(150);
+  const noteShown = (await page.textContent("#note")).length > 0;
+  await page.waitForTimeout(2300);
+  check("הודעה מוצגת ואז נעלמת", noteShown && (await page.textContent("#note")) === "");
+
+  // --------------------------------------------------------------
+  group("עבודה ללא אינטרנט");
+  // ה-service worker החזיר פעם את index.html לכל בקשה שחסרה במטמון,
+  // כך שסקריפט חסר חזר כ-HTML והדף קרס. זו הבדיקה על זה.
+  await page.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 30000 });
+  await page.waitForTimeout(2500);
+
+  const cached = await page.evaluate(async () => {
+    const c = await caches.open(CACHE_NAME);
+    return (await c.keys()).map(r => new URL(r.url).pathname.split("/").pop() || "index");
+  });
+  // הדף פותח את המטמון בשם CACHE_NAME ומוצא בו את מה שה-service worker שמר.
+  check("הדף וה-service worker על אותו מטמון", cached.length > 0, cached);
+  check("words.js נשמר במטמון", cached.includes("words.js"), cached);
+
+  server.closeAllConnections();
+  await new Promise(r => server.close(r));
+
+  const offline = await page.evaluate(async () => {
+    try {
+      const r = await fetch("./words.js?v=999", { cache: "no-store" });
+      const t = await r.text();
+      return { type: r.headers.get("content-type") || "", html: t.trim().startsWith("<!DOCTYPE") };
+    } catch(e) { return { threw: e.name }; }
+  });
+  check("סקריפט חסר לא חוזר כ-HTML", offline.html === false, offline);
+
+  // --------------------------------------------------------------
+  group("שגיאות");
+  check("אין שגיאות בקונסולה", errors.length === 0, errors);
+
+  await browser.close();
+
+  console.log(`\n${passed} עברו, ${failed.length} נכשלו`);
+  if(failed.length) process.exit(1);
+}
+
+main().catch(e => { console.error("\nהבדיקות נפלו:", e.message); process.exit(1); });
