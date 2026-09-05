@@ -39,7 +39,7 @@ self.addEventListener('install', e=>{
       // model.tar.gz לא נמצא כאן בכוונה: הדף מוריד אותו בעצמו עם פס התקדמות
       // ומכניס אותו לאותו מטמון. הורדה כאן הייתה מכפילה אותה ל-56MB.
       .then(c => Promise.all(
-        ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './vosk.js', './words.js', './cache-name.js']
+        ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './vosk.js', './words.js', './cache-name.js']
           .map(u => c.add(u).catch(()=>null))
       ))
       .then(()=>self.skipWaiting())

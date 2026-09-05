@@ -7,6 +7,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -53,6 +54,19 @@ async function main(){
   const errors = [];
   page.on("pageerror", e => errors.push("pageerror: " + e.message));
   page.on("console", m => { if(m.type() === "error") errors.push("console: " + m.text()); });
+
+  // --------------------------------------------------------------
+  group("מניפסט");
+  // נתיב מוחלט עובד רק כשהאפליקציה יושבת בשורש. ב-GitHub Pages היא יושבת
+  // תחת /REPO/, וכל אייקון החזיר 404 — ואז כרום לא מציע להתקין בכלל.
+  const manifest = JSON.parse(fs.readFileSync(path.join(DIR, "manifest.json"), "utf8"));
+  const absolute = [
+    ...["id", "start_url", "scope"].filter(k => String(manifest[k]).startsWith("/")).map(k => `${k}=${manifest[k]}`),
+    ...manifest.icons.filter(ic => ic.src.startsWith("/")).map(ic => ic.src)
+  ];
+  check("כל הנתיבים במניפסט יחסיים", absolute.length === 0, absolute);
+  const missingIcons = manifest.icons.map(ic => ic.src).filter(src => !fs.existsSync(path.join(DIR, src)));
+  check("כל האייקונים במניפסט קיימים", missingIcons.length === 0, missingIcons);
 
   await page.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1200);
@@ -235,6 +249,42 @@ async function main(){
   check("אין שגיאות בקונסולה", errors.length === 0, errors);
 
   await browser.close();
+
+  // --------------------------------------------------------------
+  group("server.js");
+  // אותה תקלה שהייתה ב-sw.js: כל נתיב חסר החזיר את index.html עם 200,
+  // כך שסקריפט חסר חזר כ-HTML ואייקון חסר חזר כ-54KB של HTML.
+  const port = 8000 + Math.floor(Math.random() * 1000);
+  const child = spawn(process.execPath, [path.join(DIR, "server.js")],
+                      { env: { ...process.env, PORT: String(port) }, stdio: "ignore" });
+  const url = `http://127.0.0.1:${port}`;
+  let up = false;
+  for(let n = 0; n < 40 && !up; n++){
+    try { await fetch(url + "/words.js"); up = true; }
+    catch { await new Promise(r => setTimeout(r, 250)); }
+  }
+
+  if(!up){
+    check("server.js עולה", false, "לא הצליח לעלות. הריצו npm install");
+  } else {
+    // 404 עם דף שגיאה קטן זה בסדר גמור. מה שהיה לא בסדר זה 200 עם כל הדף.
+    const appPage = fs.readFileSync(path.join(DIR, "index.html"), "utf8").length;
+    const get = async u => {
+      const r = await fetch(url + u);
+      const body = await r.text();
+      return { status: r.status, type: r.headers.get("content-type") || "",
+               bytes: body.length, isAppPage: body.includes("vosk.js") || body.length > appPage / 2 };
+    };
+    const real = await get("/words.js");
+    check("קובץ קיים מוגש כסקריפט", real.status === 200 && real.type.includes("javascript"), real);
+    const root = await get("/");
+    check("השורש מגיש את הדף", root.status === 200 && root.type.includes("html"), root);
+    const missingJs = await get("/missing.js");
+    check("סקריפט חסר לא מקבל את הדף", missingJs.status === 404 && !missingJs.isAppPage, missingJs);
+    const missingPng = await get("/icon-999.png");
+    check("תמונה חסרה לא מקבלת את הדף", missingPng.status === 404 && !missingPng.isAppPage, missingPng);
+  }
+  child.kill("SIGKILL");
 
   console.log(`\n${passed} עברו, ${failed.length} נכשלו`);
   if(failed.length) process.exit(1);
