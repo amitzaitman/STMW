@@ -1,7 +1,7 @@
 /* עבודה בלי אינטרנט, אבל בלי להיתקע על גרסה ישנה של הדף.
    הדף עצמו נבדק ברשת קודם, והקבצים הכבדים נלקחים מהמטמון. */
 
-const CACHE = 'say-the-word-v2';
+const CACHE = 'say-the-word-v4';
 const HEAVY = ['vosk.js', 'model.tar.gz'];      // כמעט לא משתנים
 const NET_TIMEOUT = 3000;                        // WiFi "מחובר" בלי אינטרנט: לא מחכים יותר מזה
 
@@ -29,7 +29,7 @@ self.addEventListener('install', e=>{
       // model.tar.gz לא נמצא כאן בכוונה: הדף מוריד אותו בעצמו עם פס התקדמות
       // ומכניס אותו לאותו מטמון. הורדה כאן הייתה מכפילה אותה ל-56MB.
       .then(c => Promise.all(
-        ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './vosk.js']
+        ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './vosk.js', './words.js']
           .map(u => c.add(u).catch(()=>null))
       ))
       .then(()=>self.skipWaiting())

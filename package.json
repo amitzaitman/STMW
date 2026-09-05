@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node server.js",
     "build": "echo 'Static app, no build required'",
-    "lint": "node --check server.js",
+    "lint": "node --check server.js && node --check words.js",
     "start": "node server.js"
   },
   "dependencies": {

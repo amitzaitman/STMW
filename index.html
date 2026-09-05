@@ -18,6 +18,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <script src="./vosk.js"></script>
+<script src="./words.js?v=4"></script>
 <style>
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -38,20 +39,36 @@
   #picture.good{background:#DFF7E7}
   #picture.again{background:#FFECEC}
   #word{font-size:15px; color:#8B93AD; min-height:20px; direction:ltr}
-  #buttons{display:flex; gap:12px; width:100%; max-width:520px; direction:ltr}
+  #buttons{
+    display:flex; align-items:center; gap:12px; width:100%; max-width:520px; direction:ltr;
+  }
   button{
-    font:inherit; color:inherit; border:5px solid #1B2140;
-    border-radius:24px; cursor:pointer; background:#fff;
+    font:inherit; color:inherit; border:4px solid #1B2140;
+    border-radius:22px; cursor:pointer; background:#fff;
   }
   #buttons button{
-    flex:1; font-size:44px; line-height:1; padding:18px 0;
+    display:flex; align-items:center; justify-content:center;
+    padding:0; height:74px; border:4px solid #1B2140;
+    border-radius:24px; box-shadow:0 4px 0 #1B2140;
+    transition:transform .12s ease, box-shadow .12s ease, background-color .15s ease;
+    user-select:none; -webkit-tap-highlight-color:transparent;
   }
-  button:active{transform:translateY(2px)}
-  button[disabled]{opacity:.45}
-  #say{flex:2; background:#FFD65A}
+  #buttons button:active:not([disabled]){
+    transform:translateY(3px); box-shadow:0 1px 0 #1B2140;
+  }
+  button[disabled]{opacity:.5; cursor:not-allowed; box-shadow:0 2px 0 #1B2140}
+  #playWord{flex:1; background:#EBF8FF}
+  #playWord:active:not([disabled]){background:#D8EFFF}
+  #playWord.playing{background:#BAE3FF}
+  #say{flex:2; background:#FFD65A; height:80px}
+  #say:active:not([disabled]){background:#FAD04C}
   #say.listening{background:#FF6B8A; color:#fff}
-  #say.listening span{animation:blink 1s infinite}
-  @keyframes blink{50%{opacity:.35}}
+  #next{flex:1; background:#F8FAFC}
+  #next:active:not([disabled]){background:#EDF2F7}
+  .btn-icon{font-size:34px; line-height:1; display:inline-block}
+  #say .btn-icon{font-size:42px}
+  #say.listening .btn-icon{animation:micPulse .7s infinite alternate ease-in-out}
+  @keyframes micPulse{0%{transform:scale(1)} 100%{transform:scale(1.25)}}
   #loading{width:100%; max-width:520px; display:flex; flex-direction:column; gap:6px}
   #loading[hidden]{display:none}
   #bar{height:16px; border:3px solid #1B2140; border-radius:10px; background:#fff; overflow:hidden}
@@ -71,6 +88,7 @@
     border-radius:14px; background:#fff; color:#4A5480; font-size:20px;
     display:flex; align-items:center; justify-content:center; padding:0;
     cursor:pointer; transition:background-color .15s, transform .15s;
+    text-decoration:none;
   }
   #openSettings:active, #openFeedback:active{transform:translateY(2px); background:#EAF0FF}
   #toggleSound{
@@ -88,7 +106,6 @@
     50%{transform:translateY(-50%) scale(1.15); border-color:#FF6B8A}
   }
   #toggleSound.pulse{animation:soundPulse .35s 2}
-  #hear.muted{opacity:.55}
   #note{font-size:14px; color:#B23A00; text-align:center; min-height:20px}
   #settingsActions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
   #installBtn{
@@ -358,80 +375,13 @@
     font-size:14px; background:#fff; color:#4A5480; align-self:flex-start;
   }
   #feedbackBtnInSettings{
-    border-width:2px; border-color:#2B6CB0; border-radius:12px; padding:8px 12px;
+    border:2px solid #2B6CB0; border-radius:12px; padding:8px 12px;
     font-size:14px; background:#fff; color:#2B6CB0; font-weight:600; cursor:pointer;
+    text-decoration:none; display:inline-flex; align-items:center; gap:4px;
+    transition:background-color .15s, transform .15s;
   }
-  #feedbackOverlay{
-    position:fixed; inset:0; background:rgba(27,33,64,.45);
-    display:flex; align-items:flex-end; justify-content:center; z-index:25;
-    padding:12px;
-  }
-  #feedbackOverlay[hidden]{display:none}
-  #feedbackPanel{
-    width:100%; max-width:520px; height:min(90dvh,760px);
-    background:#fff; border:5px solid #1B2140; border-radius:28px;
-    display:flex; flex-direction:column; overflow:hidden;
-    padding:16px 16px 14px; gap:10px;
-  }
-  #feedbackHead{display:flex; align-items:flex-start; justify-content:space-between; gap:8px}
-  #feedbackHead h2{margin:0; font-size:22px}
-  #feedbackMeta{font-size:13px; color:#8B93AD; margin:4px 0 0}
-  #closeFeedback{
-    width:40px; height:40px; border-width:2px; border-radius:12px; font-size:22px; line-height:1;
-    flex:0 0 auto;
-  }
-  #feedbackBar{
-    display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;
-  }
-  .fdb-btn-link, .fdb-btn-secondary{
-    font-size:13px; color:#2B6CB0; text-decoration:none; font-weight:600;
-    padding:6px 10px; border-radius:10px; background:#EBF8FF; border:1px solid #BEE3F8;
-    cursor:pointer; display:inline-flex; align-items:center; gap:4px;
-  }
-  .fdb-btn-link:hover, .fdb-btn-secondary:hover{background:#DDF0FC}
-  #feedbackConfigBox{
-    background:#F7FAFC; border:1.5px solid #CBD5E0; border-radius:14px; padding:10px 12px;
-    display:flex; flex-direction:column; gap:6px;
-  }
-  #feedbackConfigBox[hidden]{display:none}
-  .fdb-label{font-size:13px; font-weight:600; color:#2D3748}
-  .fdb-input-row{display:flex; gap:8px}
-  #formUrlInput{
-    flex:1; padding:8px 10px; border:1.5px solid #CBD5E0; border-radius:8px; font-size:13px;
-  }
-  .fdb-btn-primary{
-    background:#FFD65A; border:2px solid #1B2140; border-radius:10px; padding:6px 14px;
-    font-weight:600; font-size:13px; cursor:pointer;
-  }
-  .fdb-btn-primary:active{transform:translateY(1px)}
-  .fdb-help{font-size:11px; color:#718096; margin:0; line-height:1.4}
-  #feedbackFrameWrap{
-    flex:1; width:100%; position:relative; background:#FAFAFA;
-    border:2px solid #E3E8F4; border-radius:18px; overflow:hidden;
-    display:flex; flex-direction:column;
-  }
-  #feedbackFrameLoading{
-    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    font-size:14px; color:#718096; background:rgba(250,250,250,0.92); z-index:2;
-  }
-  #feedbackFrameLoading[hidden]{display:none}
-  #feedbackIframe{
-    width:100%; height:100%; border:none; display:block; flex:1;
-  }
-  #feedbackPlaceholder{
-    position:absolute; inset:0; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; padding:24px; text-align:center;
-    background:#FAFAFA; z-index:3; gap:8px;
-  }
-  #feedbackPlaceholder[hidden]{display:none}
-  .fdb-empty-icon{font-size:42px; margin-bottom:4px}
-  #feedbackPlaceholder h3{margin:0; font-size:18px; color:#1B2140}
-  #feedbackPlaceholder p{margin:0 0 8px; font-size:14px; color:#718096; max-width:320px}
-  .fdb-divider{font-size:12px; color:#A0AEC0; margin:6px 0}
-  .fdb-mail-btn{
-    font-size:14px; color:#2B6CB0; text-decoration:none; font-weight:600;
-    padding:8px 14px; border:2px solid #2B6CB0; border-radius:12px; background:#fff;
-  }
+  #feedbackBtnInSettings:hover{background:#F0F7FF}
+  #feedbackBtnInSettings:active{transform:translateY(1px)}
 </style>
 </head>
 <body>
@@ -439,7 +389,7 @@
 <div id="topBar">
   <div id="topBarLeft">
     <button id="openSettings" type="button" aria-label="הגדרות ואוצר מילים" title="הגדרות">⚙️</button>
-    <button id="openFeedback" type="button" aria-label="משוב והצעות" title="שליחת משוב ורעיונות">💬</button>
+    <a id="openFeedback" href="https://docs.google.com/forms/d/e/1FAIpQLSf0Ftx6bCraujLqIVmZnvL5FbNfwQCUPfUr7eHMjWN7cPbCrA/viewform" target="_blank" rel="noopener noreferrer" aria-label="משוב והצעות" title="שליחת משוב ורעיונות (טופס Google)">💬</a>
   </div>
   <div id="stars"></div>
   <button id="toggleSound" type="button" class="muted" aria-label="הפעלת שמע" title="שמע מכובה - לחצו להפעלה">🔇</button>
@@ -453,9 +403,15 @@
 </div>
 
 <div id="buttons">
-  <button id="hear">🔊</button>
-  <button id="say" disabled><span>⏳</span></button>
-  <button id="next">⏭️</button>
+  <button id="playWord" type="button" aria-label="השמעת המילה" title="השמעת המילה באנגלית">
+    <span class="btn-icon">🔊</span>
+  </button>
+  <button id="say" type="button" disabled aria-label="הקלטת קול - אמירת המילה" title="אמירת המילה">
+    <span class="btn-icon" id="sayIcon">⏳</span>
+  </button>
+  <button id="next" type="button" aria-label="המילה הבאה" title="מעבר למילה הבאה">
+    <span class="btn-icon">⏭️</span>
+  </button>
 </div>
 
 <div id="note"></div>
@@ -529,7 +485,7 @@
       <div id="settingsActions">
         <button id="installBtn" type="button" hidden>📲 התקנת אפליקציה למכשיר</button>
         <button id="resetBtn" type="button">🔄 איפוס מילים והגדרות</button>
-        <button id="feedbackBtnInSettings" type="button">💬 שליחת משוב ורעיונות</button>
+        <a id="feedbackBtnInSettings" href="https://docs.google.com/forms/d/e/1FAIpQLSf0Ftx6bCraujLqIVmZnvL5FbNfwQCUPfUr7eHMjWN7cPbCrA/viewform" target="_blank" rel="noopener noreferrer">💬 שליחת משוב ורעיונות ↗</a>
       </div>
     </div>
 
@@ -582,309 +538,14 @@
   </div>
 </div>
 
-<div id="feedbackOverlay" hidden>
-  <div id="feedbackPanel">
-    <div id="feedbackHead">
-      <div>
-        <h2>💬 משוב והצעות</h2>
-        <p id="feedbackMeta">נשמח לשמוע רעיונות למילים חדשות, הערות או שאלות</p>
-      </div>
-      <button id="closeFeedback" type="button" aria-label="סגירה">×</button>
-    </div>
-
-    <div id="feedbackBar">
-      <a id="feedbackExtLink" href="#" target="_blank" rel="noopener noreferrer" class="fdb-btn-link" title="פתיחת הטופס בלשונית נפרדת בדפדפן">↗️ פתיחה בחלון נפרד</a>
-      <button id="toggleFormConfigBtn" type="button" class="fdb-btn-secondary" title="החלפת קישור לטופס גוגל">⚙️ קישור לטופס</button>
-    </div>
-
-    <div id="feedbackConfigBox" hidden>
-      <label for="formUrlInput" class="fdb-label">הדביקו קישור ל-Google Form שלכם:</label>
-      <div class="fdb-input-row">
-        <input id="formUrlInput" type="url" placeholder="https://docs.google.com/forms/d/e/.../viewform" dir="ltr">
-        <button id="saveFormUrlBtn" type="button" class="fdb-btn-primary">שמירה</button>
-      </div>
-      <p class="fdb-help">💡 ליצירת טופס: היכנסו ל-forms.google.com, צרו טופס, לחצו 'שליחה' (Send) והעתיקו את הקישור.</p>
-    </div>
-
-    <div id="feedbackFrameWrap">
-      <div id="feedbackFrameLoading">טוען את הטופס... ⏳</div>
-      <iframe id="feedbackIframe" src="https://docs.google.com/forms/d/e/1FAIpQLSf0Ftx6bCraujLqIVmZnvL5FbNfwQCUPfUr7eHMjWN7cPbCrA/viewform?embedded=true" title="טופס משוב" frameborder="0" marginheight="0" marginwidth="0">בטעינה…</iframe>
-
-      <div id="feedbackPlaceholder" hidden>
-        <div class="fdb-empty-icon">📝</div>
-        <h3>טופס משוב Google Forms</h3>
-        <p>ניתן להציג כאן טופס גוגל ישירות בתוך האפליקציה למשתמשים.</p>
-        <button id="promptSetFormBtn" type="button" class="fdb-btn-primary">הגדרת קישור לטופס גוגל</button>
-        <div class="fdb-divider">או שליחה ישירה במייל:</div>
-        <a id="directEmailLink" href="mailto:amitzaitman@gmail.com?subject=משוב על אפליקציית Say the word" class="fdb-mail-btn">✉️ שליחת דוא"ל למפתח</a>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
 const MODEL_URL = new URL("model.tar.gz", location.href).href;
-const CACHE = "say-the-word-v2";
+const CACHE = "say-the-word-v4";
 
-const PAIRS = [
-  ["🐶","dog"],
-  ["🐱","cat"],
-  ["🐭","mouse"],
-  ["🐹","hamster"],
-  ["🐰","rabbit"],
-  ["🦊","fox"],
-  ["🐻","bear"],
-  ["🐼","panda"],
-  ["🐨","koala"],
-  ["🐯","tiger"],
-  ["🦁","lion"],
-  ["🐮","cow"],
-  ["🐷","pig"],
-  ["🐸","frog"],
-  ["🐵","monkey"],
-  ["🐔","chicken"],
-  ["🐧","penguin"],
-  ["🐦","bird"],
-  ["🐤","chick"],
-  ["🦆","duck"],
-  ["🦉","owl"],
-  ["🦇","bat"],
-  ["🐺","wolf"],
-  ["🐗","boar"],
-  ["🐴","horse"],
-  ["🦄","unicorn"],
-  ["🐝","bee"],
-  ["🦋","butterfly"],
-  ["🐛","bug"],
-  ["🐌","snail"],
-  ["🐞","ladybug"],
-  ["🐜","ant"],
-  ["🪲","beetle"],
-  ["🐢","turtle"],
-  ["🐍","snake"],
-  ["🦎","lizard"],
-  ["🐙","octopus"],
-  ["🦑","squid"],
-  ["🦐","shrimp"],
-  ["🦞","lobster"],
-  ["🦀","crab"],
-  ["🐟","fish"],
-  ["🐬","dolphin"],
-  ["🐳","whale"],
-  ["🦈","shark"],
-  ["🐊","crocodile"],
-  ["🐆","leopard"],
-  ["🦓","zebra"],
-  ["🦍","gorilla"],
-  ["🦧","orangutan"],
-  ["🐘","elephant"],
-  ["🦛","hippo"],
-  ["🦏","rhino"],
-  ["🐪","camel"],
-  ["🦒","giraffe"],
-  ["🦘","kangaroo"],
-  ["🦬","bison"],
-  ["🐂","ox"],
-  ["🐏","ram"],
-  ["🐑","sheep"],
-  ["🦙","llama"],
-  ["🐐","goat"],
-  ["🦌","deer"],
-  ["🐩","poodle"],
-  ["🐓","rooster"],
-  ["🦃","turkey"],
-  ["🦚","peacock"],
-  ["🦜","parrot"],
-  ["🦢","swan"],
-  ["🦩","flamingo"],
-  ["🕊️","dove"],
-  ["🦝","raccoon"],
-  ["🦨","skunk"],
-  ["🦡","badger"],
-  ["🦦","otter"],
-  ["🦥","sloth"],
-  ["🦔","hedgehog"],
-  ["🍎","apple"],
-  ["🍐","pear"],
-  ["🍊","orange"],
-  ["🍋","lemon"],
-  ["🍌","banana"],
-  ["🍉","watermelon"],
-  ["🍇","grapes"],
-  ["🍓","strawberry"],
-  ["🫐","blueberry"],
-  ["🍒","cherry"],
-  ["🍑","peach"],
-  ["🥭","mango"],
-  ["🍍","pineapple"],
-  ["🥥","coconut"],
-  ["🥝","kiwi"],
-  ["🍅","tomato"],
-  ["🍆","eggplant"],
-  ["🥑","avocado"],
-  ["🥦","broccoli"],
-  ["🥒","cucumber"],
-  ["🌶️","pepper"],
-  ["🌽","corn"],
-  ["🥕","carrot"],
-  ["🫒","olive"],
-  ["🧄","garlic"],
-  ["🧅","onion"],
-  ["🥔","potato"],
-  ["🍞","bread"],
-  ["🥨","pretzel"],
-  ["🧀","cheese"],
-  ["🥚","egg"],
-  ["🧈","butter"],
-  ["🥞","pancake"],
-  ["🧇","waffle"],
-  ["🥓","bacon"],
-  ["🥩","steak"],
-  ["🍗","drumstick"],
-  ["🌭","hotdog"],
-  ["🍔","burger"],
-  ["🍟","fries"],
-  ["🍕","pizza"],
-  ["🥪","sandwich"],
-  ["🌮","taco"],
-  ["🌯","burrito"],
-  ["🧆","falafel"],
-  ["🥗","salad"],
-  ["🍝","pasta"],
-  ["🍜","noodles"],
-  ["🍲","soup"],
-  ["🍛","curry"],
-  ["🍣","sushi"],
-  ["🥟","dumpling"],
-  ["🦪","oyster"],
-  ["🍚","rice"],
-  ["🥧","pie"],
-  ["🧁","cupcake"],
-  ["🎂","cake"],
-  ["🍭","lollipop"],
-  ["🍬","candy"],
-  ["🍫","chocolate"],
-  ["🍿","popcorn"],
-  ["🍩","donut"],
-  ["🍪","cookie"],
-  ["🥜","peanut"],
-  ["🍯","honey"],
-  ["🥛","milk"],
-  ["☕","coffee"],
-  ["🍵","tea"],
-  ["🧃","juice"],
-  ["🧊","ice"],
-  ["🥄","spoon"],
-  ["🍴","fork"],
-  ["🥣","bowl"],
-  ["☀️","sun"],
-  ["🌙","moon"],
-  ["⭐","star"],
-  ["🌈","rainbow"],
-  ["☁️","cloud"],
-  ["❄️","snow"],
-  ["🔥","fire"],
-  ["💧","water"],
-  ["🌊","wave"],
-  ["🌸","flower"],
-  ["🌼","daisy"],
-  ["🌻","sunflower"],
-  ["🌺","hibiscus"],
-  ["🌹","rose"],
-  ["🌷","tulip"],
-  ["🌱","seed"],
-  ["🌳","tree"],
-  ["🌴","palm"],
-  ["🌵","cactus"],
-  ["🍀","clover"],
-  ["🍁","leaf"],
-  ["🌍","earth"],
-  ["🏠","house"],
-  ["🏫","school"],
-  ["🏥","hospital"],
-  ["🏰","castle"],
-  ["⛺","tent"],
-  ["🚗","car"],
-  ["🚕","taxi"],
-  ["🚌","bus"],
-  ["🚜","tractor"],
-  ["🚲","bike"],
-  ["🛴","scooter"],
-  ["✈️","plane"],
-  ["🚀","rocket"],
-  ["🚁","helicopter"],
-  ["⛵","boat"],
-  ["🚢","ship"],
-  ["🚂","train"],
-  ["⚽","ball"],
-  ["🏀","basketball"],
-  ["🏈","football"],
-  ["⚾","baseball"],
-  ["🎾","tennis"],
-  ["🏐","volleyball"],
-  ["🪁","kite"],
-  ["🎮","game"],
-  ["🎲","dice"],
-  ["🧩","puzzle"],
-  ["🧸","teddy"],
-  ["🎈","balloon"],
-  ["🎁","gift"],
-  ["🎨","paint"],
-  ["🎬","movie"],
-  ["🎤","mic"],
-  ["🎧","headphones"],
-  ["🎹","piano"],
-  ["🥁","drum"],
-  ["🎷","sax"],
-  ["🎺","trumpet"],
-  ["🎸","guitar"],
-  ["🎻","violin"],
-  ["📖","book"],
-  ["✏️","pencil"],
-  ["🎒","bag"],
-  ["👓","glasses"],
-  ["👟","shoe"],
-  ["🧢","hat"],
-  ["👑","crown"],
-  ["💍","ring"],
-  ["⌚","watch"],
-  ["📱","phone"],
-  ["💻","computer"],
-  ["📷","camera"],
-  ["⏰","clock"],
-  ["🔑","key"],
-  ["💡","lamp"],
-  ["🛏️","bed"],
-  ["🪑","chair"],
-  ["🚪","door"],
-  ["🪟","window"],
-  ["🧼","soap"],
-  ["👧","girl"],
-  ["👦","boy"],
-  ["👩","woman"],
-  ["👨","man"],
-  ["👶","baby"]
-];
-const WORD_BY_EMOJI = Object.fromEntries(PAIRS);
-
-const DEFAULT_WORDS = [
-  {emoji:"🐶", word:"dog"},
-  {emoji:"🐱", word:"cat"},
-  {emoji:"🐟", word:"fish"},
-  {emoji:"🐦", word:"bird"},
-  {emoji:"🍎", word:"apple"},
-  {emoji:"🍌", word:"banana"},
-  {emoji:"🎂", word:"cake"},
-  {emoji:"💧", word:"water"},
-  {emoji:"☀️", word:"sun"},
-  {emoji:"🌸", word:"flower"},
-  {emoji:"🏠", word:"house"},
-  {emoji:"⚽", word:"ball"},
-  {emoji:"🚗", word:"car"},
-  {emoji:"📖", word:"book"},
-  {emoji:"👟", word:"shoe"},
-  {emoji:"🌙", word:"moon"}
-];
+// רשימת כל האימוג'ים והמילים נטענת מקובץ נפרד (words.js)
+var PAIRS = window.PAIRS || [];
+var WORD_BY_EMOJI = window.WORD_BY_EMOJI || {};
+var DEFAULT_WORDS = window.DEFAULT_WORDS || [];
 
 const $ = id => document.getElementById(id);
 let words = load() || DEFAULT_WORDS.slice();
@@ -1002,15 +663,11 @@ function updateSoundUI(){
     btn.className = "on";
     btn.setAttribute("aria-label", "כיבוי שמע");
     btn.title = "שמע פועל - לחצו לכיבוי";
-    $("hear").classList.remove("muted");
-    $("hear").title = "השמעת המילה";
   }else{
     btn.textContent = "🔇";
     btn.className = "muted";
     btn.setAttribute("aria-label", "הפעלת שמע");
     btn.title = "שמע מכובה - לחצו להפעלה";
-    $("hear").classList.add("muted");
-    $("hear").title = "שמע מכובה (לחצו על 🔇 בראש המסך להפעלה)";
   }
 }
 
@@ -1173,7 +830,8 @@ async function loadModel(){
     model = await Vosk.createModel(MODEL_URL);
     $("loading").hidden = true;
     $("say").disabled = false;
-    $("say").querySelector("span").textContent = "🎤";
+    const sIcon = $("sayIcon");
+    if(sIcon) sIcon.textContent = "🎤";
   }catch(err){
     $("loading").hidden = true;
     $("note").textContent = "לא הצלחנו לטעון את מנוע הדיבור. בדקו את model.tar.gz";
@@ -1703,110 +1361,34 @@ function closePanel(){
   showSettingsView("main");
 }
 
-// Google Forms Feedback logic
-const DEFAULT_FEEDBACK_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSf0Ftx6bCraujLqIVmZnvL5FbNfwQCUPfUr7eHMjWN7cPbCrA/viewform?embedded=true";
-
-function getFeedbackFormUrl(){
-  const saved = localStorage.getItem("feedback_form_url");
-  if(saved && saved.includes("1FAIpQLSc0S2QDX_CFsNHAceoYJ6qrs20JxdYP0uWQhzgUENG6WRCb_A")){
-    localStorage.removeItem("feedback_form_url");
-    return DEFAULT_FEEDBACK_FORM_URL;
+// Google Forms Feedback link
+const FEEDBACK_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSf0Ftx6bCraujLqIVmZnvL5FbNfwQCUPfUr7eHMjWN7cPbCrA/viewform";
+try {
+  const savedFormUrl = localStorage.getItem("feedback_form_url");
+  if (savedFormUrl && !savedFormUrl.includes("1FAIpQLSc0S2QDX_CFsNHAceoYJ6qrs20JxdYP0uWQhzgUENG6WRCb_A")) {
+    const cleanUrl = savedFormUrl.replace(/([?&])embedded=true(&|$)/, (_, p1, p2) => p2 === "&" ? p1 : "");
+    const topLink = $("openFeedback");
+    const settingsLink = $("feedbackBtnInSettings");
+    if (topLink) topLink.href = cleanUrl;
+    if (settingsLink) settingsLink.href = cleanUrl;
   }
-  return saved || DEFAULT_FEEDBACK_FORM_URL;
-}
+} catch (e) {}
 
-function setFeedbackFormUrl(url){
-  const clean = (url || "").trim();
-  if(clean){
-    localStorage.setItem("feedback_form_url", clean);
-  } else {
-    localStorage.removeItem("feedback_form_url");
+function playCurrentWord(){
+  if(!soundEnabled){
+    soundEnabled = true;
+    updateSoundUI();
   }
-}
-
-function formatGoogleFormEmbedUrl(url){
-  if(!url) return "";
-  let u = url.trim();
-  if(u.includes("docs.google.com/forms")){
-    if(!u.includes("embedded=true")){
-      u += (u.includes("?") ? "&" : "?") + "embedded=true";
-    }
+  const btn = $("playWord");
+  if(btn){
+    btn.classList.add("playing");
+    setTimeout(()=>btn.classList.remove("playing"), 450);
   }
-  return u;
-}
-
-function openFeedbackModal(){
-  const formUrl = getFeedbackFormUrl();
-  const iframe = $("feedbackIframe");
-  const loading = $("feedbackFrameLoading");
-  const placeholder = $("feedbackPlaceholder");
-  const extLink = $("feedbackExtLink");
-  const configBox = $("feedbackConfigBox");
-  const input = $("formUrlInput");
-
-  configBox.hidden = true;
-  input.value = formUrl;
-
-  if(formUrl){
-    placeholder.hidden = true;
-    loading.hidden = false;
-    extLink.hidden = false;
-    extLink.href = formUrl.replace(/([?&])embedded=true(&|$)/, (_, p1, p2) => p2 === "&" ? p1 : "");
-    const embedUrl = formatGoogleFormEmbedUrl(formUrl);
-    if(iframe.src !== embedUrl){
-      iframe.src = embedUrl;
-    } else {
-      loading.hidden = true;
-    }
-  } else {
-    loading.hidden = true;
-    extLink.hidden = true;
-    placeholder.hidden = false;
-    iframe.removeAttribute("src");
-  }
-
-  $("feedbackOverlay").hidden = false;
-}
-
-function closeFeedbackModal(){
-  $("feedbackOverlay").hidden = true;
-}
-
-$("feedbackIframe").addEventListener("load", ()=>{
-  $("feedbackFrameLoading").hidden = true;
-});
-$("openFeedback").addEventListener("click", openFeedbackModal);
-$("feedbackBtnInSettings").addEventListener("click", ()=>{
-  closePanel();
-  openFeedbackModal();
-});
-$("closeFeedback").addEventListener("click", closeFeedbackModal);
-$("feedbackOverlay").addEventListener("click", e=>{
-  if(e.target.id === "feedbackOverlay") closeFeedbackModal();
-});
-$("toggleFormConfigBtn").addEventListener("click", ()=>{
-  const box = $("feedbackConfigBox");
-  box.hidden = !box.hidden;
-  if(!box.hidden) $("formUrlInput").focus();
-});
-$("promptSetFormBtn").addEventListener("click", ()=>{
-  $("feedbackConfigBox").hidden = false;
-  $("formUrlInput").focus();
-});
-$("saveFormUrlBtn").addEventListener("click", ()=>{
-  const val = $("formUrlInput").value.trim();
-  setFeedbackFormUrl(val);
-  openFeedbackModal();
-});
-
-$("picture").addEventListener("click", ()=>{
-  if(!soundEnabled){ notifySoundMuted(); return; }
   speak(word(), EN);
-});
-$("hear").addEventListener("click", ()=>{
-  if(!soundEnabled){ notifySoundMuted(); return; }
-  speak(word(), EN);
-});
+}
+
+$("playWord").addEventListener("click", playCurrentWord);
+$("picture").addEventListener("click", playCurrentWord);
 $("toggleSound").addEventListener("click", toggleSound);
 $("say").addEventListener("click", listen);
 $("next").addEventListener("click", next);
