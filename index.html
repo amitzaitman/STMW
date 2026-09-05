@@ -556,103 +556,57 @@ let ctx = null, srcNode = null, procNode = null, sinkNode = null;
 let active = false, timer = null;
 let soundEnabled = false;
 
-// --- הגדרות רמת התאמה קולית לדיבור הילד ---
-const MATCH_CONFIG_KEY = "speech_match_config";
-const MATCH_LEVELS = {
-  lenient: {
-    key: "lenient",
-    name: "סלחנית",
-    badge: "🌱 סלחנית",
-    defaultThreshold: 45,
-    desc: "סלחנית: מתאים לפעוטות ולמתחילים. מקבלת גם הגייה מקורבת, קול שקט או שיבוש קל באותיות.",
-    timeout: 5000
-  },
-  normal: {
-    key: "normal",
-    name: "רגילה",
-    badge: "⭐ רגילה",
-    defaultThreshold: 70,
-    desc: "רגילה (ברירת מחדל): איזון מומלץ בין עידוד הילד לבין דיוק ההגייה.",
-    timeout: 4200
-  },
-  strict: {
-    key: "strict",
-    name: "מדויקת",
-    badge: "🎯 מדויקת",
-    defaultThreshold: 90,
-    desc: "מדויקת: מתאים לילדים מתקדמים. דורשת הגייה מלאה, ברורה ומדויקת באנגלית.",
-    timeout: 3500
-  }
-};
+// --- רמת ההתאמה לדיבור הילד: מספר אחד, 30 עד 95 ---
+// קודם היו כאן שני ייצוגים לאותו דבר: "רמה" (סלחנית/רגילה/מדויקת) ואחוז,
+// וכל אחד מהם שינה את השני. הרמה גם החליפה אלגוריתם, כך שגרירת הסליידר
+// מ-84% ל-85% הפכה בשקט את הזיהוי להתאמה מדויקת בלבד. עכשיו האחוז הוא
+// המצב היחיד, ההתנהגות נגזרת ממנו ברצף, ושלושת הכפתורים הם קיצורי דרך אליו.
+const MATCH_KEY = "speech_match_config";
+const MIN_THRESHOLD = 30, MAX_THRESHOLD = 95, DEFAULT_THRESHOLD = 70;
 
-function getLevelForThreshold(th){
-  if(th <= 50) return "lenient";
-  if(th < 85) return "normal";
-  return "strict";
+// הכפתורים במסך ההגדרות. upTo הוא הגבול העליון להצגה: אחוז שנבחר בסליידר
+// מסומן על הכפתור הראשון שהוא נכנס לתחומו. תצוגה בלבד — לא התנהגות.
+const PRESETS = [
+  { btn: "btnLevelLenient", badge: "🌱 סלחנית", threshold: 45, upTo: 50,
+    desc: "סלחנית: מתאים לפעוטות ולמתחילים. מקבלת גם הגייה מקורבת, קול שקט או שיבוש קל באותיות." },
+  { btn: "btnLevelNormal",  badge: "⭐ רגילה",  threshold: 70, upTo: 84,
+    desc: "רגילה (ברירת מחדל): איזון מומלץ בין עידוד הילד לבין דיוק ההגייה." },
+  { btn: "btnLevelStrict",  badge: "🎯 מדויקת", threshold: 90, upTo: MAX_THRESHOLD,
+    desc: "מדויקת: מתאים לילדים מתקדמים. דורשת הגייה מלאה, ברורה ומדויקת באנגלית." }
+];
+
+let matchThreshold = loadThreshold();
+
+function clampThreshold(th){
+  return Math.max(MIN_THRESHOLD, Math.min(MAX_THRESHOLD, Math.round(th)));
 }
 
-let matchConfig = loadMatchConfig();
-
-function loadMatchConfig(){
-  try {
-    const raw = localStorage.getItem(MATCH_CONFIG_KEY);
-    if(raw){
-      const parsed = JSON.parse(raw);
-      if(parsed && typeof parsed.threshold === "number"){
-        const th = Math.max(30, Math.min(95, Math.round(parsed.threshold)));
-        return {
-          level: parsed.level && MATCH_LEVELS[parsed.level] ? parsed.level : getLevelForThreshold(th),
-          threshold: th
-        };
-      }
-    }
-  } catch(e){}
-  return { level: "normal", threshold: 70 };
+function presetFor(th){
+  return PRESETS.find(p => th <= p.upTo) || PRESETS[PRESETS.length - 1];
 }
 
-function saveMatchConfig(){
+function loadThreshold(){
   try {
-    localStorage.setItem(MATCH_CONFIG_KEY, JSON.stringify(matchConfig));
+    // המפתח והשדה נשארו כשהיו, כדי שהגדרה שנשמרה במכשיר תמשיך לעבוד.
+    const parsed = JSON.parse(localStorage.getItem(MATCH_KEY));
+    if(parsed && typeof parsed.threshold === "number") return clampThreshold(parsed.threshold);
   } catch(e){}
+  return DEFAULT_THRESHOLD;
+}
+
+function setThreshold(th){
+  matchThreshold = clampThreshold(th);
+  try { localStorage.setItem(MATCH_KEY, JSON.stringify({threshold: matchThreshold})); } catch(e){}
+  updateMatchUI();
 }
 
 function updateMatchUI(){
-  const badge = $("matchLevelBadge");
-  const desc = $("matchLevelDesc");
-  const slider = $("matchThresholdSlider");
-  const sliderText = $("sliderValueText");
-  const btnLenient = $("btnLevelLenient");
-  const btnNormal = $("btnLevelNormal");
-  const btnStrict = $("btnLevelStrict");
-
-  if(!badge || !slider) return;
-
-  const currentLevelInfo = MATCH_LEVELS[matchConfig.level] || MATCH_LEVELS.normal;
-  badge.textContent = `${currentLevelInfo.badge} (${matchConfig.threshold}%)`;
-  desc.textContent = currentLevelInfo.desc;
-  slider.value = matchConfig.threshold;
-  sliderText.textContent = `דיוק נדרש: ${matchConfig.threshold}%`;
-
-  if(btnLenient) btnLenient.classList.toggle("active", matchConfig.level === "lenient");
-  if(btnNormal) btnNormal.classList.toggle("active", matchConfig.level === "normal");
-  if(btnStrict) btnStrict.classList.toggle("active", matchConfig.level === "strict");
-}
-
-function setMatchLevel(levelKey){
-  const info = MATCH_LEVELS[levelKey];
-  if(!info) return;
-  matchConfig.level = levelKey;
-  matchConfig.threshold = info.defaultThreshold;
-  saveMatchConfig();
-  updateMatchUI();
-}
-
-function setMatchThreshold(th){
-  const clean = Math.max(30, Math.min(95, Math.round(th)));
-  matchConfig.threshold = clean;
-  matchConfig.level = getLevelForThreshold(clean);
-  saveMatchConfig();
-  updateMatchUI();
+  const preset = presetFor(matchThreshold);
+  $("matchLevelBadge").textContent = `${preset.badge} (${matchThreshold}%)`;
+  $("matchLevelDesc").textContent = preset.desc;
+  $("matchThresholdSlider").value = matchThreshold;
+  $("sliderValueText").textContent = `דיוק נדרש: ${matchThreshold}%`;
+  for(const p of PRESETS) $(p.btn).classList.toggle("active", p === preset);
 }
 
 function updateSoundUI(){
@@ -832,21 +786,24 @@ function grammar(){
   return JSON.stringify(words.map(w=>w.word).concat(["[unk]"]));
 }
 
+// מרחק עריכה. שורה אחת מספיקה — כל תא תלוי רק בשורה הקודמת, ובמילים
+// קצרות זה נקרא הרבה פעמים בשנייה על כל תוצאה חלקית שהמנוע מוציא.
 function levenshtein(a, b) {
   if (a === b) return 0;
-  const m = a.length, n = b.length;
-  if (!m) return n;
-  if (!n) return m;
-  const d = Array.from({length: m + 1}, () => new Uint8Array(n + 1));
-  for (let i = 0; i <= m; i++) d[i][0] = i;
-  for (let j = 0; j <= n; j++) d[0][j] = j;
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const row = Array.from({length: b.length + 1}, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const above = row[j];
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      row[j] = Math.min(above + 1, row[j - 1] + 1, diag + cost);
+      diag = above;
     }
   }
-  return d[m][n];
+  return row[b.length];
 }
 
 function wordSimilarity(s1, s2) {
@@ -881,60 +838,38 @@ function phoneticKey(s) {
   return k;
 }
 
-function evaluateTokenMatch(tokenWord, tokenConf, target, thresholdPct) {
-  const normWord = (tokenWord || "").toLowerCase().trim();
-  const normTarget = (target || "").toLowerCase().trim();
-  if(!normWord || normWord === "[unk]") return { isMatch: false, score: 0 };
+// שני צלילים שנכתבים אחרת ונשמעים אותו דבר, למשל cat מול kat.
+const PHONETIC_SCORE = 88;
+// הילד אמר את תחילת המילה, למשל butterf מתוך butterfly.
+const PREFIX_SCORE = 80, PREFIX_MIN_LETTERS = 3, PREFIX_MIN_RATIO = 0.55;
+// ביטחון נמוך של המנוע מוריד ניקוד של התאמה מקורבת, אבל לא מאפס אותה.
+const CONFIDENCE_FLOOR = 0.25;
+// תוצאה חלקית מגיעה בלי ביטחון מהמנוע, אז מניחים לה ביטחון גבוה אך לא ודאי.
+// זה מה שמאפשר לזהות כבר תוך כדי דיבור בלי שתוצאה חלקית תעקוף אחוז גבוה:
+// זיהוי מדויק בתוך תוצאה חלקית שווה 85, ולכן הוא לא עובר רף של 90.
+const PARTIAL_CONFIDENCE = 0.85;
 
-  // 1. Exact token match
-  if(normWord === normTarget) {
-    const conf = (typeof tokenConf === "number" && !isNaN(tokenConf)) ? tokenConf : null;
-    const thresholdDec = thresholdPct / 100;
-    if(conf !== null) {
-      const confPct = Math.round(conf * 100);
-      const isMatch = conf >= thresholdDec;
-      return {
-        isMatch,
-        score: confPct,
-        reason: `זיהוי מדויק של "${normTarget}" (${confPct}%)`
-      };
-    }
-    return { isMatch: true, score: 100, reason: `זיהוי מדויק של "${normTarget}"` };
+// כמה מה שנשמע דומה למילה שמתרגלים, 0 עד 100. אין כאן החלטה — רק ציון.
+// מי שמחליט הוא processRecognition, בהשוואה אחת מול matchThreshold.
+function scoreToken(spokenWord, conf, target){
+  const said = (spokenWord || "").toLowerCase().trim();
+  const want = (target || "").toLowerCase().trim();
+  if(!said || said === "[unk]") return 0;
+
+  // conf ריק פירושו שהמנוע לא דיווח ביטחון על תוצאה סופית — סומכים עליו במלואו.
+  const sure = (typeof conf === "number" && !isNaN(conf)) ? conf : 1;
+
+  // זיהוי מדויק נמדד בביטחון של המנוע עצמו, בלי רשת ביטחון.
+  if(said === want) return Math.round(sure * 100);
+
+  let score = Math.round(wordSimilarity(said, want) * 100);
+  if(phoneticKey(said) === phoneticKey(want)) score = Math.max(score, PHONETIC_SCORE);
+  if(want.startsWith(said) && said.length >= PREFIX_MIN_LETTERS &&
+     said.length >= want.length * PREFIX_MIN_RATIO){
+    score = Math.max(score, PREFIX_SCORE);
   }
-
-  // Strict mode: Only accepts exact word token matches
-  if(matchConfig.level === "strict") {
-    return { isMatch: false, score: Math.round(wordSimilarity(normWord, normTarget) * 100) };
-  }
-
-  // 2. Lenient & Normal: Phonetic & String similarity
-  const sim = wordSimilarity(normWord, normTarget);
-  const isPhonetic = phoneticKey(normWord) === phoneticKey(normTarget);
-
-  let score = Math.round(sim * 100);
-  if(isPhonetic) {
-    score = Math.max(score, 88);
-  }
-
-  // Prefix match for longer words (e.g. toddler saying "butterf" for "butterfly")
-  if(normTarget.startsWith(normWord) && normWord.length >= 3 && normWord.length >= normTarget.length * 0.55){
-    score = Math.max(score, 80);
-  }
-
-  // Adjust score if confidence was provided
-  if(typeof tokenConf === "number" && !isNaN(tokenConf)) {
-    score = Math.round(score * Math.min(1, tokenConf + 0.25));
-  }
-
-  const isMatch = score >= thresholdPct;
-  return {
-    isMatch,
-    score,
-    reason: `דמיון קולי של ${score}% למילה "${normTarget}"`
-  };
+  return Math.round(score * Math.min(1, sure + CONFIDENCE_FLOOR));
 }
-
-let bestCandidateSoFar = null;
 
 function buildRecognizer(){
   if(!model || !ctx) return;
@@ -953,74 +888,39 @@ function buildRecognizer(){
   });
 }
 
+// מחרוזת של מילים מופרדות ברווח, בלי סימון "לא ידוע".
+function textTokens(text, conf){
+  return (text || "").trim().toLowerCase().split(/\s+/)
+    .filter(t => t && t !== "[unk]")
+    .map(w => ({word: w, conf: conf}));
+}
+
+function tokensOf(res, isPartial){
+  if(isPartial) return textTokens(res.partial, PARTIAL_CONFIDENCE);
+  const details = Array.isArray(res.result) ? res.result : [];
+  if(!details.length) return textTokens(res.text, null);
+  return details.map(w => ({
+    word: (w.word || "").toLowerCase().trim(),
+    conf: typeof w.conf === "number" ? w.conf : null
+  })).filter(t => t.word && t.word !== "[unk]");
+}
+
 function processRecognition(msg, isPartial){
   if(!active) return;
-  const target = word().toLowerCase().trim();
   const res = msg && msg.result;
   if(!res) return;
 
-  if(isPartial){
-    const partialText = (res.partial || "").trim().toLowerCase();
-    if(!partialText) return;
-    const partialTokens = partialText.split(/\s+/).filter(t => t && t !== "[unk]");
-    if(!partialTokens.length) return;
+  const tokens = tokensOf(res, isPartial);
+  if(!tokens.length) return;   // שקט: ממשיכים להקשיב עד סוף החלון
 
-    for(const tok of partialTokens){
-      const evalRes = evaluateTokenMatch(tok, null, target, matchConfig.threshold);
-      if(!bestCandidateSoFar || evalRes.score > bestCandidateSoFar.score){
-        bestCandidateSoFar = evalRes;
-      }
-      // Lenient mode: immediate reward if matched during speech
-      if(matchConfig.level === "lenient" && evalRes.isMatch){
-        finish(true, evalRes.reason);
-        return;
-      }
-      // Normal mode: reward if exact word token is recognized
-      if(matchConfig.level === "normal" && tok === target && matchConfig.threshold <= 75){
-        finish(true, evalRes.reason);
-        return;
-      }
-    }
-    return;
-  }
+  const target = word().toLowerCase().trim();
+  let best = 0;
+  for(const tok of tokens) best = Math.max(best, scoreToken(tok.word, tok.conf, target));
 
-  // Final result (endpoint detected by engine)
-  const fullText = (res.text || "").trim().toLowerCase();
-  const wordDetails = Array.isArray(res.result) ? res.result : [];
-
-  let tokens = [];
-  if(wordDetails.length){
-    tokens = wordDetails.map(w => ({
-      word: (w.word || "").toLowerCase().trim(),
-      conf: typeof w.conf === "number" ? w.conf : null
-    })).filter(t => t.word && t.word !== "[unk]");
-  } else if(fullText){
-    tokens = fullText.split(/\s+/)
-      .filter(t => t && t !== "[unk]")
-      .map(w => ({ word: w, conf: null }));
-  }
-
-  if(!tokens.length) return;
-
-  let bestForThisResult = null;
-  for(const tok of tokens){
-    const evalRes = evaluateTokenMatch(tok.word, tok.conf, target, matchConfig.threshold);
-    if(!bestForThisResult || evalRes.score > bestForThisResult.score){
-      bestForThisResult = evalRes;
-    }
-  }
-
-  if(bestForThisResult && (!bestCandidateSoFar || bestForThisResult.score > bestCandidateSoFar.score)){
-    bestCandidateSoFar = bestForThisResult;
-  }
-
-  if(bestForThisResult && bestForThisResult.isMatch){
-    finish(true, bestForThisResult.reason);
-  } else if(bestCandidateSoFar && bestCandidateSoFar.isMatch && matchConfig.level !== "strict"){
-    finish(true, bestCandidateSoFar.reason);
-  } else {
-    finish(false);
-  }
+  // ההחלטה כולה, במקום אחד. תוצאה חלקית יכולה רק לזכות — אם היא לא מספיקה
+  // ממשיכים להקשיב, ורק תוצאה סופית או סוף החלון מסיימים בכישלון.
+  if(best >= matchThreshold) finish(true);
+  else if(!isPartial) finish(false);
 }
 
 async function ensureAudio(){
@@ -1044,6 +944,13 @@ async function ensureAudio(){
   buildRecognizer();
 }
 
+// מי שדורש דיוק גבוה גם מדבר בבירור ומהר יותר, ולילד קטן מגיע יותר זמן.
+const LISTEN_MS_EASY = 5000, LISTEN_MS_HARD = 3500;
+function listenWindowMs(){
+  const t = (matchThreshold - MIN_THRESHOLD) / (MAX_THRESHOLD - MIN_THRESHOLD);
+  return Math.round(LISTEN_MS_EASY + t * (LISTEN_MS_HARD - LISTEN_MS_EASY));
+}
+
 async function listen(){
   if(active || !model) return;
   try{ await ensureAudio(); }
@@ -1051,31 +958,26 @@ async function listen(){
 
   $("note").textContent = "";
   active = true;
-  bestCandidateSoFar = null;
   $("say").classList.add("listening");
-
-  const timeoutMs = MATCH_LEVELS[matchConfig.level]?.timeout || 4200;
-  timer = setTimeout(()=>{
-    if(!active) return;
-    if(bestCandidateSoFar && bestCandidateSoFar.isMatch){
-      finish(true, bestCandidateSoFar.reason);
-    } else {
-      finish(false);
-    }
-  }, timeoutMs);
+  // אם עד סוף החלון לא היה ניקוד שעבר את הרף, זה כישלון. אין מה לשקלל כאן:
+  // כל תוצאה שעברה את הרף כבר סיימה את הניסיון ברגע שהיא הגיעה.
+  timer = setTimeout(()=>{ if(active) finish(false); }, listenWindowMs());
 }
 
-function finish(ok, reason){
+function finish(ok){
   if(!active) return;
   active = false;
   clearTimeout(timer);
   // מאפס את המפענח כדי שהניסיון הבא יתחיל נקי. התוצאה שחוזרת מכאן נבלעת כי active כבר כבוי.
   if(rec){ try{ rec.retrieveFinalResult(); }catch(err){} }
   $("say").classList.remove("listening");
-  ok ? good(reason) : again();
+  ok ? good() : again();
 }
 
-function good(reason){
+// מעל זה מסבירים לילד למה זה לא התקבל, אחרת "נסו שוב" נשמע שרירותי.
+const HIGH_BAR = 85;
+
+function good(){
   stars = Math.min(stars+1, 10);
   $("stars").textContent = "⭐".repeat(stars);
   $("picture").className = "good";
@@ -1084,12 +986,11 @@ function good(reason){
 }
 function again(){
   $("picture").className = "again";
-  if(matchConfig.level === "strict"){
-    $("note").textContent = "ברמה מדויקת נדרשת הגייה ברורה. נסו שוב!";
-  }
-  speak("נסו שוב", HE, ()=>setTimeout(()=>{ 
-    $("picture").className = ""; 
-    if($("note").textContent.includes("ברמה מדויקת")) $("note").textContent = "";
+  const msg = matchThreshold >= HIGH_BAR ? "בדיוק גבוה נדרשת הגייה ברורה. נסו שוב!" : "";
+  $("note").textContent = msg;
+  speak("נסו שוב", HE, ()=>setTimeout(()=>{
+    $("picture").className = "";
+    if($("note").textContent === msg) $("note").textContent = "";
   }, 700));
 }
 function pick(){
@@ -1381,17 +1282,15 @@ $("backToWordsBtn").addEventListener("click", ()=>showSettingsView("words"));
 $("overlay").addEventListener("click", e=>{ if(e.target.id === "overlay") closePanel(); });
 $("search").addEventListener("input", renderCatalog);
 
-$("btnLevelLenient").addEventListener("click", ()=>setMatchLevel("lenient"));
-$("btnLevelNormal").addEventListener("click", ()=>setMatchLevel("normal"));
-$("btnLevelStrict").addEventListener("click", ()=>setMatchLevel("strict"));
-$("matchThresholdSlider").addEventListener("input", e=>{
-  setMatchThreshold(Number(e.target.value));
-});
+for(const p of PRESETS){
+  $(p.btn).addEventListener("click", ()=>setThreshold(p.threshold));
+}
+$("matchThresholdSlider").addEventListener("input", e=>setThreshold(Number(e.target.value)));
 
 $("resetBtn").addEventListener("click", ()=>{
   if(!confirm("לאפס את רשימת המילים ורמת ההתאמה לברירת המחדל?")) return;
   applyWords(DEFAULT_WORDS.slice(), 0);
-  setMatchLevel("normal");
+  setThreshold(DEFAULT_THRESHOLD);
   updateMainWordsSummary();
 });
 
