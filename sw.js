@@ -46,6 +46,7 @@ self.addEventListener('activate', e=>{
 
 self.addEventListener('fetch', e=>{
   if(e.request.method !== 'GET') return;
+  if(!e.request.url.startsWith(self.location.origin)) return;
   const heavy = HEAVY.some(name => e.request.url.includes(name));
 
   if(heavy){

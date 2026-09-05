@@ -62,14 +62,33 @@
     justify-content:center; position:relative; min-height:44px;
   }
   #stars{font-size:26px; letter-spacing:3px; min-height:32px; text-align:center}
-  #openSettings{
+  #topBarLeft{
     position:absolute; left:0; top:50%; transform:translateY(-50%);
-    width:42px; height:42px; border:2px solid #B9C2D8;
+    display:flex; align-items:center; gap:6px;
+  }
+  #openSettings, #openFeedback{
+    width:44px; height:44px; border:2px solid #B9C2D8;
     border-radius:14px; background:#fff; color:#4A5480; font-size:20px;
     display:flex; align-items:center; justify-content:center; padding:0;
-    cursor:pointer;
+    cursor:pointer; transition:background-color .15s, transform .15s;
   }
-  #openSettings:active{transform:translateY(calc(-50% + 2px)); background:#EAF0FF}
+  #openSettings:active, #openFeedback:active{transform:translateY(2px); background:#EAF0FF}
+  #toggleSound{
+    position:absolute; right:0; top:50%; transform:translateY(-50%);
+    width:44px; height:44px; border:2px solid #B9C2D8;
+    border-radius:14px; background:#F1F4F9; color:#7A859E; font-size:20px;
+    display:flex; align-items:center; justify-content:center; padding:0;
+    cursor:pointer; transition:background-color .15s, border-color .15s, transform .15s;
+  }
+  #toggleSound:active{transform:translateY(calc(-50% + 2px))}
+  #toggleSound.on{background:#EBF8FF; border-color:#2B6CB0; color:#2B6CB0}
+  #toggleSound.muted{background:#F1F4F9; border-color:#B9C2D8; color:#7A859E}
+  @keyframes soundPulse{
+    0%,100%{transform:translateY(-50%) scale(1)}
+    50%{transform:translateY(-50%) scale(1.15); border-color:#FF6B8A}
+  }
+  #toggleSound.pulse{animation:soundPulse .35s 2}
+  #hear.muted{opacity:.55}
   #note{font-size:14px; color:#B23A00; text-align:center; min-height:20px}
   #settingsActions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
   #installBtn{
@@ -84,10 +103,10 @@
   }
   #overlay[hidden]{display:none}
   #panel{
-    width:100%; max-width:520px; max-height:min(88dvh,760px);
+    width:100%; max-width:520px; max-height:min(90dvh,780px);
     background:#fff; border:5px solid #1B2140; border-radius:28px;
-    display:flex; flex-direction:column; overflow:hidden;
-    padding:16px 16px 12px; gap:10px;
+    display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden;
+    padding:16px 16px 12px; gap:10px; overscroll-behavior:contain;
   }
   #panel h2{margin:0; font-size:22px}
   #panelHead{display:flex; align-items:flex-start; justify-content:space-between; gap:8px}
@@ -96,47 +115,334 @@
     width:40px; height:40px; border-width:2px; border-radius:12px; font-size:22px; line-height:1;
     flex:0 0 auto;
   }
-  #search{
-    width:100%; font:inherit; font-size:16px; padding:10px 12px;
-    border:2px solid #B9C2D8; border-radius:12px; background:#EAF6FF;
+  .match-section{
+    background:#F2F7FF; border:3px solid #1B2140; border-radius:20px;
+    padding:12px 14px; display:flex; flex-direction:column; gap:8px;
   }
-  #hint{font-size:12px; color:#8B93AD; margin:0}
-  #catalog{
-    max-height:180px; overflow:auto; background:#EAF6FF; border-radius:16px; padding:8px;
-    display:grid; grid-template-columns:repeat(6,1fr); gap:4px;
+  .match-head{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
   }
-  #catalog button{
-    border:0; background:transparent; border-radius:12px; padding:6px 2px;
-    display:flex; flex-direction:column; align-items:center; gap:2px;
-    font-size:22px; line-height:1;
+  .match-title-wrap{
+    display:flex; align-items:center; gap:6px; font-weight:700; font-size:15px; color:#1B2140;
   }
-  #catalog button:hover{background:#fff}
-  #catalog button.taken{opacity:.4}
-  #catalog .ename{font-size:10px; color:#4A5480; direction:ltr; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-  #panelErr{font-size:13px; color:#B23A00; min-height:16px; margin:0}
-  #wordList{list-style:none; margin:0; padding:0; overflow:auto; flex:1; display:flex; flex-direction:column; gap:6px}
+  .match-icon{font-size:18px; line-height:1}
+  .match-badge{
+    font-size:12px; font-weight:700; padding:3px 10px; border-radius:14px;
+    background:#FFD65A; color:#1B2140; border:2px solid #1B2140;
+    white-space:nowrap;
+  }
+  .match-desc{
+    font-size:12px; color:#4A5480; margin:0; line-height:1.4;
+  }
+  .match-preset-group{
+    display:flex; gap:8px; width:100%;
+  }
+  .match-btn{
+    flex:1; border:2.5px solid #CBD5E1; border-radius:14px; background:#fff;
+    padding:8px 4px; display:flex; flex-direction:column; align-items:center;
+    gap:2px; cursor:pointer; transition:background-color .15s, border-color .15s, transform .15s;
+    user-select:none;
+  }
+  .match-btn:hover{background:#F8FAFC}
+  .match-btn.active{
+    border-color:#1B2140; background:#FFD65A; transform:translateY(-1px);
+    box-shadow:0 3px 0 #1B2140;
+  }
+  .match-btn:active{transform:translateY(1px)}
+  .match-btn-icon{font-size:18px; line-height:1}
+  .match-btn-name{font-size:13px; font-weight:700; color:#1B2140}
+  .match-btn-sub{font-size:10px; color:#64748B}
+  .match-btn.active .match-btn-sub{color:#1B2140; font-weight:600}
+  .match-slider-wrap{
+    display:flex; flex-direction:column; gap:4px; padding-top:4px;
+  }
+  .match-slider-labels{
+    display:flex; justify-content:space-between; font-size:11px; color:#64748B; font-weight:600;
+  }
+  #sliderValueText{color:#2B6CB0; font-weight:700}
+  #matchThresholdSlider{
+    width:100%; height:8px; accent-color:#1B2140; cursor:pointer;
+    border-radius:4px; margin:2px 0;
+  }
+
+  /* Multi-view navigation inside settings panel */
+  .panel-view{
+    display:flex; flex-direction:column; gap:12px; width:100%;
+  }
+  .panel-view[hidden]{display:none !important;}
+
+  .panel-nav-head{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .panel-nav-head h2{
+    margin:0; font-size:20px; font-weight:800; color:#1B2140;
+  }
+  .panel-title-group{
+    display:flex; flex-direction:column; gap:2px;
+  }
+  .panel-back-btn{
+    display:inline-flex; align-items:center; gap:6px;
+    background:#F2F7FF; border:2px solid #CBD5E1; border-radius:12px;
+    padding:6px 12px; font-size:13px; font-weight:700; color:#2B6CB0;
+    cursor:pointer; transition:all .15s ease; user-select:none;
+  }
+  .panel-back-btn:hover{
+    background:#E3EFFE; border-color:#2B6CB0;
+  }
+  .panel-close-btn{
+    width:38px; height:38px; border:2px solid #1B2140; border-radius:12px;
+    font-size:22px; line-height:1; background:#fff; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; flex:0 0 auto;
+    transition:background-color .15s;
+  }
+  .panel-close-btn:hover{background:#F1F5F9;}
+
+  /* Card button on main settings to open words view */
+  .settings-words-card{
+    background:#F2F7FF; border:3px solid #1B2140; border-radius:20px;
+    padding:14px; display:flex; align-items:center; gap:12px;
+    cursor:pointer; text-align:right; width:100%;
+    transition:transform .15s, box-shadow .15s, background-color .15s;
+    user-select:none;
+  }
+  .settings-words-card:hover{
+    background:#E6F0FD; transform:translateY(-1px); box-shadow:0 3px 0 #1B2140;
+  }
+  .settings-words-card:active{
+    transform:translateY(1px); box-shadow:none;
+  }
+  .words-card-icon{
+    font-size:32px; line-height:1; flex:0 0 auto;
+  }
+  .words-card-body{
+    flex:1; min-width:0; display:flex; flex-direction:column; gap:2px;
+  }
+  .words-card-top{
+    display:flex; align-items:center; justify-content:space-between; gap:6px;
+  }
+  .words-card-title{
+    font-size:16px; font-weight:800; color:#1B2140;
+  }
+  .words-card-badge{
+    font-size:12px; font-weight:700; padding:2px 8px; border-radius:12px;
+    background:#FFD65A; color:#1B2140; border:1.5px solid #1B2140;
+    white-space:nowrap;
+  }
+  .words-card-sub{
+    font-size:12px; color:#4A5480; line-height:1.3;
+  }
+  .words-card-emojis{
+    font-size:13px; color:#64748B; margin-top:4px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .words-card-arrow{
+    font-size:18px; font-weight:800; color:#2B6CB0; flex:0 0 auto;
+  }
+
+  /* Words List View */
+  .words-toolbar{
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .words-meta-text{
+    font-size:13px; color:#4A5480; margin:0; line-height:1.4;
+  }
+  .open-catalog-cta{
+    background:#FFD65A; border:3px solid #1B2140; border-radius:16px;
+    padding:11px 14px; display:flex; align-items:center; justify-content:space-between;
+    gap:8px; cursor:pointer; font-size:15px; font-weight:800; color:#1B2140;
+    box-shadow:0 3px 0 #1B2140; transition:transform .15s, box-shadow .15s, background .15s;
+    width:100%;
+  }
+  .open-catalog-cta:hover{
+    background:#FFE082; transform:translateY(-1px); box-shadow:0 4px 0 #1B2140;
+  }
+  .open-catalog-cta:active{
+    transform:translateY(1px); box-shadow:0 1px 0 #1B2140;
+  }
+  .open-catalog-badge{
+    font-size:12px; font-weight:700; background:#fff; border:1.5px solid #1B2140;
+    border-radius:10px; padding:2px 8px; color:#1B2140;
+  }
+
+  #wordList{
+    list-style:none; margin:0; padding:2px; overflow-y:auto;
+    max-height:360px; display:flex; flex-direction:column; gap:6px;
+  }
   #wordList li{
     display:flex; align-items:center; gap:8px;
-    border:2px solid #E3E8F4; border-radius:16px; padding:6px 8px; background:#fff;
+    border:2.5px solid #E2E8F0; border-radius:14px; padding:8px 10px; background:#fff;
+    transition:border-color .15s, background .15s;
   }
-  #wordList li.current{border-color:#1B2140; background:#FFF4C2}
-  #wordList .pic{font-size:28px; width:40px; text-align:center}
-  #wordList .w{flex:1; direction:ltr; text-align:left; font-size:16px}
-  #wordList .ops{display:flex; gap:2px}
+  #wordList li:hover{border-color:#CBD5E1;}
+  #wordList li.current{border-color:#1B2140; background:#FFF9DB;}
+  #wordList .current-tag{
+    font-size:11px; font-weight:700; background:#1B2140; color:#FFD65A;
+    border-radius:8px; padding:2px 6px; white-space:nowrap;
+  }
+  #wordList .pic{font-size:28px; width:40px; text-align:center; line-height:1;}
+  #wordList .w{flex:1; direction:ltr; text-align:left; font-size:16px; font-weight:700; color:#1B2140;}
+  #wordList .ops{display:flex; gap:4px;}
   #wordList .ops button{
-    width:34px; height:34px; border-width:0; border-radius:10px; font-size:16px; background:transparent;
+    width:36px; height:36px; border:2px solid #E2E8F0; border-radius:10px;
+    font-size:16px; background:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:background .15s, border-color .15s;
   }
+  #wordList .ops button.speak-word-btn:hover{
+    background:#E0F2FE; border-color:#0284C7;
+  }
+  #wordList .ops button.del-word-btn:hover:not(:disabled){
+    background:#FEE2E2; border-color:#EF4444; color:#B91C1C;
+  }
+  #wordList .ops button:disabled{opacity:.3; cursor:not-allowed;}
+
+  /* Catalog View */
+  .catalog-search-box{
+    position:relative; width:100%;
+  }
+  #search{
+    width:100%; font:inherit; font-size:15px; padding:10px 14px;
+    border:2.5px solid #1B2140; border-radius:14px; background:#F8FAFC;
+    color:#1B2140; outline:none; transition:border-color .15s;
+  }
+  #search:focus{border-color:#2B6CB0; background:#fff;}
+  .catalog-info-bar{
+    display:flex; align-items:center; justify-content:space-between; gap:6px;
+    font-size:12px; color:#4A5480;
+  }
+  #catalogCounterBadge{
+    font-weight:700; color:#2B6CB0; white-space:nowrap;
+  }
+  #catalog{
+    max-height:360px; overflow-y:auto; background:#F1F5F9; border:2.5px solid #CBD5E1;
+    border-radius:18px; padding:8px;
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:6px;
+  }
+  .catalog-item{
+    border:2px solid #E2E8F0; background:#fff; border-radius:12px; padding:8px 2px;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    cursor:pointer; transition:transform .12s, border-color .12s, background .12s;
+    user-select:none; position:relative;
+  }
+  .catalog-item:hover{
+    border-color:#1B2140; transform:translateY(-2px); box-shadow:0 2px 0 #1B2140;
+  }
+  .catalog-item:active{
+    transform:translateY(1px); box-shadow:none;
+  }
+  .catalog-item.in-list{
+    background:#F8FAFC; border-color:#94A3B8;
+  }
+  .catalog-item.in-list:hover{
+    border-color:#64748B;
+  }
+  .catalog-item-emoji{font-size:26px; line-height:1;}
+  .catalog-item-name{
+    font-size:11px; font-weight:700; color:#1B2140; direction:ltr;
+    max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 2px;
+  }
+  .catalog-item-status{
+    position:absolute; top:2px; left:2px; font-size:9px; font-weight:800;
+    color:#15803D; background:#DCFCE7; border:1px solid #86EFAC; border-radius:6px;
+    padding:1px 3px; line-height:1;
+  }
+  .panel-notice{
+    font-size:13px; font-weight:600; padding:8px 12px; border-radius:10px;
+    margin:0; min-height:18px; line-height:1.4;
+  }
+  .panel-notice.error{background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA;}
+  .panel-notice.success{background:#F0FDF4; color:#15803D; border:1px solid #BBF7D0;}
+  .panel-notice:empty{display:none;}
+
   #resetBtn{
     border-width:2px; border-color:#B9C2D8; border-radius:12px; padding:8px 12px;
     font-size:14px; background:#fff; color:#4A5480; align-self:flex-start;
+  }
+  #feedbackBtnInSettings{
+    border-width:2px; border-color:#2B6CB0; border-radius:12px; padding:8px 12px;
+    font-size:14px; background:#fff; color:#2B6CB0; font-weight:600; cursor:pointer;
+  }
+  #feedbackOverlay{
+    position:fixed; inset:0; background:rgba(27,33,64,.45);
+    display:flex; align-items:flex-end; justify-content:center; z-index:25;
+    padding:12px;
+  }
+  #feedbackOverlay[hidden]{display:none}
+  #feedbackPanel{
+    width:100%; max-width:520px; height:min(90dvh,760px);
+    background:#fff; border:5px solid #1B2140; border-radius:28px;
+    display:flex; flex-direction:column; overflow:hidden;
+    padding:16px 16px 14px; gap:10px;
+  }
+  #feedbackHead{display:flex; align-items:flex-start; justify-content:space-between; gap:8px}
+  #feedbackHead h2{margin:0; font-size:22px}
+  #feedbackMeta{font-size:13px; color:#8B93AD; margin:4px 0 0}
+  #closeFeedback{
+    width:40px; height:40px; border-width:2px; border-radius:12px; font-size:22px; line-height:1;
+    flex:0 0 auto;
+  }
+  #feedbackBar{
+    display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;
+  }
+  .fdb-btn-link, .fdb-btn-secondary{
+    font-size:13px; color:#2B6CB0; text-decoration:none; font-weight:600;
+    padding:6px 10px; border-radius:10px; background:#EBF8FF; border:1px solid #BEE3F8;
+    cursor:pointer; display:inline-flex; align-items:center; gap:4px;
+  }
+  .fdb-btn-link:hover, .fdb-btn-secondary:hover{background:#DDF0FC}
+  #feedbackConfigBox{
+    background:#F7FAFC; border:1.5px solid #CBD5E0; border-radius:14px; padding:10px 12px;
+    display:flex; flex-direction:column; gap:6px;
+  }
+  #feedbackConfigBox[hidden]{display:none}
+  .fdb-label{font-size:13px; font-weight:600; color:#2D3748}
+  .fdb-input-row{display:flex; gap:8px}
+  #formUrlInput{
+    flex:1; padding:8px 10px; border:1.5px solid #CBD5E0; border-radius:8px; font-size:13px;
+  }
+  .fdb-btn-primary{
+    background:#FFD65A; border:2px solid #1B2140; border-radius:10px; padding:6px 14px;
+    font-weight:600; font-size:13px; cursor:pointer;
+  }
+  .fdb-btn-primary:active{transform:translateY(1px)}
+  .fdb-help{font-size:11px; color:#718096; margin:0; line-height:1.4}
+  #feedbackFrameWrap{
+    flex:1; width:100%; position:relative; background:#FAFAFA;
+    border:2px solid #E3E8F4; border-radius:18px; overflow:hidden;
+    display:flex; flex-direction:column;
+  }
+  #feedbackFrameLoading{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:14px; color:#718096; background:rgba(250,250,250,0.92); z-index:2;
+  }
+  #feedbackFrameLoading[hidden]{display:none}
+  #feedbackIframe{
+    width:100%; height:100%; border:none; display:block; flex:1;
+  }
+  #feedbackPlaceholder{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; padding:24px; text-align:center;
+    background:#FAFAFA; z-index:3; gap:8px;
+  }
+  #feedbackPlaceholder[hidden]{display:none}
+  .fdb-empty-icon{font-size:42px; margin-bottom:4px}
+  #feedbackPlaceholder h3{margin:0; font-size:18px; color:#1B2140}
+  #feedbackPlaceholder p{margin:0 0 8px; font-size:14px; color:#718096; max-width:320px}
+  .fdb-divider{font-size:12px; color:#A0AEC0; margin:6px 0}
+  .fdb-mail-btn{
+    font-size:14px; color:#2B6CB0; text-decoration:none; font-weight:600;
+    padding:8px 14px; border:2px solid #2B6CB0; border-radius:12px; background:#fff;
   }
 </style>
 </head>
 <body>
 
 <div id="topBar">
+  <div id="topBarLeft">
+    <button id="openSettings" type="button" aria-label="הגדרות ואוצר מילים" title="הגדרות">⚙️</button>
+    <button id="openFeedback" type="button" aria-label="משוב והצעות" title="שליחת משוב ורעיונות">💬</button>
+  </div>
   <div id="stars"></div>
-  <button id="openSettings" type="button" aria-label="הגדרות ואוצר מילים" title="הגדרות">⚙️</button>
+  <button id="toggleSound" type="button" class="muted" aria-label="הפעלת שמע" title="שמע מכובה - לחצו להפעלה">🔇</button>
 </div>
 <div id="picture">🐶</div>
 <div id="word"></div>
@@ -156,22 +462,163 @@
 
 <div id="overlay" hidden>
   <div id="panel">
-    <div id="panelHead">
-      <div>
-        <h2>⚙️ הגדרות</h2>
-        <p id="panelMeta"></p>
+    <!-- תצוגה 1: מסך הגדרות ראשי -->
+    <div id="viewSettingsMain" class="panel-view">
+      <div class="panel-nav-head">
+        <div class="panel-title-group">
+          <h2>⚙️ הגדרות</h2>
+          <p id="panelMeta"></p>
+        </div>
+        <button id="closePanel" class="panel-close-btn" type="button" aria-label="סגירת הגדרות">×</button>
       </div>
-      <button id="closePanel" type="button" aria-label="סגירה">×</button>
+
+      <!-- כפתור גישה לחלון רשימת המילים הקיימות -->
+      <button id="openWordsViewBtn" type="button" class="settings-words-card" aria-label="מעבר לרשימת המילים שבתרגול">
+        <span class="words-card-icon">📝</span>
+        <div class="words-card-body">
+          <div class="words-card-top">
+            <span class="words-card-title">רשימת המילים שבתרגול</span>
+            <span class="words-card-badge" id="mainWordsCountBadge">16 מילים</span>
+          </div>
+          <span class="words-card-sub">לצפייה ברשימה, מחיקה או מעבר להוספת מילים</span>
+          <div class="words-card-emojis" id="wordsPreviewEmojis"></div>
+        </div>
+        <span class="words-card-arrow">←</span>
+      </button>
+
+      <!-- בחירת רמת התאמה קולית לקול הילד -->
+      <div id="matchLevelSection" class="match-section">
+        <div class="match-head">
+          <div class="match-title-wrap">
+            <span class="match-icon">🎯</span>
+            <span class="match-title">רמת התאמה לקול הילד</span>
+          </div>
+          <span id="matchLevelBadge" class="match-badge">רגילה (70%)</span>
+        </div>
+
+        <p id="matchLevelDesc" class="match-desc">איזון מומלץ בין עידוד הילד לבין דיוק ההגייה.</p>
+
+        <div class="match-preset-group" role="radiogroup" aria-label="רמת התאמה לקול הילד">
+          <button type="button" class="match-btn" data-level="lenient" id="btnLevelLenient" aria-label="רמת התאמה סלחנית לפעוטות">
+            <span class="match-btn-icon">🌱</span>
+            <span class="match-btn-name">סלחנית</span>
+            <span class="match-btn-sub">לפעוטות ומתחילים</span>
+          </button>
+          <button type="button" class="match-btn active" data-level="normal" id="btnLevelNormal" aria-label="רמת התאמה רגילה ומאוזנת">
+            <span class="match-btn-icon">⭐</span>
+            <span class="match-btn-name">רגילה</span>
+            <span class="match-btn-sub">מאוזן (מומלץ)</span>
+          </button>
+          <button type="button" class="match-btn" data-level="strict" id="btnLevelStrict" aria-label="רמת התאמה מדויקת וקפדנית">
+            <span class="match-btn-icon">🎯</span>
+            <span class="match-btn-name">מדויקת</span>
+            <span class="match-btn-sub">למתקדמים</span>
+          </button>
+        </div>
+
+        <div class="match-slider-wrap">
+          <div class="match-slider-labels">
+            <span>🌱 קלה (30%)</span>
+            <span id="sliderValueText">דיוק נדרש: 70%</span>
+            <span>🎯 קפדנית (95%)</span>
+          </div>
+          <input type="range" id="matchThresholdSlider" min="30" max="95" step="5" value="70" aria-label="שינוי אחוז התאמה נדרש">
+        </div>
+      </div>
+
+      <div id="settingsActions">
+        <button id="installBtn" type="button" hidden>📲 התקנת אפליקציה למכשיר</button>
+        <button id="resetBtn" type="button">🔄 איפוס מילים והגדרות</button>
+        <button id="feedbackBtnInSettings" type="button">💬 שליחת משוב ורעיונות</button>
+      </div>
     </div>
-    <div id="settingsActions">
-      <button id="installBtn" type="button" hidden>📲 התקנת אפליקציה למכשיר</button>
-      <button id="resetBtn" type="button">🔄 איפוס מילים לברירת מחדל</button>
+
+    <!-- תצוגה 2: חלון נפרד של רשימת המילים הקיימות -->
+    <div id="viewWordsList" class="panel-view" hidden>
+      <div class="panel-nav-head">
+        <button id="backToSettingsBtn" type="button" class="panel-back-btn" title="חזרה להגדרות">
+          <span>➔</span>
+          <span>הגדרות</span>
+        </button>
+        <h2>📝 מילות התרגול</h2>
+        <button id="closePanelFromWords" class="panel-close-btn" type="button" aria-label="סגירה">×</button>
+      </div>
+
+      <div class="words-toolbar">
+        <p id="wordsListMeta" class="words-meta-text">16 מילים פעילות. לחצו על מילה כדי לתרגל אותה כעת.</p>
+        <button id="openCatalogBtn" type="button" class="open-catalog-cta" aria-label="מעבר למאגר כל המילים להוספה">
+          <span>➕ הוספת מילים מתוך המאגר</span>
+          <span class="open-catalog-badge" id="catalogAvailableCount">מאגר המילים ←</span>
+        </button>
+      </div>
+
+      <p id="wordsListNotice" class="panel-notice"></p>
+      <ul id="wordList"></ul>
     </div>
-    <input id="search" type="search" placeholder="חיפוש, למשל lion" autocomplete="off">
-    <p id="hint">לחצו על תמונה כדי להוסיף. המילה באנגלית קבועה.</p>
-    <div id="catalog"></div>
-    <p id="panelErr"></p>
-    <ul id="wordList"></ul>
+
+    <!-- תצוגה 3: חלון נוסף שבו יש את כל המילים האפשריות שאפשר להוסיף -->
+    <div id="viewCatalog" class="panel-view" hidden>
+      <div class="panel-nav-head">
+        <button id="backToWordsBtn" type="button" class="panel-back-btn" title="חזרה לרשימת המילים">
+          <span>➔</span>
+          <span>מילות התרגול</span>
+        </button>
+        <h2>🎨 מאגר כל המילים</h2>
+        <button id="closePanelFromCatalog" class="panel-close-btn" type="button" aria-label="סגירה">×</button>
+      </div>
+
+      <div class="catalog-search-box">
+        <input id="search" type="search" placeholder="חיפוש מילה (למשל dog, lion, apple...)" autocomplete="off">
+      </div>
+
+      <div class="catalog-info-bar">
+        <span id="hint">לחצו על תמונה כדי להוסיף אותה לתרגול. מילים שכבר בתרגול מסומנות ב-✓.</span>
+        <span id="catalogCounterBadge"></span>
+      </div>
+
+      <p id="catalogNotice" class="panel-notice"></p>
+      <div id="catalog"></div>
+    </div>
+  </div>
+</div>
+
+<div id="feedbackOverlay" hidden>
+  <div id="feedbackPanel">
+    <div id="feedbackHead">
+      <div>
+        <h2>💬 משוב והצעות</h2>
+        <p id="feedbackMeta">נשמח לשמוע רעיונות למילים חדשות, הערות או שאלות</p>
+      </div>
+      <button id="closeFeedback" type="button" aria-label="סגירה">×</button>
+    </div>
+
+    <div id="feedbackBar">
+      <a id="feedbackExtLink" href="#" target="_blank" rel="noopener noreferrer" class="fdb-btn-link" title="פתיחת הטופס בלשונית נפרדת בדפדפן">↗️ פתיחה בחלון נפרד</a>
+      <button id="toggleFormConfigBtn" type="button" class="fdb-btn-secondary" title="החלפת קישור לטופס גוגל">⚙️ קישור לטופס</button>
+    </div>
+
+    <div id="feedbackConfigBox" hidden>
+      <label for="formUrlInput" class="fdb-label">הדביקו קישור ל-Google Form שלכם:</label>
+      <div class="fdb-input-row">
+        <input id="formUrlInput" type="url" placeholder="https://docs.google.com/forms/d/e/.../viewform" dir="ltr">
+        <button id="saveFormUrlBtn" type="button" class="fdb-btn-primary">שמירה</button>
+      </div>
+      <p class="fdb-help">💡 ליצירת טופס: היכנסו ל-forms.google.com, צרו טופס, לחצו 'שליחה' (Send) והעתיקו את הקישור.</p>
+    </div>
+
+    <div id="feedbackFrameWrap">
+      <div id="feedbackFrameLoading">טוען את הטופס... ⏳</div>
+      <iframe id="feedbackIframe" src="https://docs.google.com/forms/d/e/1FAIpQLSf0Ftx6bCraujLqIVmZnvL5FbNfwQCUPfUr7eHMjWN7cPbCrA/viewform?embedded=true" title="טופס משוב" frameborder="0" marginheight="0" marginwidth="0">בטעינה…</iframe>
+
+      <div id="feedbackPlaceholder" hidden>
+        <div class="fdb-empty-icon">📝</div>
+        <h3>טופס משוב Google Forms</h3>
+        <p>ניתן להציג כאן טופס גוגל ישירות בתוך האפליקציה למשתמשים.</p>
+        <button id="promptSetFormBtn" type="button" class="fdb-btn-primary">הגדרת קישור לטופס גוגל</button>
+        <div class="fdb-divider">או שליחה ישירה במייל:</div>
+        <a id="directEmailLink" href="mailto:amitzaitman@gmail.com?subject=משוב על אפליקציית Say the word" class="fdb-mail-btn">✉️ שליחת דוא"ל למפתח</a>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -446,6 +893,160 @@ let i = 0, stars = 0, editing = -1;
 let model = null, rec = null;
 let ctx = null, srcNode = null, procNode = null, sinkNode = null;
 let active = false, timer = null;
+let soundEnabled = false;
+
+// --- הגדרות רמת התאמה קולית לדיבור הילד ---
+const MATCH_CONFIG_KEY = "speech_match_config";
+const MATCH_LEVELS = {
+  lenient: {
+    key: "lenient",
+    name: "סלחנית",
+    badge: "🌱 סלחנית",
+    defaultThreshold: 45,
+    desc: "סלחנית: מתאים לפעוטות ולמתחילים. מקבלת גם הגייה מקורבת, קול שקט או שיבוש קל באותיות.",
+    timeout: 5000
+  },
+  normal: {
+    key: "normal",
+    name: "רגילה",
+    badge: "⭐ רגילה",
+    defaultThreshold: 70,
+    desc: "רגילה (ברירת מחדל): איזון מומלץ בין עידוד הילד לבין דיוק ההגייה.",
+    timeout: 4200
+  },
+  strict: {
+    key: "strict",
+    name: "מדויקת",
+    badge: "🎯 מדויקת",
+    defaultThreshold: 90,
+    desc: "מדויקת: מתאים לילדים מתקדמים. דורשת הגייה מלאה, ברורה ומדויקת באנגלית.",
+    timeout: 3500
+  }
+};
+
+function getLevelForThreshold(th){
+  if(th <= 50) return "lenient";
+  if(th < 85) return "normal";
+  return "strict";
+}
+
+let matchConfig = loadMatchConfig();
+
+function loadMatchConfig(){
+  try {
+    const raw = localStorage.getItem(MATCH_CONFIG_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(parsed && typeof parsed.threshold === "number"){
+        const th = Math.max(30, Math.min(95, Math.round(parsed.threshold)));
+        return {
+          level: parsed.level && MATCH_LEVELS[parsed.level] ? parsed.level : getLevelForThreshold(th),
+          threshold: th
+        };
+      }
+    }
+  } catch(e){}
+  return { level: "normal", threshold: 70 };
+}
+
+function saveMatchConfig(){
+  try {
+    localStorage.setItem(MATCH_CONFIG_KEY, JSON.stringify(matchConfig));
+  } catch(e){}
+}
+
+function updateMatchUI(){
+  const badge = $("matchLevelBadge");
+  const desc = $("matchLevelDesc");
+  const slider = $("matchThresholdSlider");
+  const sliderText = $("sliderValueText");
+  const btnLenient = $("btnLevelLenient");
+  const btnNormal = $("btnLevelNormal");
+  const btnStrict = $("btnLevelStrict");
+
+  if(!badge || !slider) return;
+
+  const currentLevelInfo = MATCH_LEVELS[matchConfig.level] || MATCH_LEVELS.normal;
+  badge.textContent = `${currentLevelInfo.badge} (${matchConfig.threshold}%)`;
+  desc.textContent = currentLevelInfo.desc;
+  slider.value = matchConfig.threshold;
+  sliderText.textContent = `דיוק נדרש: ${matchConfig.threshold}%`;
+
+  if(btnLenient) btnLenient.classList.toggle("active", matchConfig.level === "lenient");
+  if(btnNormal) btnNormal.classList.toggle("active", matchConfig.level === "normal");
+  if(btnStrict) btnStrict.classList.toggle("active", matchConfig.level === "strict");
+}
+
+function setMatchLevel(levelKey){
+  const info = MATCH_LEVELS[levelKey];
+  if(!info) return;
+  matchConfig.level = levelKey;
+  matchConfig.threshold = info.defaultThreshold;
+  saveMatchConfig();
+  updateMatchUI();
+}
+
+function setMatchThreshold(th){
+  const clean = Math.max(30, Math.min(95, Math.round(th)));
+  matchConfig.threshold = clean;
+  matchConfig.level = getLevelForThreshold(clean);
+  saveMatchConfig();
+  updateMatchUI();
+}
+
+function updateSoundUI(){
+  const btn = $("toggleSound");
+  if(!btn) return;
+  if(soundEnabled){
+    btn.textContent = "🔊";
+    btn.className = "on";
+    btn.setAttribute("aria-label", "כיבוי שמע");
+    btn.title = "שמע פועל - לחצו לכיבוי";
+    $("hear").classList.remove("muted");
+    $("hear").title = "השמעת המילה";
+  }else{
+    btn.textContent = "🔇";
+    btn.className = "muted";
+    btn.setAttribute("aria-label", "הפעלת שמע");
+    btn.title = "שמע מכובה - לחצו להפעלה";
+    $("hear").classList.add("muted");
+    $("hear").title = "שמע מכובה (לחצו על 🔇 בראש המסך להפעלה)";
+  }
+}
+
+function notifySoundMuted(){
+  $("note").textContent = "השמע מכובה. לחצו על 🔇 בראש המסך להפעלה.";
+  const btn = $("toggleSound");
+  if(btn){
+    btn.classList.remove("pulse");
+    void btn.offsetWidth;
+    btn.classList.add("pulse");
+    setTimeout(()=>btn.classList.remove("pulse"), 800);
+  }
+  setTimeout(()=>{
+    if($("note").textContent.includes("השמע מכובה")) $("note").textContent = "";
+  }, 3000);
+}
+
+function toggleSound(){
+  soundEnabled = !soundEnabled;
+  if(!soundEnabled && "speechSynthesis" in window){
+    speechSynthesis.cancel();
+  }
+  updateSoundUI();
+  if(soundEnabled){
+    $("note").textContent = "השמע הופעל 🔊";
+    speak(word(), EN);
+    setTimeout(()=>{
+      if($("note").textContent === "השמע הופעל 🔊") $("note").textContent = "";
+    }, 2000);
+  }else{
+    $("note").textContent = "השמע כובה 🔇";
+    setTimeout(()=>{
+      if($("note").textContent === "השמע כובה 🔇") $("note").textContent = "";
+    }, 2000);
+  }
+}
 
 function load(){
   try{
@@ -493,6 +1094,12 @@ const SPEAK_TIMEOUT = 3000;
 function speak(text, lang, onDone){
   let called = false;
   const done = ()=>{ if(called) return; called = true; if(onDone) onDone(); };
+  if(!soundEnabled){
+    if(onDone){
+      setTimeout(done, lang === HE ? 600 : 0);
+    }
+    return;
+  }
   if(!("speechSynthesis" in window)){ done(); return; }
   if(!voices.length) refreshVoices();
   const v = voiceFor(lang);
@@ -578,18 +1185,195 @@ function grammar(){
   return JSON.stringify(words.map(w=>w.word).concat(["[unk]"]));
 }
 
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  const d = Array.from({length: m + 1}, () => new Uint8Array(n + 1));
+  for (let i = 0; i <= m; i++) d[i][0] = i;
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+    }
+  }
+  return d[m][n];
+}
+
+function wordSimilarity(s1, s2) {
+  if (s1 === s2) return 1;
+  const maxLen = Math.max(s1.length, s2.length);
+  if (maxLen === 0) return 1;
+  return Math.max(0, 1 - (levenshtein(s1, s2) / maxLen));
+}
+
+function phoneticKey(s) {
+  if(!s) return "";
+  let k = s.toLowerCase()
+    .replace(/[^a-z]/g, "")
+    .replace(/ph/g, "f")
+    .replace(/gh/g, "f")
+    .replace(/wr/g, "r")
+    .replace(/kn/g, "n")
+    .replace(/wh/g, "w")
+    .replace(/ck/g, "k")
+    .replace(/c(?=[eiy])/g, "s")
+    .replace(/c/g, "k")
+    .replace(/q/g, "k")
+    .replace(/x/g, "ks")
+    .replace(/dg/g, "j")
+    .replace(/ee|ea/g, "i")
+    .replace(/oo|ou/g, "u")
+    .replace(/ai|ay/g, "a")
+    .replace(/(.)\1+/g, "$1");
+  if(k.length > 2 && k.endsWith("e")) {
+    k = k.slice(0, -1);
+  }
+  return k;
+}
+
+function evaluateTokenMatch(tokenWord, tokenConf, target, thresholdPct) {
+  const normWord = (tokenWord || "").toLowerCase().trim();
+  const normTarget = (target || "").toLowerCase().trim();
+  if(!normWord || normWord === "[unk]") return { isMatch: false, score: 0 };
+
+  // 1. Exact token match
+  if(normWord === normTarget) {
+    const conf = (typeof tokenConf === "number" && !isNaN(tokenConf)) ? tokenConf : null;
+    const thresholdDec = thresholdPct / 100;
+    if(conf !== null) {
+      const confPct = Math.round(conf * 100);
+      const isMatch = conf >= thresholdDec;
+      return {
+        isMatch,
+        score: confPct,
+        reason: `זיהוי מדויק של "${normTarget}" (${confPct}%)`
+      };
+    }
+    return { isMatch: true, score: 100, reason: `זיהוי מדויק של "${normTarget}"` };
+  }
+
+  // Strict mode: Only accepts exact word token matches
+  if(matchConfig.level === "strict") {
+    return { isMatch: false, score: Math.round(wordSimilarity(normWord, normTarget) * 100) };
+  }
+
+  // 2. Lenient & Normal: Phonetic & String similarity
+  const sim = wordSimilarity(normWord, normTarget);
+  const isPhonetic = phoneticKey(normWord) === phoneticKey(normTarget);
+
+  let score = Math.round(sim * 100);
+  if(isPhonetic) {
+    score = Math.max(score, 88);
+  }
+
+  // Prefix match for longer words (e.g. toddler saying "butterf" for "butterfly")
+  if(normTarget.startsWith(normWord) && normWord.length >= 3 && normWord.length >= normTarget.length * 0.55){
+    score = Math.max(score, 80);
+  }
+
+  // Adjust score if confidence was provided
+  if(typeof tokenConf === "number" && !isNaN(tokenConf)) {
+    score = Math.round(score * Math.min(1, tokenConf + 0.25));
+  }
+
+  const isMatch = score >= thresholdPct;
+  return {
+    isMatch,
+    score,
+    reason: `דמיון קולי של ${score}% למילה "${normTarget}"`
+  };
+}
+
+let bestCandidateSoFar = null;
+
 function buildRecognizer(){
   if(!model || !ctx) return;
   if(rec){ try{ rec.remove(); }catch(e){} rec = null; }
   rec = new model.KaldiRecognizer(ctx.sampleRate, grammar());
+  try{ rec.setWords(true); }catch(e){}
+
   rec.on("result", msg=>{
     if(!active) return;
-    const heard = ((msg && msg.result && msg.result.text) || "")
-      .split(/\s+/).filter(t => t && t !== "[unk]");
-    // רעש רקע, נשימה או "אממ" מזוהים כ-[unk]. זה לא ניסיון, ממשיכים להקשיב עד הטיימר.
-    if(!heard.length) return;
-    finish(heard.includes(word()));
+    processRecognition(msg, false);
   });
+
+  rec.on("partialresult", msg=>{
+    if(!active) return;
+    processRecognition(msg, true);
+  });
+}
+
+function processRecognition(msg, isPartial){
+  if(!active) return;
+  const target = word().toLowerCase().trim();
+  const res = msg && msg.result;
+  if(!res) return;
+
+  if(isPartial){
+    const partialText = (res.partial || "").trim().toLowerCase();
+    if(!partialText) return;
+    const partialTokens = partialText.split(/\s+/).filter(t => t && t !== "[unk]");
+    if(!partialTokens.length) return;
+
+    for(const tok of partialTokens){
+      const evalRes = evaluateTokenMatch(tok, null, target, matchConfig.threshold);
+      if(!bestCandidateSoFar || evalRes.score > bestCandidateSoFar.score){
+        bestCandidateSoFar = evalRes;
+      }
+      // Lenient mode: immediate reward if matched during speech
+      if(matchConfig.level === "lenient" && evalRes.isMatch){
+        finish(true, evalRes.reason);
+        return;
+      }
+      // Normal mode: reward if exact word token is recognized
+      if(matchConfig.level === "normal" && tok === target && matchConfig.threshold <= 75){
+        finish(true, evalRes.reason);
+        return;
+      }
+    }
+    return;
+  }
+
+  // Final result (endpoint detected by engine)
+  const fullText = (res.text || "").trim().toLowerCase();
+  const wordDetails = Array.isArray(res.result) ? res.result : [];
+
+  let tokens = [];
+  if(wordDetails.length){
+    tokens = wordDetails.map(w => ({
+      word: (w.word || "").toLowerCase().trim(),
+      conf: typeof w.conf === "number" ? w.conf : null
+    })).filter(t => t.word && t.word !== "[unk]");
+  } else if(fullText){
+    tokens = fullText.split(/\s+/)
+      .filter(t => t && t !== "[unk]")
+      .map(w => ({ word: w, conf: null }));
+  }
+
+  if(!tokens.length) return;
+
+  let bestForThisResult = null;
+  for(const tok of tokens){
+    const evalRes = evaluateTokenMatch(tok.word, tok.conf, target, matchConfig.threshold);
+    if(!bestForThisResult || evalRes.score > bestForThisResult.score){
+      bestForThisResult = evalRes;
+    }
+  }
+
+  if(bestForThisResult && (!bestCandidateSoFar || bestForThisResult.score > bestCandidateSoFar.score)){
+    bestCandidateSoFar = bestForThisResult;
+  }
+
+  if(bestForThisResult && bestForThisResult.isMatch){
+    finish(true, bestForThisResult.reason);
+  } else if(bestCandidateSoFar && bestCandidateSoFar.isMatch && matchConfig.level !== "strict"){
+    finish(true, bestCandidateSoFar.reason);
+  } else {
+    finish(false);
+  }
 }
 
 async function ensureAudio(){
@@ -620,21 +1404,31 @@ async function listen(){
 
   $("note").textContent = "";
   active = true;
+  bestCandidateSoFar = null;
   $("say").classList.add("listening");
-  timer = setTimeout(()=>finish(false), 4000);
+
+  const timeoutMs = MATCH_LEVELS[matchConfig.level]?.timeout || 4200;
+  timer = setTimeout(()=>{
+    if(!active) return;
+    if(bestCandidateSoFar && bestCandidateSoFar.isMatch){
+      finish(true, bestCandidateSoFar.reason);
+    } else {
+      finish(false);
+    }
+  }, timeoutMs);
 }
 
-function finish(ok){
+function finish(ok, reason){
   if(!active) return;
   active = false;
   clearTimeout(timer);
   // מאפס את המפענח כדי שהניסיון הבא יתחיל נקי. התוצאה שחוזרת מכאן נבלעת כי active כבר כבוי.
   if(rec){ try{ rec.retrieveFinalResult(); }catch(err){} }
   $("say").classList.remove("listening");
-  ok ? good() : again();
+  ok ? good(reason) : again();
 }
 
-function good(){
+function good(reason){
   stars = Math.min(stars+1, 10);
   $("stars").textContent = "⭐".repeat(stars);
   $("picture").className = "good";
@@ -643,7 +1437,13 @@ function good(){
 }
 function again(){
   $("picture").className = "again";
-  speak("נסו שוב", HE, ()=>setTimeout(()=>{ $("picture").className = ""; }, 600));
+  if(matchConfig.level === "strict"){
+    $("note").textContent = "ברמה מדויקת נדרשת הגייה ברורה. נסו שוב!";
+  }
+  speak("נסו שוב", HE, ()=>setTimeout(()=>{ 
+    $("picture").className = ""; 
+    if($("note").textContent.includes("ברמה מדויקת")) $("note").textContent = "";
+  }, 700));
 }
 function pick(){
   return Math.floor(Math.random() * words.length);
@@ -663,7 +1463,56 @@ function takenSet(){
   return new Set(words.map(w => w.word));
 }
 
-function setErr(msg){ $("panelErr").textContent = msg || ""; }
+let currentSettingsTab = "main"; // "main" | "words" | "catalog"
+
+function setSettingsNotice(elementId, msg, isError = false){
+  const el = $(elementId);
+  if(!el) return;
+  el.textContent = msg || "";
+  el.className = "panel-notice " + (msg ? (isError ? "error" : "success") : "");
+}
+
+function updateMainWordsSummary(){
+  $("panelMeta").textContent = words.length + " מילים בתרגול. נשמר במכשיר הזה.";
+  const countBadge = $("mainWordsCountBadge");
+  if(countBadge) countBadge.textContent = words.length + " מילים";
+
+  const preview = $("wordsPreviewEmojis");
+  if(preview){
+    const sample = words.slice(0, 10).map(w => w.emoji).join(" ");
+    preview.textContent = sample + (words.length > 10 ? " …" : "");
+  }
+
+  const metaInWords = $("wordsListMeta");
+  if(metaInWords){
+    metaInWords.textContent = words.length + " מילים פעילות. לחצו על מילה כדי לתרגל אותה כעת.";
+  }
+
+  const availBadge = $("catalogAvailableCount");
+  if(availBadge){
+    const unadded = Math.max(0, PAIRS.length - words.length);
+    availBadge.textContent = `${PAIRS.length} מילים במאגר (${unadded} זמינות להוספה) ←`;
+  }
+}
+
+function showSettingsView(tabName){
+  currentSettingsTab = tabName;
+  $("viewSettingsMain").hidden = (tabName !== "main");
+  $("viewWordsList").hidden = (tabName !== "words");
+  $("viewCatalog").hidden = (tabName !== "catalog");
+
+  if(tabName === "main"){
+    updateMainWordsSummary();
+    updateMatchUI();
+  } else if(tabName === "words"){
+    setSettingsNotice("wordsListNotice", "");
+    renderList();
+  } else if(tabName === "catalog"){
+    setSettingsNotice("catalogNotice", "");
+    renderCatalog();
+    setTimeout(()=>{ try{ $("search").focus(); }catch(e){} }, 50);
+  }
+}
 
 function applyWords(nextWords, nextIndex){
   const before = words.slice();
@@ -673,7 +1522,7 @@ function applyWords(nextWords, nextIndex){
     catch(err){
       words = before;
       buildRecognizer();
-      setErr("המודל לא מכיר את המילה הזו.");
+      setSettingsNotice(currentSettingsTab === "catalog" ? "catalogNotice" : "wordsListNotice", "המודל לא מכיר את המילה הזו.", true);
       return false;
     }
   }
@@ -687,35 +1536,32 @@ function applyWords(nextWords, nextIndex){
 
 function addEmoji(emoji){
   const w = WORD_BY_EMOJI[emoji];
-  if(!w){ setErr("אין מילה באנגלית לתמונה הזו."); return; }
-  if(takenSet().has(w)){ setErr("״" + w + "״ כבר ברשימה."); return; }
-  setErr("");
-  applyWords(words.concat([{emoji, word:w}]), words.length);
-}
-
-function replaceEmoji(index, emoji){
-  const w = WORD_BY_EMOJI[emoji];
-  if(!w){ setErr("אין מילה באנגלית לתמונה הזו."); return; }
-  if(words.some((item, n) => item.word === w && n !== index)){
-    setErr("״" + w + "״ כבר ברשימה.");
+  if(!w){
+    setSettingsNotice("catalogNotice", "אין מילה באנגלית לתמונה הזו.", true);
     return;
   }
-  const nextWords = words.slice();
-  nextWords[index] = {emoji, word:w};
-  editing = -1;
-  setErr("");
-  applyWords(nextWords, i);
+  if(takenSet().has(w)){
+    setSettingsNotice("catalogNotice", `״${w}״ כבר נמצאת ברשימת המילים.`, false);
+    return;
+  }
+  applyWords(words.concat([{emoji, word:w}]), words.length);
+  setSettingsNotice("catalogNotice", `🎉 ״${w}״ נוספה בהצלחה למילות התרגול!`, false);
+  renderCatalog();
 }
 
 function removeAt(index){
-  if(words.length <= 1){ setErr("צריך לפחות מילה אחת."); return; }
+  if(words.length <= 1){
+    setSettingsNotice("wordsListNotice", "חייבת להישאר לפחות מילה אחת לתרגול.", true);
+    return;
+  }
+  const removed = words[index];
   const nextWords = words.filter((_, n) => n !== index);
   let nextI = i;
   if(index < i) nextI = i - 1;
   if(nextI >= nextWords.length) nextI = 0;
-  if(editing === index) editing = -1;
-  setErr("");
   applyWords(nextWords, nextI);
+  setSettingsNotice("wordsListNotice", `המילה ״${removed ? removed.word : ""}״ הוסרה מהתרגול.`, false);
+  renderList();
 }
 
 function renderCatalog(){
@@ -724,97 +1570,270 @@ function renderCatalog(){
   const box = $("catalog");
   box.innerHTML = "";
   const list = PAIRS.filter(([e,w]) => !q || w.includes(q) || e.includes(q));
+
+  const counterBadge = $("catalogCounterBadge");
+  if(counterBadge){
+    const inPracticeCount = list.filter(([_, w]) => taken.has(w)).length;
+    counterBadge.textContent = `${list.length} מילים (${inPracticeCount} כבר בתרגול)`;
+  }
+
   if(!list.length){
     const p = document.createElement("p");
-    p.id = "hint";
-    p.textContent = "אין תמונה שמתאימה לחיפוש.";
+    p.textContent = "לא נמצאו מילים שמתאימות לחיפוש ״" + q + "״";
     p.style.gridColumn = "1 / -1";
-    p.style.padding = "16px";
+    p.style.padding = "28px 16px";
     p.style.textAlign = "center";
+    p.style.color = "#64748B";
+    p.style.fontSize = "14px";
     box.appendChild(p);
     return;
   }
+
   list.forEach(([emoji, w]) => {
+    const isTaken = taken.has(w);
     const b = document.createElement("button");
     b.type = "button";
-    b.title = w;
-    if(taken.has(w) && editing < 0) b.className = "taken";
-    b.innerHTML = emoji + '<span class="ename">' + w + "</span>";
+    b.className = "catalog-item" + (isTaken ? " in-list" : "");
+    b.title = isTaken ? `${w} (כבר בתרגול)` : `הוספת ${w} לתרגול`;
+
+    let statusHtml = isTaken ? '<span class="catalog-item-status">✓ בתרגול</span>' : '';
+    b.innerHTML = `
+      ${statusHtml}
+      <span class="catalog-item-emoji">${emoji}</span>
+      <span class="catalog-item-name">${w}</span>
+    `;
+
     b.addEventListener("click", ()=>{
-      if(editing >= 0) replaceEmoji(editing, emoji);
-      else addEmoji(emoji);
+      if(isTaken){
+        setSettingsNotice("catalogNotice", `״${w}״ כבר נמצאת ברשימת המילים שבתרגול.`, false);
+      } else {
+        addEmoji(emoji);
+      }
     });
     box.appendChild(b);
   });
 }
 
 function renderList(){
+  updateMainWordsSummary();
   const ul = $("wordList");
   ul.innerHTML = "";
   words.forEach((item, n) => {
     const li = document.createElement("li");
     if(n === i) li.className = "current";
+
     const jump = document.createElement("button");
     jump.type = "button";
     jump.style.flex = "1";
     jump.style.display = "flex";
     jump.style.alignItems = "center";
-    jump.style.gap = "8px";
+    jump.style.gap = "10px";
     jump.style.border = "0";
     jump.style.background = "transparent";
     jump.style.borderRadius = "12px";
     jump.style.padding = "0";
-    jump.innerHTML = '<span class="pic">' + item.emoji + '</span><span class="w">' + item.word + "</span>";
+    jump.style.cursor = "pointer";
+    jump.style.textAlign = "right";
+
+    let currentTag = "";
+    if(n === i){
+      currentTag = '<span class="current-tag">עכשיו בתרגול ⭐</span>';
+    }
+
+    jump.innerHTML = `
+      <span class="pic">${item.emoji}</span>
+      <span class="w">${item.word}</span>
+      ${currentTag}
+    `;
     jump.addEventListener("click", ()=>{
       i = n;
       show();
       closePanel();
     });
+
     const ops = document.createElement("div");
     ops.className = "ops";
+
+    const speakBtn = document.createElement("button");
+    speakBtn.type = "button";
+    speakBtn.className = "speak-word-btn";
+    speakBtn.textContent = "🔊";
+    speakBtn.title = "השמעת המילה " + item.word;
+    speakBtn.setAttribute("aria-label", "השמעת " + item.word);
+    speakBtn.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      speak(item.word, EN);
+    });
+
     const del = document.createElement("button");
-    del.type = "button"; del.textContent = "🗑"; del.disabled = words.length <= 1;
-    del.addEventListener("click", ()=>removeAt(n));
-    ops.append(del);
+    del.type = "button";
+    del.className = "del-word-btn";
+    del.textContent = "🗑️";
+    del.title = "מחיקת המילה " + item.word;
+    del.setAttribute("aria-label", "מחיקת " + item.word);
+    del.disabled = words.length <= 1;
+    del.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      removeAt(n);
+    });
+
+    ops.append(speakBtn, del);
     li.append(jump, ops);
     ul.appendChild(li);
   });
 }
 
 function renderPanel(){
-  $("panelMeta").textContent = words.length + " מילים בתרגול. נשמר במכשיר הזה.";
-  $("hint").textContent = editing >= 0
-    ? "בחרו תמונה אחרת. המילה באנגלית תתחלף איתה."
-    : "לחצו על תמונה כדי להוסיף. המילה באנגלית קבועה.";
-  renderCatalog();
-  renderList();
+  updateMainWordsSummary();
+  updateMatchUI();
+  if(currentSettingsTab === "words") renderList();
+  if(currentSettingsTab === "catalog") renderCatalog();
 }
 
 function openPanel(){
-  editing = -1;
-  setErr("");
+  setSettingsNotice("wordsListNotice", "");
+  setSettingsNotice("catalogNotice", "");
   $("search").value = "";
   $("overlay").hidden = false;
-  renderPanel();
-}
-function closePanel(){
-  $("overlay").hidden = true;
-  editing = -1;
+  showSettingsView("main");
 }
 
-$("picture").addEventListener("click", ()=>speak(word(), EN));
-$("hear").addEventListener("click", ()=>speak(word(), EN));
+function closePanel(){
+  $("overlay").hidden = true;
+  showSettingsView("main");
+}
+
+// Google Forms Feedback logic
+const DEFAULT_FEEDBACK_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSf0Ftx6bCraujLqIVmZnvL5FbNfwQCUPfUr7eHMjWN7cPbCrA/viewform?embedded=true";
+
+function getFeedbackFormUrl(){
+  const saved = localStorage.getItem("feedback_form_url");
+  if(saved && saved.includes("1FAIpQLSc0S2QDX_CFsNHAceoYJ6qrs20JxdYP0uWQhzgUENG6WRCb_A")){
+    localStorage.removeItem("feedback_form_url");
+    return DEFAULT_FEEDBACK_FORM_URL;
+  }
+  return saved || DEFAULT_FEEDBACK_FORM_URL;
+}
+
+function setFeedbackFormUrl(url){
+  const clean = (url || "").trim();
+  if(clean){
+    localStorage.setItem("feedback_form_url", clean);
+  } else {
+    localStorage.removeItem("feedback_form_url");
+  }
+}
+
+function formatGoogleFormEmbedUrl(url){
+  if(!url) return "";
+  let u = url.trim();
+  if(u.includes("docs.google.com/forms")){
+    if(!u.includes("embedded=true")){
+      u += (u.includes("?") ? "&" : "?") + "embedded=true";
+    }
+  }
+  return u;
+}
+
+function openFeedbackModal(){
+  const formUrl = getFeedbackFormUrl();
+  const iframe = $("feedbackIframe");
+  const loading = $("feedbackFrameLoading");
+  const placeholder = $("feedbackPlaceholder");
+  const extLink = $("feedbackExtLink");
+  const configBox = $("feedbackConfigBox");
+  const input = $("formUrlInput");
+
+  configBox.hidden = true;
+  input.value = formUrl;
+
+  if(formUrl){
+    placeholder.hidden = true;
+    loading.hidden = false;
+    extLink.hidden = false;
+    extLink.href = formUrl.replace(/([?&])embedded=true(&|$)/, (_, p1, p2) => p2 === "&" ? p1 : "");
+    const embedUrl = formatGoogleFormEmbedUrl(formUrl);
+    if(iframe.src !== embedUrl){
+      iframe.src = embedUrl;
+    } else {
+      loading.hidden = true;
+    }
+  } else {
+    loading.hidden = true;
+    extLink.hidden = true;
+    placeholder.hidden = false;
+    iframe.removeAttribute("src");
+  }
+
+  $("feedbackOverlay").hidden = false;
+}
+
+function closeFeedbackModal(){
+  $("feedbackOverlay").hidden = true;
+}
+
+$("feedbackIframe").addEventListener("load", ()=>{
+  $("feedbackFrameLoading").hidden = true;
+});
+$("openFeedback").addEventListener("click", openFeedbackModal);
+$("feedbackBtnInSettings").addEventListener("click", ()=>{
+  closePanel();
+  openFeedbackModal();
+});
+$("closeFeedback").addEventListener("click", closeFeedbackModal);
+$("feedbackOverlay").addEventListener("click", e=>{
+  if(e.target.id === "feedbackOverlay") closeFeedbackModal();
+});
+$("toggleFormConfigBtn").addEventListener("click", ()=>{
+  const box = $("feedbackConfigBox");
+  box.hidden = !box.hidden;
+  if(!box.hidden) $("formUrlInput").focus();
+});
+$("promptSetFormBtn").addEventListener("click", ()=>{
+  $("feedbackConfigBox").hidden = false;
+  $("formUrlInput").focus();
+});
+$("saveFormUrlBtn").addEventListener("click", ()=>{
+  const val = $("formUrlInput").value.trim();
+  setFeedbackFormUrl(val);
+  openFeedbackModal();
+});
+
+$("picture").addEventListener("click", ()=>{
+  if(!soundEnabled){ notifySoundMuted(); return; }
+  speak(word(), EN);
+});
+$("hear").addEventListener("click", ()=>{
+  if(!soundEnabled){ notifySoundMuted(); return; }
+  speak(word(), EN);
+});
+$("toggleSound").addEventListener("click", toggleSound);
 $("say").addEventListener("click", listen);
 $("next").addEventListener("click", next);
 $("openSettings").addEventListener("click", openPanel);
 $("closePanel").addEventListener("click", closePanel);
+$("closePanelFromWords").addEventListener("click", closePanel);
+$("closePanelFromCatalog").addEventListener("click", closePanel);
+$("openWordsViewBtn").addEventListener("click", ()=>showSettingsView("words"));
+$("backToSettingsBtn").addEventListener("click", ()=>showSettingsView("main"));
+$("openCatalogBtn").addEventListener("click", ()=>showSettingsView("catalog"));
+$("backToWordsBtn").addEventListener("click", ()=>showSettingsView("words"));
+
 $("overlay").addEventListener("click", e=>{ if(e.target.id === "overlay") closePanel(); });
 $("search").addEventListener("input", renderCatalog);
+
+$("btnLevelLenient").addEventListener("click", ()=>setMatchLevel("lenient"));
+$("btnLevelNormal").addEventListener("click", ()=>setMatchLevel("normal"));
+$("btnLevelStrict").addEventListener("click", ()=>setMatchLevel("strict"));
+$("matchThresholdSlider").addEventListener("input", e=>{
+  setMatchThreshold(Number(e.target.value));
+});
+
 $("resetBtn").addEventListener("click", ()=>{
-  if(!confirm("לחזור ל־16 המילים המקוריות?")) return;
-  editing = -1;
-  setErr("");
+  if(!confirm("לאפס את רשימת המילים ורמת ההתאמה לברירת המחדל?")) return;
   applyWords(DEFAULT_WORDS.slice(), 0);
+  setMatchLevel("normal");
+  updateMainWordsSummary();
 });
 
 if("serviceWorker" in navigator){
@@ -867,6 +1886,8 @@ if(navigator.storage && navigator.storage.persist){
 
 i = pick();
 show();
+updateSoundUI();
+updateMatchUI();
 loadModel();
 </script>
 </body>
