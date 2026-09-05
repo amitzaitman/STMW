@@ -57,7 +57,9 @@ self.addEventListener('activate', e=>{
 self.addEventListener('fetch', e=>{
   if(e.request.method !== 'GET') return;
   if(!e.request.url.startsWith(self.location.origin)) return;
-  const heavy = HEAVY.some(name => e.request.url.includes(name));
+  // לפי שם הקובץ, לא לפי תת-מחרוזת בכתובת: קודם כל כתובת שהכילה במקרה
+  // "vosk.js" באיזשהו מקום נחשבה קובץ כבד ונשמרה לנצח.
+  const heavy = HEAVY.includes(new URL(e.request.url).pathname.split("/").pop());
 
   if(heavy){
     // קודם מהמטמון — לא מורידים 29MB בכל פתיחה

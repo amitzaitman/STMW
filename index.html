@@ -29,7 +29,7 @@
     padding:14px; gap:12px; -webkit-user-select:none; user-select:none;
   }
   #picture{
-    flex:1; width:100%; max-width:520px;
+    flex:1; width:100%; max-width:520px; padding:0; font-family:inherit; color:inherit;
     display:flex; align-items:center; justify-content:center;
     background:#fff; border:5px solid #1B2140; border-radius:32px;
     font-size:clamp(90px,38vw,220px); line-height:1; cursor:pointer;
@@ -408,7 +408,7 @@
   <div id="stars"></div>
   <button id="toggleSound" type="button" class="muted" aria-label="הפעלת שמע" title="שמע מכובה - לחצו להפעלה">🔇</button>
 </div>
-<div id="picture">🐶</div>
+<button id="picture" type="button" aria-label="השמעת המילה באנגלית" title="לחצו לשמיעת המילה">🐶</button>
 <div id="word"></div>
 
 <div id="loading" hidden>
@@ -567,9 +567,12 @@ let words = load() || DEFAULT_WORDS.slice();
 let i = 0, stars = 0;
 
 let model = null, rec = null;
-let ctx = null, srcNode = null, procNode = null, sinkNode = null;
+let ctx = null, srcNode = null, procNode = null, sinkNode = null, micStream = null;
 let active = false, timer = null;
-let soundEnabled = false;
+const SOUND_KEY = "sound_enabled";
+// נשמר, כמו המילים ורמת ההתאמה. קודם כל פתיחה התחילה בשקט והילד היה
+// צריך ללחוץ 🔇 מחדש. הקראה קורית רק אחרי לחיצה, אז אין כאן ניגון אוטומטי.
+let soundEnabled = (()=>{ try{ return localStorage.getItem(SOUND_KEY) === "1"; }catch(e){ return false; } })();
 
 // --- רמת ההתאמה לדיבור הילד: מספר אחד, 30 עד 95 ---
 // קודם היו כאן שני ייצוגים לאותו דבר: "רמה" (סלחנית/רגילה/מדויקת) ואחוז,
@@ -653,12 +656,17 @@ function updateSoundUI(){
   }
 }
 
+function setSound(on){
+  soundEnabled = on;
+  try{ localStorage.setItem(SOUND_KEY, on ? "1" : "0"); }catch(e){}
+  updateSoundUI();
+}
+
 function toggleSound(){
-  soundEnabled = !soundEnabled;
-  if(!soundEnabled && "speechSynthesis" in window){
+  if(soundEnabled && "speechSynthesis" in window){
     speechSynthesis.cancel();
   }
-  updateSoundUI();
+  setSound(!soundEnabled);
   if(soundEnabled){
     setNote("השמע הופעל 🔊", 2000);
     speak(word(), EN);
@@ -750,28 +758,32 @@ async function fetchModel(){
   // ליצור מטמון בשם שגוי. Vosk יוריד את המודל בעצמו, רק בלי פס התקדמות.
   if(typeof CACHE_NAME !== "string") return;
   if(!("caches" in window) || !("body" in Response.prototype)) return;
+  if(typeof TransformStream === "undefined") return;
   const cache = await caches.open(CACHE_NAME);
   if(await cache.match(MODEL_URL)) return;
 
   const res = await fetch(MODEL_URL);
   if(!res.ok) throw new Error("HTTP " + res.status);
   const total = Number(res.headers.get("Content-Length")) || 0;
-  const reader = res.body.getReader();
-  const chunks = [];
+
+  // הבייטים זורמים ישר למטמון, והמונה רק סופר אותם בדרך. קודם הם נצברו
+  // למערך ואז הועתקו ל-Blob — 29MB פעמיים בזיכרון של טאבלט, בדיוק ברגע
+  // הכי כבד של האפליקציה.
   let got = 0;
-  for(;;){
-    const {done, value} = await reader.read();
-    if(done) break;
-    chunks.push(value);
-    got += value.length;
-    if(total){
-      const pct = Math.round(got / total * 100);
-      progress(pct, "מתכוננים… " + pct + "%");
-    }else{
-      progress(0, "מתכוננים… " + (got / 1048576).toFixed(0) + " MB");
+  const counter = new TransformStream({
+    transform(chunk, controller){
+      got += chunk.byteLength;
+      if(total){
+        const pct = Math.round(got / total * 100);
+        progress(pct, "מתכוננים… " + pct + "%");
+      }else{
+        progress(0, "מתכוננים… " + (got / 1048576).toFixed(0) + " MB");
+      }
+      controller.enqueue(chunk);
     }
-  }
-  await cache.put(MODEL_URL, new Response(new Blob(chunks),
+  });
+
+  await cache.put(MODEL_URL, new Response(res.body.pipeThrough(counter),
     {headers:{"Content-Type":"application/gzip"}}));
 }
 
@@ -946,25 +958,31 @@ function processRecognition(msg, isPartial){
 }
 
 async function ensureAudio(){
-  if(ctx) return;
-  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  // גרף השמע נבנה פעם אחת. רק המיקרופון עצמו נפתח מחדש אחרי שחרור,
+  // אחרת כל מחזור היה משאיר מאחוריו צומת מחובר ל-destination.
+  if(!ctx){
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    procNode = ctx.createScriptProcessor(4096, 1, 1);
+    procNode.onaudioprocess = e=>{
+      // המפענח מקבל אודיו רק בזמן ניסיון. בשאר הזמן שום דבר לא מעובד.
+      if(rec && active){ try{ rec.acceptWaveform(e.inputBuffer); }catch(err){} }
+    };
+    sinkNode = ctx.createGain();
+    sinkNode.gain.value = 0;
+    procNode.connect(sinkNode);
+    sinkNode.connect(ctx.destination);
+  }
   await ctx.resume();
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1}
-  });
-  srcNode = ctx.createMediaStreamSource(stream);
-  procNode = ctx.createScriptProcessor(4096, 1, 1);
-  procNode.onaudioprocess = e=>{
-    // המפענח מקבל אודיו רק בזמן ניסיון. בשאר הזמן המיקרופון פתוח אבל שום דבר לא מעובד.
-    if(rec && active){ try{ rec.acceptWaveform(e.inputBuffer); }catch(err){} }
-  };
-  sinkNode = ctx.createGain();
-  sinkNode.gain.value = 0;
-  srcNode.connect(procNode);
-  procNode.connect(sinkNode);
-  sinkNode.connect(ctx.destination);
-  buildRecognizer();
+  if(!micStream){
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1}
+    });
+    srcNode = ctx.createMediaStreamSource(micStream);
+    srcNode.connect(procNode);
+  }
+  if(!rec) buildRecognizer();
 }
+
 
 // מי שדורש דיוק גבוה גם מדבר בבירור ומהר יותר, ולילד קטן מגיע יותר זמן.
 const LISTEN_MS_EASY = 5000, LISTEN_MS_HARD = 3500;
@@ -972,6 +990,21 @@ function listenWindowMs(){
   const t = (matchThreshold - MIN_THRESHOLD) / (MAX_THRESHOLD - MIN_THRESHOLD);
   return Math.round(LISTEN_MS_EASY + t * (LISTEN_MS_HARD - LISTEN_MS_EASY));
 }
+
+// המיקרופון נפתח בניסיון הראשון ונשאר פתוח, כי סגירה ופתיחה בכל ניסיון
+// מוסיפה השהיה לפני שהילד מתחיל לדבר. אבל כשהדף יורד מהמסך אין סיבה
+// להחזיק אותו, וחיווי ההקלטה של הדפדפן היה נשאר דולק על אפליקציה סגורה.
+function releaseMic(){
+  if(srcNode){ try{ srcNode.disconnect(); }catch(e){} srcNode = null; }
+  if(micStream){ micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+}
+
+document.addEventListener("visibilitychange", ()=>{
+  if(document.hidden){
+    if(active) finish(false);
+    releaseMic();
+  }
+});
 
 async function listen(){
   if(active || !model) return;
@@ -1086,23 +1119,17 @@ function showSettingsView(tabName){
 }
 
 function applyWords(nextWords, nextIndex){
-  const before = words.slice();
   words = nextWords;
-  if(ctx){
-    try{ buildRecognizer(); }
-    catch(err){
-      words = before;
-      buildRecognizer();
-      setSettingsNotice(currentSettingsTab === "catalog" ? "catalogNotice" : "wordsListNotice", "המודל לא מכיר את המילה הזו.", true);
-      return false;
-    }
-  }
+  // המפענח החי צריך את הדקדוק החדש. קודם הבנייה הזו הייתה עטופה ב-try/catch
+  // שהתיימר לאמת שהמודל מכיר את המילה, ומי שנכשל הוחזר אחורה עם הודעת שגיאה.
+  // בפועל KaldiRecognizer לא זורק על מילה שאינה במילון — נבדק, מילת ג'יבריש
+  // נוספה בשקט — כך שהענף הזה מעולם לא רץ. ממילא כל המילים מגיעות מ-PAIRS.
+  if(ctx) buildRecognizer();
   save();
   if(typeof nextIndex === "number") i = nextIndex;
   if(i >= words.length) i = 0;
   show();
   renderPanel();
-  return true;
 }
 
 function addEmoji(emoji){
@@ -1115,9 +1142,7 @@ function addEmoji(emoji){
     setSettingsNotice("catalogNotice", `״${w}״ כבר נמצאת ברשימת המילים.`, false);
     return;
   }
-  // applyWords כבר מרנדר את המסך הפתוח. אם היא נכשלה היא כתבה הודעת שגיאה,
-  // ואסור לדרוס אותה בהודעת הצלחה.
-  if(!applyWords(words.concat([{emoji, word:w}]), words.length)) return;
+  applyWords(words.concat([{emoji, word:w}]), words.length);   // גם מרנדר
   setSettingsNotice("catalogNotice", `🎉 ״${w}״ נוספה בהצלחה למילות התרגול!`, false);
 }
 
@@ -1131,7 +1156,7 @@ function removeAt(index){
   let nextI = i;
   if(index < i) nextI = i - 1;
   if(nextI >= nextWords.length) nextI = 0;
-  if(!applyWords(nextWords, nextI)) return;
+  applyWords(nextWords, nextI);   // גם מרנדר
   setSettingsNotice("wordsListNotice", `המילה ״${removed ? removed.word : ""}״ הוסרה מהתרגול.`, false);
 }
 
@@ -1250,10 +1275,7 @@ function closePanel(){
 }
 
 function playCurrentWord(){
-  if(!soundEnabled){
-    soundEnabled = true;
-    updateSoundUI();
-  }
+  if(!soundEnabled) setSound(true);
   const btn = $("playWord");
   if(btn){
     btn.classList.add("playing");

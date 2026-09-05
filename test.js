@@ -48,8 +48,11 @@ async function main(){
   await new Promise(r => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${server.address().port}`;
 
-  const browser = await chromium.launch();
-  const ctx = await browser.newContext();
+  // מיקרופון מזויף, כדי שאפשר יהיה לבדוק את מסלול השמע בלי חומרה
+  const browser = await chromium.launch({
+    args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"]
+  });
+  const ctx = await browser.newContext({ permissions: ["microphone"] });
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", e => errors.push("pageerror: " + e.message));
@@ -209,12 +212,50 @@ async function main(){
   check("לחיצה על מילה קופצת אליה וסוגרת", await page.evaluate(() => $("overlay").hidden) === true);
 
   // --------------------------------------------------------------
+  group("נגישות");
+  // התמונה היא פקד להשמעת המילה. כשהיא הייתה div אי אפשר היה להגיע אליה
+  // במקלדת ולא היה לה שם נגיש.
+  const pic = await page.evaluate(() => {
+    const el = $("picture");
+    el.focus();
+    return { tag: el.tagName, focused: document.activeElement === el, label: el.getAttribute("aria-label") };
+  });
+  check("אפשר להגיע לתמונה במקלדת", pic.focused, pic);
+  check("לתמונה יש שם נגיש", !!pic.label, pic);
+
+  // --------------------------------------------------------------
+  group("מיקרופון");
+  // נשאר פתוח בין ניסיונות בכוונה, אבל לא כשהדף יורד מהמסך — אחרת חיווי
+  // ההקלטה של הדפדפן נשאר דולק על אפליקציה שאף אחד לא משתמש בה.
+  await page.evaluate(() => ensureAudio());
+  await page.waitForTimeout(300);
+  check("המיקרופון נפתח", await page.evaluate(() => !!micStream));
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { value: true, configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.waitForTimeout(200);
+  check("המיקרופון משוחרר כשהדף יורד מהמסך", await page.evaluate(() => micStream === null));
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { value: false, configurable: true });
+    return ensureAudio();
+  });
+  await page.waitForTimeout(300);
+  check("המיקרופון חוזר לעבוד", await page.evaluate(() => !!micStream));
+
+  // --------------------------------------------------------------
   group("הודעה נעלמת");
   await page.click("#toggleSound");
   await page.waitForTimeout(150);
   const noteShown = (await page.textContent("#note")).length > 0;
   await page.waitForTimeout(2300);
   check("הודעה מוצגת ואז נעלמת", noteShown && (await page.textContent("#note")) === "");
+
+  // השמע נשמר בין פתיחות, כמו המילים ורמת ההתאמה
+  const soundOn = await page.evaluate(() => soundEnabled);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(800);
+  check("מצב השמע נשמר בין טעינות", await page.evaluate(() => soundEnabled) === soundOn, { soundOn });
 
   // --------------------------------------------------------------
   group("עבודה ללא אינטרנט");
@@ -231,6 +272,15 @@ async function main(){
   // הדף פותח את המטמון בשם CACHE_NAME ומוצא בו את מה שה-service worker שמר.
   check("הדף וה-service worker על אותו מטמון", cached.length > 0, cached);
   check("words.js נשמר במטמון", cached.includes("words.js"), cached);
+  // המודל נכתב למטמון בזרימה, בלי לצבור 29MB בזיכרון. אם הזרימה נקטעת
+  // הקובץ נשמר חסר, והמנוע נופל רק בפתיחה הבאה.
+  const modelBytes = await page.evaluate(async () => {
+    const c = await caches.open(CACHE_NAME);
+    const hit = await c.match(new URL("model.tar.gz", location.href).href);
+    return hit ? (await hit.blob()).size : 0;
+  });
+  const realBytes = fs.statSync(path.join(DIR, "model.tar.gz")).size;
+  check("המודל נשמר במטמון במלואו", modelBytes === realBytes, { modelBytes, realBytes });
 
   server.closeAllConnections();
   await new Promise(r => server.close(r));
