@@ -295,6 +295,11 @@
     font-size:11px; font-weight:700; background:#1B2140; color:#FFD65A;
     border-radius:8px; padding:2px 6px; white-space:nowrap;
   }
+  #wordList .jump{
+    flex:1; display:flex; align-items:center; gap:10px;
+    border:0; background:transparent; border-radius:12px;
+    padding:0; cursor:pointer; text-align:right;
+  }
   #wordList .pic{font-size:28px; width:40px; text-align:center; line-height:1;}
   #wordList .w{flex:1; direction:ltr; text-align:left; font-size:16px; font-weight:700; color:#1B2140;}
   #wordList .ops{display:flex; gap:4px;}
@@ -361,6 +366,16 @@
     color:#15803D; background:#DCFCE7; border:1px solid #86EFAC; border-radius:6px;
     padding:1px 3px; line-height:1;
   }
+  /* התגית קיימת תמיד ומוצגת רק על מילה שכבר בתרגול, כדי שסינון החיפוש
+     יהיה החלפת מחלקה ולא בנייה מחדש של הכפתור. */
+  .catalog-item:not(.in-list) .catalog-item-status{display:none;}
+  /* display של הכפתור גובר על [hidden] של הדפדפן, ובלי זה הסינון לא מסתיר
+     כלום. אותה סיבה בדיוק לכלל של .panel-view למעלה. */
+  .catalog-item[hidden]{display:none;}
+  .catalog-empty{
+    grid-column:1 / -1; padding:28px 16px; text-align:center;
+    color:#64748B; font-size:14px; margin:0;
+  }
   .panel-notice{
     font-size:13px; font-weight:600; padding:8px 12px; border-radius:10px;
     margin:0; min-height:18px; line-height:1.4;
@@ -424,11 +439,11 @@
           <h2>⚙️ הגדרות</h2>
           <p id="panelMeta"></p>
         </div>
-        <button id="closePanel" class="panel-close-btn" type="button" aria-label="סגירת הגדרות">×</button>
+        <button id="closePanel" class="panel-close-btn" type="button" data-goto="close" aria-label="סגירת הגדרות">×</button>
       </div>
 
       <!-- כפתור גישה לחלון רשימת המילים הקיימות -->
-      <button id="openWordsViewBtn" type="button" class="settings-words-card" aria-label="מעבר לרשימת המילים שבתרגול">
+      <button id="openWordsViewBtn" type="button" class="settings-words-card" data-goto="words" aria-label="מעבר לרשימת המילים שבתרגול">
         <span class="words-card-icon">📝</span>
         <div class="words-card-body">
           <div class="words-card-top">
@@ -493,17 +508,17 @@
     <!-- תצוגה 2: חלון נפרד של רשימת המילים הקיימות -->
     <div id="viewWordsList" class="panel-view" hidden>
       <div class="panel-nav-head">
-        <button id="backToSettingsBtn" type="button" class="panel-back-btn" title="חזרה להגדרות">
+        <button id="backToSettingsBtn" type="button" class="panel-back-btn" data-goto="main" title="חזרה להגדרות">
           <span>➔</span>
           <span>הגדרות</span>
         </button>
         <h2>📝 מילות התרגול</h2>
-        <button id="closePanelFromWords" class="panel-close-btn" type="button" aria-label="סגירה">×</button>
+        <button id="closePanelFromWords" class="panel-close-btn" type="button" data-goto="close" aria-label="סגירה">×</button>
       </div>
 
       <div class="words-toolbar">
         <p id="wordsListMeta" class="words-meta-text">16 מילים פעילות. לחצו על מילה כדי לתרגל אותה כעת.</p>
-        <button id="openCatalogBtn" type="button" class="open-catalog-cta" aria-label="מעבר למאגר כל המילים להוספה">
+        <button id="openCatalogBtn" type="button" class="open-catalog-cta" data-goto="catalog" aria-label="מעבר למאגר כל המילים להוספה">
           <span>➕ הוספת מילים מתוך המאגר</span>
           <span class="open-catalog-badge" id="catalogAvailableCount">מאגר המילים ←</span>
         </button>
@@ -516,12 +531,12 @@
     <!-- תצוגה 3: חלון נוסף שבו יש את כל המילים האפשריות שאפשר להוסיף -->
     <div id="viewCatalog" class="panel-view" hidden>
       <div class="panel-nav-head">
-        <button id="backToWordsBtn" type="button" class="panel-back-btn" title="חזרה לרשימת המילים">
+        <button id="backToWordsBtn" type="button" class="panel-back-btn" data-goto="words" title="חזרה לרשימת המילים">
           <span>➔</span>
           <span>מילות התרגול</span>
         </button>
         <h2>🎨 מאגר כל המילים</h2>
-        <button id="closePanelFromCatalog" class="panel-close-btn" type="button" aria-label="סגירה">×</button>
+        <button id="closePanelFromCatalog" class="panel-close-btn" type="button" data-goto="close" aria-label="סגירה">×</button>
       </div>
 
       <div class="catalog-search-box">
@@ -534,7 +549,7 @@
       </div>
 
       <p id="catalogNotice" class="panel-notice"></p>
-      <div id="catalog"></div>
+      <div id="catalog"><p id="catalogEmpty" class="catalog-empty" hidden></p></div>
     </div>
   </div>
 </div>
@@ -609,6 +624,19 @@ function updateMatchUI(){
   for(const p of PRESETS) $(p.btn).classList.toggle("active", p === preset);
 }
 
+// הודעות למשתמש מתחלפות ונעלמות. הטוקן מוודא שרק מי שכתב הודעה מוחק אותה,
+// במקום להשוות את הטקסט שעל המסך כדי לנחש אם היא עדיין שם.
+let noteToken = 0;
+function setNote(msg, ms){
+  $("note").textContent = msg;
+  const mine = ++noteToken;
+  if(ms) setTimeout(()=>clearNote(mine), ms);
+  return mine;
+}
+function clearNote(token){
+  if(token === noteToken) $("note").textContent = "";
+}
+
 function updateSoundUI(){
   const btn = $("toggleSound");
   if(!btn) return;
@@ -632,16 +660,10 @@ function toggleSound(){
   }
   updateSoundUI();
   if(soundEnabled){
-    $("note").textContent = "השמע הופעל 🔊";
+    setNote("השמע הופעל 🔊", 2000);
     speak(word(), EN);
-    setTimeout(()=>{
-      if($("note").textContent === "השמע הופעל 🔊") $("note").textContent = "";
-    }, 2000);
   }else{
-    $("note").textContent = "השמע כובה 🔇";
-    setTimeout(()=>{
-      if($("note").textContent === "השמע כובה 🔇") $("note").textContent = "";
-    }, 2000);
+    setNote("השמע כובה 🔇", 2000);
   }
 }
 
@@ -664,7 +686,7 @@ function show(){
   $("picture").textContent = words[i].emoji;
   $("picture").className = "";
   $("word").textContent = word();
-  $("note").textContent = "";
+  setNote("");
 }
 
 const EN = "en-US";   // המילה שמתרגלים
@@ -777,7 +799,7 @@ async function loadModel(){
     if(sIcon) sIcon.textContent = "🎤";
   }catch(err){
     $("loading").hidden = true;
-    $("note").textContent = "לא הצלחנו לטעון את מנוע הדיבור. בדקו את model.tar.gz";
+    setNote("לא הצלחנו לטעון את מנוע הדיבור. בדקו את model.tar.gz");
     console.error(err);
   }
 }
@@ -954,9 +976,9 @@ function listenWindowMs(){
 async function listen(){
   if(active || !model) return;
   try{ await ensureAudio(); }
-  catch(err){ $("note").textContent = "צריך לאשר את המיקרופון."; return; }
+  catch(err){ setNote("צריך לאשר את המיקרופון."); return; }
 
-  $("note").textContent = "";
+  setNote("");
   active = true;
   $("say").classList.add("listening");
   // אם עד סוף החלון לא היה ניקוד שעבר את הרף, זה כישלון. אין מה לשקלל כאן:
@@ -986,11 +1008,10 @@ function good(){
 }
 function again(){
   $("picture").className = "again";
-  const msg = matchThreshold >= HIGH_BAR ? "בדיוק גבוה נדרשת הגייה ברורה. נסו שוב!" : "";
-  $("note").textContent = msg;
+  const note = setNote(matchThreshold >= HIGH_BAR ? "בדיוק גבוה נדרשת הגייה ברורה. נסו שוב!" : "");
   speak("נסו שוב", HE, ()=>setTimeout(()=>{
     $("picture").className = "";
-    if($("note").textContent === msg) $("note").textContent = "";
+    clearNote(note);
   }, 700));
 }
 function pick(){
@@ -1043,14 +1064,16 @@ function updateMainWordsSummary(){
   }
 }
 
+const VIEWS = {main: "viewSettingsMain", words: "viewWordsList", catalog: "viewCatalog"};
+
 function showSettingsView(tabName){
   currentSettingsTab = tabName;
-  $("viewSettingsMain").hidden = (tabName !== "main");
-  $("viewWordsList").hidden = (tabName !== "words");
-  $("viewCatalog").hidden = (tabName !== "catalog");
+  for(const name in VIEWS) $(VIEWS[name]).hidden = (name !== tabName);
+
+  // התוויות והמונים מופיעים בשלושת המסכים, אז הם מתעדכנים בכל מעבר.
+  updateMainWordsSummary();
 
   if(tabName === "main"){
-    updateMainWordsSummary();
     updateMatchUI();
   } else if(tabName === "words"){
     setSettingsNotice("wordsListNotice", "");
@@ -1092,9 +1115,10 @@ function addEmoji(emoji){
     setSettingsNotice("catalogNotice", `״${w}״ כבר נמצאת ברשימת המילים.`, false);
     return;
   }
-  applyWords(words.concat([{emoji, word:w}]), words.length);
+  // applyWords כבר מרנדר את המסך הפתוח. אם היא נכשלה היא כתבה הודעת שגיאה,
+  // ואסור לדרוס אותה בהודעת הצלחה.
+  if(!applyWords(words.concat([{emoji, word:w}]), words.length)) return;
   setSettingsNotice("catalogNotice", `🎉 ״${w}״ נוספה בהצלחה למילות התרגול!`, false);
-  renderCatalog();
 }
 
 function removeAt(index){
@@ -1107,128 +1131,101 @@ function removeAt(index){
   let nextI = i;
   if(index < i) nextI = i - 1;
   if(nextI >= nextWords.length) nextI = 0;
-  applyWords(nextWords, nextI);
+  if(!applyWords(nextWords, nextI)) return;
   setSettingsNotice("wordsListNotice", `המילה ״${removed ? removed.word : ""}״ הוסרה מהתרגול.`, false);
-  renderList();
+}
+
+function span(cls, text){
+  const el = document.createElement("span");
+  el.className = cls;
+  el.textContent = text;
+  return el;
+}
+
+// 237 כפתורים. הם נבנים פעם אחת ואז רק מוסתרים ומוצגים, כי קודם כל הקלדה
+// בחיפוש בנתה את כולם מחדש — ועם מאזין חדש לכל אחד מהם.
+let catalogItems = null;
+
+function buildCatalog(){
+  const frag = document.createDocumentFragment();
+  catalogItems = PAIRS.map(([emoji, w]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "catalog-item";
+    b.dataset.emoji = emoji;
+    b.dataset.word = w;
+    b.title = `הוספת ${w} לתרגול`;
+    b.append(span("catalog-item-status", "✓ בתרגול"),
+             span("catalog-item-emoji", emoji),
+             span("catalog-item-name", w));
+    frag.appendChild(b);
+    return b;
+  });
+  $("catalog").appendChild(frag);
 }
 
 function renderCatalog(){
+  if(!catalogItems) buildCatalog();
   const q = $("search").value.trim().toLowerCase();
   const taken = takenSet();
-  const box = $("catalog");
-  box.innerHTML = "";
-  const list = PAIRS.filter(([e,w]) => !q || w.includes(q) || e.includes(q));
+  let shown = 0, inPractice = 0;
 
-  const counterBadge = $("catalogCounterBadge");
-  if(counterBadge){
-    const inPracticeCount = list.filter(([_, w]) => taken.has(w)).length;
-    counterBadge.textContent = `${list.length} מילים (${inPracticeCount} כבר בתרגול)`;
-  }
-
-  if(!list.length){
-    const p = document.createElement("p");
-    p.textContent = "לא נמצאו מילים שמתאימות לחיפוש ״" + q + "״";
-    p.style.gridColumn = "1 / -1";
-    p.style.padding = "28px 16px";
-    p.style.textAlign = "center";
-    p.style.color = "#64748B";
-    p.style.fontSize = "14px";
-    box.appendChild(p);
-    return;
-  }
-
-  list.forEach(([emoji, w]) => {
+  for(const b of catalogItems){
+    const w = b.dataset.word;
     const isTaken = taken.has(w);
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "catalog-item" + (isTaken ? " in-list" : "");
-    b.title = isTaken ? `${w} (כבר בתרגול)` : `הוספת ${w} לתרגול`;
+    const match = !q || w.includes(q) || b.dataset.emoji.includes(q);
+    b.hidden = !match;
+    // הסימון "כבר בתרגול" משתנה רק כשמוסיפים או מוחקים מילה. בלי התנאי הזה
+    // כל הקשה בחיפוש הייתה בונה 237 מחרוזות title מחדש בלי שום סיבה.
+    if(b.classList.contains("in-list") !== isTaken){
+      b.classList.toggle("in-list", isTaken);
+      b.title = isTaken ? `${w} (כבר בתרגול)` : `הוספת ${w} לתרגול`;
+    }
+    if(match){ shown++; if(isTaken) inPractice++; }
+  }
 
-    let statusHtml = isTaken ? '<span class="catalog-item-status">✓ בתרגול</span>' : '';
-    b.innerHTML = `
-      ${statusHtml}
-      <span class="catalog-item-emoji">${emoji}</span>
-      <span class="catalog-item-name">${w}</span>
-    `;
+  $("catalogCounterBadge").textContent = `${shown} מילים (${inPractice} כבר בתרגול)`;
+  $("catalogEmpty").textContent = `לא נמצאו מילים שמתאימות לחיפוש ״${q}״`;
+  $("catalogEmpty").hidden = shown > 0;
+}
 
-    b.addEventListener("click", ()=>{
-      if(isTaken){
-        setSettingsNotice("catalogNotice", `״${w}״ כבר נמצאת ברשימת המילים שבתרגול.`, false);
-      } else {
-        addEmoji(emoji);
-      }
-    });
-    box.appendChild(b);
-  });
+function opButton(cls, icon, title, label){
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = cls;
+  b.textContent = icon;
+  b.title = title;
+  b.setAttribute("aria-label", label);
+  return b;
 }
 
 function renderList(){
-  updateMainWordsSummary();
   const ul = $("wordList");
   ul.innerHTML = "";
+  const frag = document.createDocumentFragment();
+
   words.forEach((item, n) => {
     const li = document.createElement("li");
+    li.dataset.index = n;
     if(n === i) li.className = "current";
 
     const jump = document.createElement("button");
     jump.type = "button";
-    jump.style.flex = "1";
-    jump.style.display = "flex";
-    jump.style.alignItems = "center";
-    jump.style.gap = "10px";
-    jump.style.border = "0";
-    jump.style.background = "transparent";
-    jump.style.borderRadius = "12px";
-    jump.style.padding = "0";
-    jump.style.cursor = "pointer";
-    jump.style.textAlign = "right";
-
-    let currentTag = "";
-    if(n === i){
-      currentTag = '<span class="current-tag">עכשיו בתרגול ⭐</span>';
-    }
-
-    jump.innerHTML = `
-      <span class="pic">${item.emoji}</span>
-      <span class="w">${item.word}</span>
-      ${currentTag}
-    `;
-    jump.addEventListener("click", ()=>{
-      i = n;
-      show();
-      closePanel();
-    });
+    jump.className = "jump";
+    jump.append(span("pic", item.emoji), span("w", item.word));
+    if(n === i) jump.appendChild(span("current-tag", "עכשיו בתרגול ⭐"));
 
     const ops = document.createElement("div");
     ops.className = "ops";
-
-    const speakBtn = document.createElement("button");
-    speakBtn.type = "button";
-    speakBtn.className = "speak-word-btn";
-    speakBtn.textContent = "🔊";
-    speakBtn.title = "השמעת המילה " + item.word;
-    speakBtn.setAttribute("aria-label", "השמעת " + item.word);
-    speakBtn.addEventListener("click", (e)=>{
-      e.stopPropagation();
-      speak(item.word, EN);
-    });
-
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "del-word-btn";
-    del.textContent = "🗑️";
-    del.title = "מחיקת המילה " + item.word;
-    del.setAttribute("aria-label", "מחיקת " + item.word);
+    const del = opButton("del-word-btn", "🗑️", "מחיקת המילה " + item.word, "מחיקת " + item.word);
     del.disabled = words.length <= 1;
-    del.addEventListener("click", (e)=>{
-      e.stopPropagation();
-      removeAt(n);
-    });
+    ops.append(opButton("speak-word-btn", "🔊", "השמעת המילה " + item.word, "השמעת " + item.word), del);
 
-    ops.append(speakBtn, del);
     li.append(jump, ops);
-    ul.appendChild(li);
+    frag.appendChild(li);
   });
+
+  ul.appendChild(frag);
 }
 
 function renderPanel(){
@@ -1271,13 +1268,35 @@ $("toggleSound").addEventListener("click", toggleSound);
 $("say").addEventListener("click", listen);
 $("next").addEventListener("click", next);
 $("openSettings").addEventListener("click", openPanel);
-$("closePanel").addEventListener("click", closePanel);
-$("closePanelFromWords").addEventListener("click", closePanel);
-$("closePanelFromCatalog").addEventListener("click", closePanel);
-$("openWordsViewBtn").addEventListener("click", ()=>showSettingsView("words"));
-$("backToSettingsBtn").addEventListener("click", ()=>showSettingsView("main"));
-$("openCatalogBtn").addEventListener("click", ()=>showSettingsView("catalog"));
-$("backToWordsBtn").addEventListener("click", ()=>showSettingsView("words"));
+
+// שבעת כפתורי הניווט בפאנל אומרים לאן ללכת ב-data-goto, ומאזין אחד מקשיב.
+$("panel").addEventListener("click", e=>{
+  const btn = e.target.closest("[data-goto]");
+  if(!btn) return;
+  const to = btn.dataset.goto;
+  to === "close" ? closePanel() : showSettingsView(to);
+});
+
+// מאזין אחד לכל הקטלוג, במקום אחד לכל אחת מ-237 המילים.
+$("catalog").addEventListener("click", e=>{
+  const b = e.target.closest(".catalog-item");
+  if(!b) return;
+  if(b.classList.contains("in-list")){
+    setSettingsNotice("catalogNotice", `״${b.dataset.word}״ כבר נמצאת ברשימת המילים שבתרגול.`, false);
+  }else{
+    addEmoji(b.dataset.emoji);
+  }
+});
+
+// ומאזין אחד לרשימת המילים, במקום שלושה לכל שורה.
+$("wordList").addEventListener("click", e=>{
+  const li = e.target.closest("li");
+  if(!li) return;
+  const n = Number(li.dataset.index);
+  if(e.target.closest(".del-word-btn")) removeAt(n);
+  else if(e.target.closest(".speak-word-btn")) speak(words[n].word, EN);
+  else if(e.target.closest(".jump")){ i = n; show(); closePanel(); }
+});
 
 $("overlay").addEventListener("click", e=>{ if(e.target.id === "overlay") closePanel(); });
 $("search").addEventListener("input", renderCatalog);
@@ -1291,7 +1310,6 @@ $("resetBtn").addEventListener("click", ()=>{
   if(!confirm("לאפס את רשימת המילים ורמת ההתאמה לברירת המחדל?")) return;
   applyWords(DEFAULT_WORDS.slice(), 0);
   setThreshold(DEFAULT_THRESHOLD);
-  updateMainWordsSummary();
 });
 
 if("serviceWorker" in navigator){
