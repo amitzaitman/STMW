@@ -403,7 +403,7 @@
 <div id="topBar">
   <div id="topBarLeft">
     <button id="openSettings" type="button" aria-label="הגדרות ואוצר מילים" title="הגדרות">⚙️</button>
-    <a id="openFeedback" href="https://docs.google.com/forms/d/e/1FAIpQLSf0Ftx6bCraujLqIVmZnvL5FbNfwQCUPfUr7eHMjWN7cPbCrA/viewform" target="_blank" rel="noopener noreferrer" aria-label="משוב והצעות" title="שליחת משוב ורעיונות (טופס Google)">💬</a>
+    <a id="openFeedback" data-feedback target="_blank" rel="noopener noreferrer" aria-label="משוב והצעות" title="שליחת משוב ורעיונות (טופס Google)">💬</a>
   </div>
   <div id="stars"></div>
   <button id="toggleSound" type="button" class="muted" aria-label="הפעלת שמע" title="שמע מכובה - לחצו להפעלה">🔇</button>
@@ -499,7 +499,7 @@
       <div id="settingsActions">
         <button id="installBtn" type="button" hidden>📲 התקנת אפליקציה למכשיר</button>
         <button id="resetBtn" type="button">🔄 איפוס מילים והגדרות</button>
-        <a id="feedbackBtnInSettings" href="https://docs.google.com/forms/d/e/1FAIpQLSf0Ftx6bCraujLqIVmZnvL5FbNfwQCUPfUr7eHMjWN7cPbCrA/viewform" target="_blank" rel="noopener noreferrer">💬 שליחת משוב ורעיונות ↗</a>
+        <a id="feedbackBtnInSettings" data-feedback target="_blank" rel="noopener noreferrer">💬 שליחת משוב ורעיונות ↗</a>
       </div>
 
       <p id="settingsNotice" class="panel-notice"></p>
@@ -556,6 +556,12 @@
 
 <script>
 const MODEL_URL = new URL("model.tar.gz", location.href).href;
+
+// כתובת טופס המשוב יושבת כאן פעם אחת ומוצבת על שני הקישורים — זה שבסרגל
+// העליון וזה שבהגדרות. קודם היא הייתה כתובה פעמיים ב-HTML, והחלפת הטופס
+// דרשה לזכור את שני המקומות; מי ששכח אחד מהם שלח חצי מהמשוב לטופס ישן.
+const FEEDBACK_URL = "https://docs.google.com/forms/d/e/1FAIpQLSf0Ftx6bCraujLqIVmZnvL5FbNfwQCUPfUr7eHMjWN7cPbCrA/viewform";
+for(const a of document.querySelectorAll("a[data-feedback]")) a.href = FEEDBACK_URL;
 
 // רשימת כל האימוג'ים והמילים נטענת מקובץ נפרד (words.js)
 var PAIRS = window.PAIRS || [];

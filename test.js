@@ -263,6 +263,25 @@ async function main(){
   check("לתמונה יש שם נגיש", !!pic.label, pic);
 
   // --------------------------------------------------------------
+  group("קישורי המשוב");
+  // הכתובת הייתה כתובה פעמיים ב-HTML — בכפתור שבסרגל ובקישור שבהגדרות.
+  // מי שהחליף טופס ושכח אחד מהם שלח חצי מהמשוב לטופס ישן, בלי שאף אחד
+  // ישים לב. עכשיו היא קבוע אחד; הבדיקה שומרת גם על היחידוּת וגם על כך
+  // ששני הקישורים באמת מקבלים כתובת.
+  const feedbackHrefs = await page.evaluate(
+    () => [...document.querySelectorAll("a[data-feedback]")].map(a => a.href));
+  check("שני קישורי משוב על הדף", feedbackHrefs.length === 2, feedbackHrefs);
+  check("שניהם מצביעים על אותו טופס",
+    feedbackHrefs.length === 2 && feedbackHrefs[0] === feedbackHrefs[1], feedbackHrefs);
+  check("הכתובת היא טופס Google",
+    feedbackHrefs.every(h => /^https:\/\/docs\.google\.com\/forms\//.test(h)), feedbackHrefs);
+  // העוגן האמיתי של הפריט: הכתובת מופיעה במקור פעם אחת בלבד.
+  const html = fs.readFileSync(path.join(DIR, "index.html"), "utf8");
+  const formPath = feedbackHrefs[0] ? new URL(feedbackHrefs[0]).pathname : "";
+  check("הכתובת כתובה במקור פעם אחת",
+    !!formPath && html.split(formPath).length - 1 === 1, formPath);
+
+  // --------------------------------------------------------------
   group("מיקרופון");
   // נשאר פתוח בין ניסיונות בכוונה, אבל לא כשהדף יורד מהמסך — אחרת חיווי
   // ההקלטה של הדפדפן נשאר דולק על אפליקציה שאף אחד לא משתמש בה.
