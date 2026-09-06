@@ -59,6 +59,25 @@ async function main(){
   page.on("console", m => { if(m.type() === "error") errors.push("console: " + m.text()); });
 
   // --------------------------------------------------------------
+  group("בקלוג");
+  // כל פריט ב-BACKLOG.md מעוגן בקטע קוד, לא במספר שורה. מספר שורה מתיישן
+  // בשקט; קטע קוד שנעלם מפיל את הבדיקה ומזכיר שהפריט כנראה כבר לא נכון.
+  const backlog = fs.readFileSync(path.join(DIR, "BACKLOG.md"), "utf8");
+  const anchors = [...backlog.matchAll(/^עוגן: `([^`]+)` — `([^`]+)`(?:\s*×(\d+))?\s*$/gm)]
+    .map(m => ({ file: m[1], snippet: m[2], times: m[3] ? Number(m[3]) : null }));
+
+  check("יש עוגנים בבקלוג", anchors.length > 0, anchors.length);
+  const broken = [];
+  for(const a of anchors){
+    const target = path.join(DIR, a.file);
+    if(!fs.existsSync(target)){ broken.push(`${a.file} לא קיים`); continue; }
+    const found = fs.readFileSync(target, "utf8").split(a.snippet).length - 1;
+    if(found === 0) broken.push(`${a.file}: "${a.snippet.slice(0, 40)}" לא נמצא`);
+    else if(a.times !== null && found !== a.times) broken.push(`${a.file}: "${a.snippet.slice(0, 40)}" ×${found}, הבקלוג אומר ×${a.times}`);
+  }
+  check("כל עוגן בבקלוג עדיין מצביע על קוד קיים", broken.length === 0, broken);
+
+  // --------------------------------------------------------------
   group("מניפסט");
   // נתיב מוחלט עובד רק כשהאפליקציה יושבת בשורש. ב-GitHub Pages היא יושבת
   // תחת /REPO/, וכל אייקון החזיר 404 — ואז כרום לא מציע להתקין בכלל.
