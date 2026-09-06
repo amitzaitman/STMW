@@ -564,7 +564,7 @@ var DEFAULT_WORDS = window.DEFAULT_WORDS || [];
 
 const $ = id => document.getElementById(id);
 let words = load() || DEFAULT_WORDS.slice();
-let i = 0, stars = 0;
+let i = 0, score = 0;
 
 let model = null, rec = null;
 let ctx = null, srcNode = null, procNode = null, sinkNode = null, micStream = null;
@@ -1032,9 +1032,24 @@ function finish(ok){
 // מעל זה מסבירים לילד למה זה לא התקבל, אחרת "נסו שוב" נשמע שרירותי.
 const HIGH_BAR = 85;
 
+// שלוש הצלחות מתחלפות במדליה, וחמש מדליות בגביע. קודם היה כאן גבול של
+// עשרה כוכבים, ואחריו התצוגה קפאה — ילד שהמשיך לתרגל לא ראה עוד שום
+// שינוי. ההמרה גם מחזיקה את השורה קצרה: שורה של עשרה כוכבים
+// נכנסת מתחת לכפתורים שבצדי הסרגל בטלפון צר, וכאן יש לכל היותר
+// ארבע מדליות ושני כוכבים, וגביע נוסף כל חמישה-עשר מילים.
+const PER_MEDAL = 3, MEDALS_PER_TROPHY = 5;
+const PER_TROPHY = PER_MEDAL * MEDALS_PER_TROPHY;
+
+function renderScore(){
+  const rest = score % PER_TROPHY;
+  $("stars").textContent = "🏆".repeat(Math.floor(score / PER_TROPHY))
+    + "🏅".repeat(Math.floor(rest / PER_MEDAL))
+    + "⭐".repeat(rest % PER_MEDAL);
+}
+
 function good(){
-  stars = Math.min(stars+1, 10);
-  $("stars").textContent = "⭐".repeat(stars);
+  score++;
+  renderScore();
   $("picture").className = "good";
   $("picture").textContent = "🎉";
   speak("כל הכבוד!", HE, ()=>setTimeout(next, 400));
