@@ -421,6 +421,15 @@ async function main(){
 
   // --------------------------------------------------------------
   group("נגישות");
+  // $() מוצא רק את הראשון, אבל כלל CSS לפי id תופס את כולם: הסגנון של
+  // כפתור הרמז צבע פעם את שורת ההסבר במאגר, כי גם לה קראו hint.
+  const dupIds = await page.evaluate(() => {
+    const seen = new Set(), dup = [];
+    for(const el of document.querySelectorAll("[id]")){ if(seen.has(el.id)) dup.push(el.id); seen.add(el.id); }
+    return dup;
+  });
+  check("אין שני אלמנטים עם אותו id", dupIds.length === 0, dupIds);
+
   // התמונה היא פקד להשמעת המילה, אז צריך להגיע אליה במקלדת ושיהיה לה שם.
   const pic = await page.evaluate(() => {
     const el = $("picture");
