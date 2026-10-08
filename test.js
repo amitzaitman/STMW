@@ -235,6 +235,71 @@ async function main(){
   check("לחיצה חוזרת לא מוסיפה פעמיים", await page.evaluate(() => words.length) === wordsBefore + 1);
 
   // --------------------------------------------------------------
+  group("ערכות");
+  // מורה בוחרת נושא ורמה, ומחליפה או מוסיפה בלחיצה אחת את כל מה שמוצג.
+  // הכפתורים פועלים על מה שהמאגר מציג, אז גם כאן נמדד מה באמת על המסך.
+  const unsorted = await page.evaluate(() =>
+    PAIRS.filter(p => ![1, 2, 3].includes(p[3]) || !THEME_BY_WORD[p[1]]).map(p => p[1]));
+  check("לכל מילה במאגר יש נושא ורמה", unsorted.length === 0, unsorted);
+
+  const listBeforeSets = await page.evaluate(() => words.slice());
+  const shownSet = () => page.evaluate(() =>
+    [...document.querySelectorAll("#catalog .catalog-item")]
+      .filter(b => getComputedStyle(b).display !== "none").map(b => b.dataset.word).sort().join());
+  const fruit = level => page.evaluate(l => THEMES.find(t => t.id === "fruit").pairs
+    .filter(p => !l || p[3] === l).map(p => p[1]).sort().join(), level);
+  const actionsShown = () => page.evaluate(() => getComputedStyle($("setActions")).display !== "none");
+  const practiced = () => page.evaluate(() => words.map(w => w.word).sort().join());
+
+  await page.fill("#search", "");
+  await page.waitForTimeout(150);
+  check("בלי סינון אין כפתורי ערכה", !(await actionsShown()));
+  await page.click('#themeChips [data-theme="fruit"]');
+  check("נושא מסנן בפועל", await shownSet() === await fruit(), await shownSet());
+  await page.click('#levelChips [data-level="1"]');
+  const easyFruit = await fruit(1);
+  check("רמה מצמצמת בתוך הנושא", !!easyFruit && await shownSet() === easyFruit, await shownSet());
+  check("עם סינון יש כפתורי ערכה", await actionsShown());
+
+  page.once("dialog", d => d.dismiss());
+  await page.click("#practiceSetBtn");
+  check("ביטול משאיר את הרשימה",
+        JSON.stringify(await page.evaluate(() => words)) === JSON.stringify(listBeforeSets));
+
+  page.once("dialog", d => d.accept());
+  await page.click("#practiceSetBtn");
+  await page.waitForTimeout(150);
+  const replaced = await page.evaluate(() => ({
+    saved: JSON.parse(localStorage.getItem("words")).map(w => w.word).sort().join(),
+    current: word()
+  }));
+  check("תרגלו רק אותן מחליף את הרשימה ושומר",
+        await practiced() === easyFruit && replaced.saved === easyFruit &&
+        easyFruit.split(",").includes(replaced.current), replaced);
+
+  await page.click('#levelChips [data-level=""]');
+  await page.click("#addSetBtn");
+  await page.waitForTimeout(150);
+  check("הוספה מצרפת רק את החסרות", await practiced() === await fruit(), await practiced());
+  check("כשהכל בתרגול אין מה להוסיף", await page.evaluate(() => $("addSetBtn").disabled));
+
+  // מכרטיס הערכות באים לבחור נושא: בלי מקלדת שמכסה אותו, ובלי הסינון הקודם.
+  await page.click("#closePanelFromCatalog");
+  await page.click("#openSettings");
+  await page.click("#openThemesBtn");
+  await page.waitForTimeout(150);
+  const entry = await page.evaluate(() => ({
+    catalog: !$("viewCatalog").hidden,
+    focused: document.activeElement === $("search"),
+    all: visibleCatalogItems() === PAIRS.length
+  }));
+  check("כרטיס הערכות פותח את כל המאגר בלי מקלדת",
+        entry.catalog && !entry.focused && entry.all, entry);
+
+  // הקבוצה הבאה מוחקת שורה מהרשימה שהשאירה הקבוצה הקודמת.
+  await page.evaluate(list => applyWords(list, 0), listBeforeSets);
+
+  // --------------------------------------------------------------
   group("רשימת התרגול");
   await page.click("#backToWordsBtn");
   await page.waitForTimeout(200);

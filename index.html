@@ -18,7 +18,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <script src="./vosk.js"></script>
 <script src="./cache-name.js"></script>
-<script src="./words.js?v=5"></script>
+<script src="./words.js?v=6"></script>
 <style>
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -380,6 +380,30 @@
   #catalogCounterBadge{
     font-weight:700; color:#2B6CB0; white-space:nowrap;
   }
+  /* שורה אחת שגוללים לצד. בשבירת שורות, הנושאים לבדם תופסים בטלפון
+     יותר מגובה המאגר עצמו. */
+  .chip-row{
+    display:flex; gap:6px; overflow-x:auto; padding:2px 2px 6px;
+    scrollbar-width:thin;
+  }
+  .chip{
+    flex:0 0 auto; white-space:nowrap; font:inherit; font-size:13px; font-weight:700;
+    color:#1B2140; background:#fff; border:2px solid #CBD5E1; border-radius:999px;
+    padding:5px 11px; cursor:pointer; transition:background-color .15s, border-color .15s;
+  }
+  .chip:hover{background:#F8FAFC;}
+  .chip[aria-pressed="true"]{background:#FFD65A; border-color:#1B2140;}
+  #setActions{display:flex; gap:8px;}
+  #setActions[hidden]{display:none;}
+  #setActions button{
+    flex:1; font:inherit; font-size:14px; font-weight:800; color:#1B2140;
+    border:2.5px solid #1B2140; border-radius:14px; padding:9px 8px; cursor:pointer;
+    box-shadow:0 3px 0 #1B2140; transition:transform .15s, box-shadow .15s;
+  }
+  #practiceSetBtn{background:#FFD65A;}
+  #addSetBtn{background:#fff;}
+  #setActions button:active{transform:translateY(1px); box-shadow:0 1px 0 #1B2140;}
+  #setActions button:disabled{opacity:.45; cursor:not-allowed; box-shadow:none;}
   #catalog{
     max-height:360px; overflow-y:auto; background:#F1F5F9; border:2.5px solid #CBD5E1;
     border-radius:18px; padding:8px;
@@ -515,6 +539,15 @@
         <span class="words-card-arrow">←</span>
       </button>
 
+      <button id="openThemesBtn" type="button" class="settings-words-card" data-goto="catalog" data-nofocus aria-label="מעבר לערכות מילים לפי נושא ורמה">
+        <span class="words-card-icon">📚</span>
+        <div class="words-card-body">
+          <span class="words-card-title">ערכות לפי נושא ורמה</span>
+          <span class="words-card-sub">פירות, חיות, תחבורה ועוד — כל הערכה בלחיצה אחת</span>
+        </div>
+        <span class="words-card-arrow">←</span>
+      </button>
+
       <!-- בחירת רמת התאמה קולית לקול הילד -->
       <div id="matchLevelSection" class="match-section">
         <div class="match-head">
@@ -610,9 +643,23 @@
         <input id="search" type="search" placeholder="חיפוש מילה (למשל dog, lion, apple...)" autocomplete="off">
       </div>
 
+      <!-- הנושאים נבנים מ-THEMES ב-words.js -->
+      <div id="themeChips" class="chip-row" role="group" aria-label="סינון לפי נושא"></div>
+      <div id="levelChips" class="chip-row" role="group" aria-label="סינון לפי רמת קושי">
+        <button type="button" class="chip" data-level="" aria-pressed="true">כל הרמות</button>
+        <button type="button" class="chip" data-level="1" aria-pressed="false">קל</button>
+        <button type="button" class="chip" data-level="2" aria-pressed="false">בינוני</button>
+        <button type="button" class="chip" data-level="3" aria-pressed="false">מאתגר</button>
+      </div>
+
       <div class="catalog-info-bar">
         <span id="hint">לחצו על תמונה כדי להוסיף אותה לתרגול. מילים שכבר בתרגול מסומנות ב-✓.</span>
         <span id="catalogCounterBadge"></span>
+      </div>
+
+      <div id="setActions" hidden>
+        <button id="practiceSetBtn" type="button"></button>
+        <button id="addSetBtn" type="button"></button>
       </div>
 
       <p id="catalogNotice" class="panel-notice"></p>
@@ -633,6 +680,8 @@ for(const a of document.querySelectorAll("a[data-feedback]")) a.href = FEEDBACK_
 var PAIRS = window.PAIRS || [];
 var WORD_BY_EMOJI = window.WORD_BY_EMOJI || {};
 var DEFAULT_WORDS = window.DEFAULT_WORDS || [];
+var THEMES = window.THEMES || [];
+var THEME_BY_WORD = window.THEME_BY_WORD || {};
 
 const $ = id => document.getElementById(id);
 let words = load() || DEFAULT_WORDS.slice();
@@ -1310,7 +1359,7 @@ function updateMainWordsSummary(){
 
 const VIEWS = {main: "viewSettingsMain", words: "viewWordsList", catalog: "viewCatalog"};
 
-function showSettingsView(tabName){
+function showSettingsView(tabName, focusSearch = true){
   currentSettingsTab = tabName;
   for(const name in VIEWS) $(VIEWS[name]).hidden = (name !== tabName);
 
@@ -1325,7 +1374,7 @@ function showSettingsView(tabName){
   } else if(tabName === "catalog"){
     setSettingsNotice("catalogNotice", "");
     renderCatalog();
-    setTimeout(()=>{ try{ $("search").focus(); }catch(e){} }, 50);
+    if(focusSearch) setTimeout(()=>{ try{ $("search").focus(); }catch(e){} }, 50);
   }
 }
 
@@ -1380,15 +1429,19 @@ function span(cls, text){
 // 237 כפתורים. הם נבנים פעם אחת והחיפוש רק מסתיר ומציג אותם, כדי שהקלדה
 // לא תבנה את כולם מחדש בכל הקשה.
 let catalogItems = null;
+// הנושא והרמה מצטרפים לחיפוש. "" הוא הכל.
+let catalogTheme = "", catalogLevel = "";
 
 function buildCatalog(){
   const frag = document.createDocumentFragment();
-  catalogItems = PAIRS.map(([emoji, w]) => {
+  catalogItems = PAIRS.map(([emoji, w, , level]) => {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "catalog-item";
     b.dataset.emoji = emoji;
     b.dataset.word = w;
+    b.dataset.theme = THEME_BY_WORD[w] || "";
+    b.dataset.level = level || "";
     b.title = `הוספת ${w} לתרגול`;
     b.append(span("catalog-item-status", "✓ בתרגול"),
              span("catalog-item-emoji", emoji),
@@ -1397,6 +1450,17 @@ function buildCatalog(){
     return b;
   });
   $("catalog").appendChild(frag);
+
+  const chips = document.createDocumentFragment();
+  for(const [id, label] of [["", "כל הנושאים"]].concat(THEMES.map(t => [t.id, t.emoji + " " + t.name]))){
+    const c = document.createElement("button");
+    c.type = "button";
+    c.className = "chip";
+    c.dataset.theme = id;
+    c.textContent = label;
+    chips.appendChild(c);
+  }
+  $("themeChips").appendChild(chips);
 }
 
 function renderCatalog(){
@@ -1408,7 +1472,9 @@ function renderCatalog(){
   for(const b of catalogItems){
     const w = b.dataset.word;
     const isTaken = taken.has(w);
-    const match = !q || w.includes(q) || b.dataset.emoji.includes(q);
+    const match = (!q || w.includes(q) || b.dataset.emoji.includes(q))
+      && (!catalogTheme || b.dataset.theme === catalogTheme)
+      && (!catalogLevel || b.dataset.level === catalogLevel);
     b.hidden = !match;
     // הסימון "כבר בתרגול" משתנה רק כשמוסיפים או מוחקים מילה. בלי התנאי הזה
     // כל הקשה בחיפוש הייתה בונה 237 מחרוזות title מחדש בלי שום סיבה.
@@ -1419,9 +1485,43 @@ function renderCatalog(){
     if(match){ shown++; if(isTaken) inPractice++; }
   }
 
+  for(const c of $("themeChips").children) c.setAttribute("aria-pressed", c.dataset.theme === catalogTheme);
+  for(const c of $("levelChips").children) c.setAttribute("aria-pressed", c.dataset.level === catalogLevel);
+
   $("catalogCounterBadge").textContent = `${shown} מילים (${inPractice} כבר בתרגול)`;
-  $("catalogEmpty").textContent = `לא נמצאו מילים שמתאימות לחיפוש ״${q}״`;
+  $("catalogEmpty").textContent = q ? `לא נמצאו מילים שמתאימות לחיפוש ״${q}״` : "אין מילים ברמה הזו בנושא הזה.";
   $("catalogEmpty").hidden = shown > 0;
+
+  // שני הכפתורים פועלים על מה שמוצג. בלי שום סינון זה כל המאגר, וזו לא ערכה.
+  const toAdd = shown - inPractice;
+  $("setActions").hidden = !shown || !(q || catalogTheme || catalogLevel);
+  $("practiceSetBtn").textContent = shown === 1 ? "▶ תרגלו רק אותה" : `▶ תרגלו רק את ${shown} האלה`;
+  $("addSetBtn").textContent = toAdd === 0 ? "✓ כבר בתרגול"
+    : toAdd === 1 ? "➕ הוסיפו מילה חדשה אחת" : `➕ הוסיפו ${toAdd} מילים חדשות`;
+  $("addSetBtn").disabled = toAdd === 0;
+}
+
+function shownWords(){
+  return catalogItems.filter(b => !b.hidden).map(b => ({emoji: b.dataset.emoji, word: b.dataset.word}));
+}
+
+// מחליף את הרשימה, ולכן שואל קודם, כמו האיפוס: רשימה שנבנתה מילה אחר מילה
+// לא חוזרת.
+function practiceShown(){
+  const set = shownWords();
+  if(!set.length) return;
+  if(!confirm(`להחליף את רשימת התרגול (${words.length} מילים) ב-${set.length} המילים האלה?`)) return;
+  applyWords(set, Math.floor(Math.random() * set.length));   // גם מרנדר
+  setSettingsNotice("catalogNotice", `🎉 עכשיו בתרגול: ${set.length} מילים.`, false);
+}
+
+function addShown(){
+  const taken = takenSet();
+  const fresh = shownWords().filter(w => !taken.has(w.word));
+  if(!fresh.length) return;
+  applyWords(words.concat(fresh));   // גם מרנדר; המילה שעל המסך נשארת
+  setSettingsNotice("catalogNotice", fresh.length === 1
+    ? `🎉 ״${fresh[0].word}״ נוספה לתרגול!` : `🎉 ${fresh.length} מילים נוספו לתרגול!`, false);
 }
 
 function opButton(cls, icon, title, label){
@@ -1475,6 +1575,7 @@ function openPanel(){
   setSettingsNotice("wordsListNotice", "");
   setSettingsNotice("catalogNotice", "");
   $("search").value = "";
+  catalogTheme = catalogLevel = "";
   $("overlay").hidden = false;
   showSettingsView("main");
 }
@@ -1513,12 +1614,14 @@ $("bank").addEventListener("click", e=>{
 // הרעידה מסתיימת והאות חוזרת לצבעה, ומוכנה לרעוד שוב בטעות הבאה.
 $("bank").addEventListener("animationend", e=>e.target.classList.remove("wrong"));
 
-// שבעת כפתורי הניווט בפאנל אומרים לאן ללכת ב-data-goto, ומאזין אחד מקשיב.
+// כפתורי הניווט בפאנל אומרים לאן ללכת ב-data-goto, ומאזין אחד מקשיב.
+// data-nofocus: מכרטיס הערכות באים לבחור נושא, ומקלדת שקופצת לחיפוש
+// הייתה מסתירה בטלפון את הנושאים.
 $("panel").addEventListener("click", e=>{
   const btn = e.target.closest("[data-goto]");
   if(!btn) return;
   const to = btn.dataset.goto;
-  to === "close" ? closePanel() : showSettingsView(to);
+  to === "close" ? closePanel() : showSettingsView(to, !btn.hasAttribute("data-nofocus"));
 });
 
 // מאזין אחד לכל הקטלוג, במקום אחד לכל אחת מ-237 המילים.
@@ -1544,6 +1647,20 @@ $("wordList").addEventListener("click", e=>{
 
 $("overlay").addEventListener("click", e=>{ if(e.target.id === "overlay") closePanel(); });
 $("search").addEventListener("input", renderCatalog);
+
+function onChip(row, apply){
+  $(row).addEventListener("click", e=>{
+    const c = e.target.closest(".chip");
+    if(!c) return;
+    apply(c.dataset);
+    $("catalog").scrollTop = 0;
+    renderCatalog();
+  });
+}
+onChip("themeChips", d => { catalogTheme = d.theme; });
+onChip("levelChips", d => { catalogLevel = d.level; });
+$("practiceSetBtn").addEventListener("click", practiceShown);
+$("addSetBtn").addEventListener("click", addShown);
 
 for(const p of PRESETS){
   $(p.btn).addEventListener("click", ()=>setThreshold(p.threshold));
