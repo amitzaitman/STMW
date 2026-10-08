@@ -30,7 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **מסלול העבודה ללא אינטרנט:** `sw.js`, `cache-name.js`, והורדת המודל
   ב-`fetchModel`. תקלה שם לא מתגלה עד שמישהו במצב טיסה, בכיתה.
 - **מפתחות ה-localStorage:** `words`, `speech_match_config`,
-  `sound_enabled`. שינוי שם או מבנה מוחק לילד את רשימת המילים ואת
+  `sound_enabled`, `hebrew_spelling`. שינוי שם או מבנה מוחק לילד את רשימת המילים ואת
   ההגדרות, בלי אזהרה ובלי דרך לשחזר.
 - **שדות הזהות ב-`manifest.json`:** `id`, `start_url`, `scope`. שינוי
   שלהם הופך התקנה קיימת לאפליקציה אחרת.
@@ -85,8 +85,8 @@ npm run dev    # server.js על פורט 3000. בלי התקנה: python3 -m htt
 ## המבנה
 
 **אין מודולים.** `index.html` טוען שלושה סקריפטים קלאסיים לפי הסדר:
-`vosk.js` (`Vosk`), `cache-name.js` (`CACHE_NAME`), ו-`words.js?v=4`
-(`PAIRS`, `WORD_BY_EMOJI`, `DEFAULT_WORDS` — גם 16 מילות ההתחלה יושבות
+`vosk.js` (`Vosk`), `cache-name.js` (`CACHE_NAME`), ו-`words.js?v=5`
+(`PAIRS` — אימוג'י, מילה ותעתיק עברי, `WORD_BY_EMOJI`, `HE_BY_WORD`, `DEFAULT_WORDS` — גם 16 מילות ההתחלה יושבות
 שם). אחריהם בא סקריפט inline אחד שמכיל את כל הלוגיקה כמשתנים ופונקציות
 גלובליים. `test.js` ניגש אליהם בשם דרך `page.evaluate` (`scoreToken`,
 `matchThreshold`, `words`, `score`, `good`, `micStream`, `ensureAudio`,

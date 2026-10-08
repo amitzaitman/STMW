@@ -276,6 +276,25 @@ async function main(){
   await page.evaluate(() => { score = 0; renderScore(); });
 
   // --------------------------------------------------------------
+  group("תעתיק לעברית");
+  // ילד שעוד לא קורא אנגלית רואה מתחת למילה איך אומרים אותה. מורה יכולה
+  // לכבות, והבחירה נשמרת.
+  const noHe = await page.evaluate(() => PAIRS.filter(p => !/^[\u0590-\u05FF'־ ]+$/.test(p[2] || "")).map(p => p[1]));
+  check("לכל מילה במאגר יש תעתיק בעברית", noHe.length === 0, noHe);
+  const heLine = () => page.evaluate(() => ({ text: $("wordHe").innerText, word: word(), he: HE_BY_WORD[word()] }));
+  let he = await heLine();
+  check("התעתיק מופיע על המסך מתחת למילה", !!he.he && he.text === he.he, he);
+  await page.evaluate(() => $("hebrewToggle").click());
+  he = await heLine();
+  check("כיבוי מעלים את התעתיק ונשמר",
+        he.text === "" && await page.evaluate(() => localStorage.getItem("hebrew_spelling")) === "0", he);
+  await page.evaluate(() => { next(); });
+  check("נשאר כבוי במילה הבאה", (await heLine()).text === "");
+  await page.evaluate(() => $("hebrewToggle").click());
+  he = await heLine();
+  check("הדלקה מחזירה אותו", he.text === he.he && !!he.he, he);
+
+  // --------------------------------------------------------------
   group("נגישות");
   // התמונה היא פקד להשמעת המילה. כשהיא הייתה div אי אפשר היה להגיע אליה
   // במקלדת ולא היה לה שם נגיש.

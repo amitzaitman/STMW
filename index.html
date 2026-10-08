@@ -18,7 +18,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <script src="./vosk.js"></script>
 <script src="./cache-name.js"></script>
-<script src="./words.js?v=4"></script>
+<script src="./words.js?v=5"></script>
 <style>
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -38,6 +38,12 @@
   #picture.good{background:#DFF7E7}
   #picture.again{background:#FFECEC}
   #word{font-size:15px; color:#8B93AD; min-height:20px; direction:ltr}
+  #wordHe{font-size:22px; font-weight:600; color:#4A5480; line-height:1.3}
+  .toggle-row{
+    display:flex; align-items:center; gap:10px; cursor:pointer;
+    font-weight:700; font-size:15px; color:#1B2140;
+  }
+  .toggle-row input{width:22px; height:22px; margin:0; accent-color:#1B2140; flex:0 0 auto}
   #buttons{
     display:flex; align-items:center; gap:12px; width:100%; max-width:520px; direction:ltr;
   }
@@ -410,6 +416,7 @@
 </div>
 <button id="picture" type="button" aria-label="השמעת המילה באנגלית" title="לחצו לשמיעת המילה">🐶</button>
 <div id="word"></div>
+<div id="wordHe" lang="he" dir="rtl"></div>
 
 <div id="loading" hidden>
   <div id="bar"><i id="fill"></i></div>
@@ -496,6 +503,14 @@
         </div>
       </div>
 
+      <div class="match-section">
+        <label class="toggle-row">
+          <input type="checkbox" id="hebrewToggle">
+          <span>🔤 איך אומרים — באותיות עבריות</span>
+        </label>
+        <p class="match-desc">מתחת למילה באנגלית מופיע איך הוגים אותה, למשל cat — קֶט.</p>
+      </div>
+
       <div id="settingsActions">
         <button id="installBtn" type="button" hidden>📲 התקנת אפליקציה למכשיר</button>
         <button id="resetBtn" type="button">🔄 איפוס מילים והגדרות</button>
@@ -579,6 +594,9 @@ const SOUND_KEY = "sound_enabled";
 // נשמר, כמו המילים ורמת ההתאמה. קודם כל פתיחה התחילה בשקט והילד היה
 // צריך ללחוץ 🔇 מחדש. הקראה קורית רק אחרי לחיצה, אז אין כאן ניגון אוטומטי.
 let soundEnabled = (()=>{ try{ return localStorage.getItem(SOUND_KEY) === "1"; }catch(e){ return false; } })();
+// התעתיק מופיע כברירת מחדל, ונשמר רק כשמורה מכבה אותו.
+const HEBREW_KEY = "hebrew_spelling";
+let hebrewEnabled = (()=>{ try{ return localStorage.getItem(HEBREW_KEY) !== "0"; }catch(e){ return true; } })();
 
 // --- רמת ההתאמה לדיבור הילד: מספר אחד, 30 עד 95 ---
 // קודם היו כאן שני ייצוגים לאותו דבר: "רמה" (סלחנית/רגילה/מדויקת) ואחוז,
@@ -700,7 +718,16 @@ function show(){
   $("picture").textContent = words[i].emoji;
   $("picture").className = "";
   $("word").textContent = word();
+  // מילה שנשמרה לפני שהיה תעתיק, או words.js ישן מהמטמון, פשוט בלי שורה.
+  const he = typeof HE_BY_WORD !== "undefined" && HE_BY_WORD[word()] || "";
+  $("wordHe").textContent = hebrewEnabled ? he : "";
   setNote("");
+}
+
+function setHebrew(on){
+  hebrewEnabled = on;
+  try{ localStorage.setItem(HEBREW_KEY, on ? "1" : "0"); }catch(e){}
+  show();
 }
 
 const EN = "en-US";   // המילה שמתרגלים
@@ -1367,6 +1394,8 @@ for(const p of PRESETS){
 }
 $("matchThresholdSlider").addEventListener("input", e=>setThreshold(Number(e.target.value)));
 
+$("hebrewToggle").addEventListener("change", e=>setHebrew(e.target.checked));
+
 $("resetBtn").addEventListener("click", ()=>{
   if(!confirm("לאפס את רשימת המילים ורמת ההתאמה לברירת המחדל?")) return;
   applyWords(DEFAULT_WORDS.slice(), 0);
@@ -1425,6 +1454,7 @@ i = pick();
 show();
 updateSoundUI();
 updateMatchUI();
+$("hebrewToggle").checked = hebrewEnabled;
 loadModel();
 </script>
 </body>
