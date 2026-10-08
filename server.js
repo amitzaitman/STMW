@@ -26,10 +26,8 @@ app.use(express.static(__dirname, {
   }
 }));
 
-// נפילה ל-index.html רק לנתיב בלי סיומת, כלומר ניווט.
-// קודם כל נתיב חסר החזיר את הדף המלא עם 200: missing.js חזר כ-HTML בתוך
-// תגית script, ואייקון חסר חזר כ-54KB של HTML. עדיף 404 נקי, וזו בדיוק
-// אותה תקלה שהייתה ב-sw.js.
+// נפילה ל-index.html רק לנתיב בלי סיומת, כלומר ניווט. קובץ חסר מקבל 404,
+// אחרת סקריפט חסר חוזר כ-HTML בתוך תגית script. אותו כלל כמו ב-sw.js.
 app.get('*', (req, res, next) => {
   if (path.extname(req.path)) return next();   // בקשה לקובץ: אין לה חלופה
   res.sendFile(path.join(__dirname, 'index.html'));

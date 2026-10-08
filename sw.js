@@ -15,9 +15,8 @@ const MATCH = {ignoreSearch: true};
 // אם אין כלום במטמון (ביקור ראשון על רשת איטית) ממשיכים לחכות לרשת, כי אין חלופה.
 // תשובה שהגיעה מאוחר עדיין נכנסת למטמון לפעם הבאה.
 //
-// ה-index.html הוא חלופה רק לבקשת ניווט. קודם הוא הוחזר לכל בקשה, כך
-// ש-words.js שחסר במטמון חזר כ-HTML, הסקריפט לא נטען, PAIRS נשאר ריק
-// והדף קרס. עדיף שבקשה כזו פשוט תיכשל.
+// ה-index.html הוא חלופה רק לבקשת ניווט. סקריפט שחסר במטמון וחוזר כ-HTML
+// לא נטען, PAIRS נשאר ריק והדף קורס. עדיף שבקשה כזו פשוט תיכשל.
 function pageOrCache(req){
   const net = fetch(req).then(res=>{
     if(res.ok){
@@ -57,8 +56,8 @@ self.addEventListener('activate', e=>{
 self.addEventListener('fetch', e=>{
   if(e.request.method !== 'GET') return;
   if(!e.request.url.startsWith(self.location.origin)) return;
-  // לפי שם הקובץ, לא לפי תת-מחרוזת בכתובת: קודם כל כתובת שהכילה במקרה
-  // "vosk.js" באיזשהו מקום נחשבה קובץ כבד ונשמרה לנצח.
+  // לפי שם הקובץ, לא לפי תת-מחרוזת בכתובת, כדי שכתובת שמכילה במקרה
+  // "vosk.js" לא תיחשב קובץ כבד ותישמר במטמון לנצח.
   const heavy = HEAVY.includes(new URL(e.request.url).pathname.split("/").pop());
 
   if(heavy){

@@ -80,7 +80,7 @@ async function main(){
   // --------------------------------------------------------------
   group("מניפסט");
   // נתיב מוחלט עובד רק כשהאפליקציה יושבת בשורש. ב-GitHub Pages היא יושבת
-  // תחת /REPO/, וכל אייקון החזיר 404 — ואז כרום לא מציע להתקין בכלל.
+  // תחת /REPO/, שם כל אייקון מחזיר 404 — ואז כרום לא מציע להתקין בכלל.
   const manifest = JSON.parse(fs.readFileSync(path.join(DIR, "manifest.json"), "utf8"));
   const absolute = [
     ...["id", "start_url", "scope"].filter(k => String(manifest[k]).startsWith("/")).map(k => `${k}=${manifest[k]}`),
@@ -95,7 +95,7 @@ async function main(){
 
   // --------------------------------------------------------------
   group("טעינה");
-  // words.js נטען מכתובת עם ?v=, ופעם אחת הוא חזר כ-HTML במקום כסקריפט.
+  // words.js נטען מכתובת עם ?v=. אם הוא חוזר כ-HTML, PAIRS ריק.
   check("מאגר המילים נטען", await page.evaluate(() => PAIRS.length) === 237);
   check("יש מילים לתרגול", await page.evaluate(() => words.length) > 0);
   check("מוצגת מילה על המסך", (await page.textContent("#word")).length > 0);
@@ -204,8 +204,6 @@ async function main(){
   await page.click("#openWordsViewBtn");
   await page.click("#openCatalogBtn");
   await page.waitForTimeout(250);
-  // נמדד לפי display בפועל: התכונה hidden לבדה לא מוכיחה שמשהו הוסתר,
-  // כי כלל display על הכפתור גובר עליה.
   await page.evaluate(() => {
     window.visibleCatalogItems = () =>
       [...document.querySelectorAll("#catalog .catalog-item")]
@@ -258,8 +256,7 @@ async function main(){
   // --------------------------------------------------------------
   group("כוכבים ומדליות");
   // שורת התגמול לא גדלה בלי גבול ולא קופאת: שלוש הצלחות מתחלפות במדליה,
-  // וחמש מדליות בגביע. קודם היה כאן גבול קשיח של עשרה כוכבים, ואחריו
-  // ילד שהמשיך לתרגל לא ראה עוד שום שינוי על המסך.
+  // וחמש מדליות בגביע.
   const row = async n => await page.evaluate(count => {
     score = 0;
     for(let k = 0; k < count; k++) good();
@@ -296,8 +293,7 @@ async function main(){
 
   // --------------------------------------------------------------
   group("נגישות");
-  // התמונה היא פקד להשמעת המילה. כשהיא הייתה div אי אפשר היה להגיע אליה
-  // במקלדת ולא היה לה שם נגיש.
+  // התמונה היא פקד להשמעת המילה, אז צריך להגיע אליה במקלדת ושיהיה לה שם.
   const pic = await page.evaluate(() => {
     const el = $("picture");
     el.focus();
@@ -308,10 +304,8 @@ async function main(){
 
   // --------------------------------------------------------------
   group("קישורי המשוב");
-  // הכתובת הייתה כתובה פעמיים ב-HTML — בכפתור שבסרגל ובקישור שבהגדרות.
-  // מי שהחליף טופס ושכח אחד מהם שלח חצי מהמשוב לטופס ישן, בלי שאף אחד
-  // ישים לב. עכשיו היא קבוע אחד; הבדיקה שומרת גם על היחידוּת וגם על כך
-  // ששני הקישורים באמת מקבלים כתובת.
+  // הכתובת היא קבוע אחד לשני הקישורים. אם היא תיכתב שוב ב-HTML, החלפת
+  // טופס תשאיר קישור אחד על הטופס הישן בלי שאף אחד ישים לב.
   const feedbackHrefs = await page.evaluate(
     () => [...document.querySelectorAll("a[data-feedback]")].map(a => a.href));
   check("שני קישורי משוב על הדף", feedbackHrefs.length === 2, feedbackHrefs);
@@ -319,7 +313,6 @@ async function main(){
     feedbackHrefs.length === 2 && feedbackHrefs[0] === feedbackHrefs[1], feedbackHrefs);
   check("הכתובת היא טופס Google",
     feedbackHrefs.every(h => /^https:\/\/docs\.google\.com\/forms\//.test(h)), feedbackHrefs);
-  // העוגן האמיתי של הפריט: הכתובת מופיעה במקור פעם אחת בלבד.
   const html = fs.readFileSync(path.join(DIR, "index.html"), "utf8");
   const formPath = feedbackHrefs[0] ? new URL(feedbackHrefs[0]).pathname : "";
   check("הכתובת כתובה במקור פעם אחת",
@@ -348,9 +341,9 @@ async function main(){
   // --------------------------------------------------------------
   group("החלטה");
   // רק תוצאה סופית מחליטה. תוצאה חלקית היא ניחוש באמצע הדיבור, ומול המודל
-  // האמיתי "elephant" עבר דרך apple ונגמר כ-[unk], ורעש ורוד נשמע כ-house.
-  // כשתוצאה חלקית הספיקה, הילד קיבל 🎉 על מילה שגויה. האירועים נשלחים
-  // ל-recognizer עצמו, כך שגם החיווט ב-buildRecognizer נבדק ולא רק הפונקציה.
+  // האמיתי "elephant" עובר דרך apple ונגמר כ-[unk], ורעש ורוד נשמע כ-house.
+  // האירועים נשלחים ל-recognizer עצמו, כך שגם החיווט ב-buildRecognizer
+  // נבדק ולא רק הפונקציה.
   await page.waitForFunction(() => model !== null, null, { timeout: 60000 });
   await page.evaluate(() => { setThreshold(DEFAULT_THRESHOLD); return ensureAudio(); });
   const attempt = async events => await page.evaluate(async evs => {
@@ -419,8 +412,7 @@ async function main(){
 
   // --------------------------------------------------------------
   group("עבודה ללא אינטרנט");
-  // ה-service worker החזיר פעם את index.html לכל בקשה שחסרה במטמון,
-  // כך שסקריפט חסר חזר כ-HTML והדף קרס. זו הבדיקה על זה.
+  // סקריפט שחסר במטמון לא יכול לחזור כ-index.html: הוא לא נטען והדף קורס.
   await page.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 30000 });
   await page.waitForTimeout(2500);
@@ -462,8 +454,7 @@ async function main(){
 
   // --------------------------------------------------------------
   group("server.js");
-  // אותה תקלה שהייתה ב-sw.js: כל נתיב חסר החזיר את index.html עם 200,
-  // כך שסקריפט חסר חזר כ-HTML ואייקון חסר חזר כ-54KB של HTML.
+  // אותו כלל כמו ב-sw.js: קובץ חסר לא מקבל את index.html עם 200.
   const port = 8000 + Math.floor(Math.random() * 1000);
   const child = spawn(process.execPath, [path.join(DIR, "server.js")],
                       { env: { ...process.env, PORT: String(port) }, stdio: "ignore" });
@@ -477,7 +468,7 @@ async function main(){
   if(!up){
     check("server.js עולה", false, "לא הצליח לעלות. הריצו npm install");
   } else {
-    // 404 עם דף שגיאה קטן זה בסדר גמור. מה שהיה לא בסדר זה 200 עם כל הדף.
+    // 404 עם דף שגיאה קטן זה בסדר גמור. מה שאסור זה 200 עם כל הדף.
     const appPage = fs.readFileSync(path.join(DIR, "index.html"), "utf8").length;
     const get = async u => {
       const r = await fetch(url + u);
