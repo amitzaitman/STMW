@@ -31,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   ב-`fetchModel`. תקלה שם לא מתגלה עד שמישהו במצב טיסה, בכיתה. שינוי
   `CACHE_NAME` מוריד מחדש 29MB בכל מכשיר.
 - **מפתחות ה-localStorage:** `words`, `speech_match_config`,
-  `sound_enabled`, `hebrew_spelling`. שינוי שם או מבנה מוחק לילד את
+  `sound_enabled`, `hebrew_spelling`, `practice_mode`. שינוי שם או מבנה מוחק לילד את
   רשימת המילים ואת ההגדרות, בלי אזהרה ובלי דרך לשחזר.
 - **שדות הזהות ב-`manifest.json`:** `id`, `start_url`, `scope`. שינוי
   שלהם הופך התקנה קיימת לאפליקציה אחרת.

@@ -70,6 +70,47 @@
   #say.listening{background:#FF6B8A; color:#fff}
   #next{flex:1; background:#F8FAFC}
   #next:active:not([disabled]){background:#EDF2F7}
+  #hint{flex:1; background:#FFF8E1}
+  #hint:active:not([disabled]){background:#FFEFC2}
+  /* display:flex של כפתורי השורה גובר על [hidden] של הדפדפן, ובלי זה
+     החלפת מצב משאירה גם את 🎤 וגם את 💡 על המסך. */
+  #buttons button[hidden]{display:none}
+  #modeSwitch{
+    display:flex; gap:4px; padding:4px; background:#fff;
+    border:3px solid #1B2140; border-radius:18px;
+  }
+  #modeSwitch button{
+    border:0; border-radius:13px; padding:6px 16px; background:transparent;
+    font-size:15px; font-weight:700; color:#4A5480;
+  }
+  #modeSwitch button.active{background:#FFD65A; color:#1B2140}
+  /* שלושה כוכבים בשורה אחת על הכרטיס, גם בטלפון צר */
+  #picture.earned{font-size:clamp(48px,18vw,120px)}
+  #spell{
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    width:100%; max-width:520px; direction:ltr;
+  }
+  #spell[hidden]{display:none}
+  #slots, #bank{display:flex; justify-content:center; gap:6px; width:100%}
+  #bank{flex-wrap:wrap; gap:8px}
+  .slot{
+    flex:1 1 0; min-width:0; max-width:48px; height:52px;
+    border:3px dashed #B9C2D8; border-radius:12px; background:#fff;
+    font-size:clamp(20px,7vw,30px); font-weight:800;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .slot.filled{border-style:solid; border-color:#1B2140}
+  .slot.hinted{border-style:solid; border-color:#2B6CB0; color:#2B6CB0; background:#EBF8FF}
+  .tile{
+    width:52px; height:52px; padding:0; font-size:30px; font-weight:800;
+    border-width:3px; border-radius:14px; box-shadow:0 3px 0 #1B2140;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .tile:active{transform:translateY(2px); box-shadow:0 1px 0 #1B2140}
+  /* אות שכבר במקומה משאירה חור, כדי ששאר האותיות לא יזוזו מתחת לאצבע. */
+  .tile.used{visibility:hidden}
+  .tile.wrong{animation:shake .3s; background:#FFECEC}
+  @keyframes shake{25%{transform:translateX(-6px)} 75%{transform:translateX(6px)}}
   .btn-icon{font-size:34px; line-height:1; display:inline-block}
   #say .btn-icon{font-size:42px}
   #say.listening .btn-icon{animation:micPulse .7s infinite alternate ease-in-out}
@@ -414,9 +455,17 @@
   <div id="stars"></div>
   <button id="toggleSound" type="button" class="muted" aria-label="הפעלת שמע" title="שמע מכובה - לחצו להפעלה">🔇</button>
 </div>
+<div id="modeSwitch" role="radiogroup" aria-label="סוג התרגול">
+  <button type="button" role="radio" data-mode="say" title="אומרים את המילה בקול">🎤 אומרים</button>
+  <button type="button" role="radio" data-mode="spell" title="כותבים את המילה מאותיות">🔤 כותבים</button>
+</div>
 <button id="picture" type="button" aria-label="השמעת המילה באנגלית" title="לחצו לשמיעת המילה">🐶</button>
 <div id="word"></div>
 <div id="wordHe" lang="he" dir="rtl"></div>
+<div id="spell" hidden>
+  <div id="slots"></div>
+  <div id="bank" role="group" aria-label="האותיות של המילה"></div>
+</div>
 
 <div id="loading" hidden>
   <div id="bar"><i id="fill"></i></div>
@@ -429,6 +478,9 @@
   </button>
   <button id="say" type="button" disabled aria-label="הקלטת קול - אמירת המילה" title="אמירת המילה">
     <span class="btn-icon" id="sayIcon">⏳</span>
+  </button>
+  <button id="hint" type="button" hidden aria-label="רמז: האות הבאה" title="רמז — ממלא את האות הבאה">
+    <span class="btn-icon">💡</span>
   </button>
   <button id="next" type="button" aria-label="המילה הבאה" title="מעבר למילה הבאה">
     <span class="btn-icon">⏭️</span>
@@ -596,6 +648,9 @@ let soundEnabled = (()=>{ try{ return localStorage.getItem(SOUND_KEY) === "1"; }
 // התעתיק מופיע כברירת מחדל, ונשמר רק כשמורה מכבה אותו.
 const HEBREW_KEY = "hebrew_spelling";
 let hebrewEnabled = (()=>{ try{ return localStorage.getItem(HEBREW_KEY) !== "0"; }catch(e){ return true; } })();
+// "say" — אומרים את המילה למיקרופון. "spell" — כותבים אותה מבנק האותיות שלה.
+const MODE_KEY = "practice_mode";
+let mode = (()=>{ try{ return localStorage.getItem(MODE_KEY) === "spell" ? "spell" : "say"; }catch(e){ return "say"; } })();
 
 // --- רמת ההתאמה לדיבור הילד: מספר אחד, 30 עד 95 ---
 // האחוז הוא המצב היחיד, וההתנהגות נגזרת ממנו ברצף, כך שהזזת הסליידר
@@ -720,6 +775,7 @@ function show(){
   const he = typeof HE_BY_WORD !== "undefined" && HE_BY_WORD[word()] || "";
   $("wordHe").textContent = hebrewEnabled ? he : "";
   setNote("");
+  if(mode === "spell") startSpelling();
 }
 
 function setHebrew(on){
@@ -1067,20 +1123,26 @@ function closeWindow(){
   timer = setTimeout(()=>{ if(active) finish(false); }, FINAL_GRACE_MS);
 }
 
-function finish(ok){
-  if(!active) return;
+// מחזיר false אם לא הייתה הקשבה לעצור.
+function stopListening(){
+  if(!active) return false;
   active = false;
   clearTimeout(timer);
   // מאפס את המפענח כדי שהניסיון הבא יתחיל נקי. התוצאה שחוזרת מכאן נבלעת כי active כבר כבוי.
   if(rec){ try{ rec.retrieveFinalResult(); }catch(err){} }
   $("say").classList.remove("listening");
+  return true;
+}
+
+function finish(ok){
+  if(!stopListening()) return;
   ok ? good() : again();
 }
 
 // מעל זה מסבירים לילד למה זה לא התקבל, אחרת "נסו שוב" נשמע שרירותי.
 const HIGH_BAR = 85;
 
-// שלוש הצלחות מתחלפות במדליה, וחמש מדליות בגביע, כך שהשורה משתנה כל עוד
+// שלושה כוכבים מתחלפים במדליה, וחמש מדליות בגביע, כך שהשורה משתנה כל עוד
 // הילד מתרגל ובכל זאת נשארת קצרה: לכל היותר ארבע מדליות ושני כוכבים לפני
 // כל גביע. שורה ארוכה יותר נכנסת מתחת לכפתורים שבצדי הסרגל בטלפון צר.
 const PER_MEDAL = 3, MEDALS_PER_TROPHY = 5;
@@ -1093,11 +1155,13 @@ function renderScore(){
     + "⭐".repeat(rest % PER_MEDAL);
 }
 
-function good(){
-  score++;
+// מילה שנאמרה שווה כוכב אחד. מילה שנכתבה שווה שלושה, או שניים אם נעזרו
+// ברמז, והכרטיס מראה כמה כוכבים הרוויחו לפני שהם נכנסים לשורה.
+function good(stars = 1){
+  score += stars;
   renderScore();
-  $("picture").className = "good";
-  $("picture").textContent = "🎉";
+  $("picture").className = stars > 1 ? "good earned" : "good";
+  $("picture").textContent = stars > 1 ? "⭐".repeat(stars) : "🎉";
   speak("כל הכבוד!", HE, ()=>setTimeout(next, 400));
 }
 function again(){
@@ -1121,6 +1185,90 @@ function next(){
     do{ n = pick(); }while(n === i);
     i = n;
   }
+  show();
+}
+
+// --- כתיבה: בונים את המילה מהאותיות שלה, משמאל לימין ---
+const SPELL_STARS = 3, HINTED_STARS = 2;
+// כמה אותיות כבר במקומן, והאם נעזרו ברמז. מתאפסים בכל מילה.
+let spelled = 0, hinted = false;
+
+function shuffled(letters){
+  const out = letters.slice();
+  for(let k = out.length - 1; k > 0; k--){
+    const r = Math.floor(Math.random() * (k + 1));
+    [out[k], out[r]] = [out[r], out[k]];
+  }
+  // ערבוב שיצא בדיוק המילה לא מבקש מהילד כלום. הזזה באות אחת משנה כל
+  // מילה שיש בה שתי אותיות שונות, וב-ox זה קורה בכל פתיחה שנייה.
+  if(out.join("") === letters.join("")) out.push(out.shift());
+  return out;
+}
+
+function startSpelling(){
+  spelled = 0;
+  hinted = false;
+  const letters = [...word()];
+  $("slots").replaceChildren(...letters.map(() => span("slot", "")));
+  $("bank").replaceChildren(...shuffled(letters).map(ch => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "tile";
+    b.textContent = ch;
+    b.dataset.letter = ch;
+    return b;
+  }));
+  $("hint").disabled = false;
+}
+
+function place(tile, byHint){
+  const slot = $("slots").children[spelled];
+  slot.textContent = tile.dataset.letter;
+  slot.classList.add(byHint ? "hinted" : "filled");
+  tile.disabled = true;
+  tile.classList.add("used");
+  spelled++;
+  if(spelled === word().length){
+    $("hint").disabled = true;
+    good(hinted ? HINTED_STARS : SPELL_STARS);
+  }
+}
+
+// טעות לא עולה כוכב: האות רועדת ונשארת בבנק. רק רמז מוריד כוכב.
+function tapTile(tile){
+  if(tile.dataset.letter === word()[spelled]) place(tile, false);
+  else tile.classList.add("wrong");
+}
+
+function giveHint(){
+  // באות כפולה, כמו p ב-apple, כל אחת מהשתיים מתאימה.
+  const tile = [...$("bank").children]
+    .find(t => !t.disabled && t.dataset.letter === word()[spelled]);
+  if(!tile) return;
+  hinted = true;
+  place(tile, true);
+}
+
+function renderMode(){
+  const spell = mode === "spell";
+  $("word").hidden = spell;
+  $("spell").hidden = !spell;
+  $("say").hidden = spell;
+  $("hint").hidden = !spell;
+  for(const b of $("modeSwitch").children){
+    const on = b.dataset.mode === mode;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-checked", on);
+  }
+}
+
+function setMode(to){
+  if(to === mode) return;
+  // הקשבה שנקטעה במעבר אינה ניסיון שנכשל, אז בלי "נסו שוב".
+  stopListening();
+  mode = to;
+  try{ localStorage.setItem(MODE_KEY, mode); }catch(e){}
+  renderMode();
   show();
 }
 
@@ -1351,7 +1499,19 @@ $("picture").addEventListener("click", playCurrentWord);
 $("toggleSound").addEventListener("click", toggleSound);
 $("say").addEventListener("click", listen);
 $("next").addEventListener("click", next);
+$("hint").addEventListener("click", giveHint);
 $("openSettings").addEventListener("click", openPanel);
+
+$("modeSwitch").addEventListener("click", e=>{
+  const b = e.target.closest("[data-mode]");
+  if(b) setMode(b.dataset.mode);
+});
+$("bank").addEventListener("click", e=>{
+  const tile = e.target.closest(".tile");
+  if(tile && !tile.disabled) tapTile(tile);
+});
+// הרעידה מסתיימת והאות חוזרת לצבעה, ומוכנה לרעוד שוב בטעות הבאה.
+$("bank").addEventListener("animationend", e=>e.target.classList.remove("wrong"));
 
 // שבעת כפתורי הניווט בפאנל אומרים לאן ללכת ב-data-goto, ומאזין אחד מקשיב.
 $("panel").addEventListener("click", e=>{
@@ -1447,6 +1607,7 @@ if(navigator.storage && navigator.storage.persist){
 }
 
 i = pick();
+renderMode();
 show();
 updateSoundUI();
 updateMatchUI();

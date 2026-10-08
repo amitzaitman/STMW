@@ -292,6 +292,69 @@ async function main(){
   check("הדלקה מחזירה אותו", he.text === he.he && !!he.he, he);
 
   // --------------------------------------------------------------
+  group("כתיבה");
+  // הילד בונה את המילה מבנק של האותיות שלה. מילה שלמה שווה שלושה כוכבים,
+  // רמז מוריד לשניים, וטעות לא עולה כלום. ההחלפה בין 🎤 ל-💡 נמדדת במה
+  // שמוצג בפועל, כי display של כפתורי השורה גובר על התכונה hidden.
+  const shown = id => page.evaluate(id => getComputedStyle($(id)).display !== "none", id);
+  await page.evaluate(() => { score = 0; renderScore(); });
+  await page.click('#modeSwitch [data-mode="spell"]');
+  check("במצב כתיבה 🎤 מוסתר ו-💡 מוצג", !(await shown("say")) && await shown("hint"));
+  check("במצב כתיבה המילה באנגלית לא מוצגת", !(await shown("word")) && await shown("spell"));
+
+  const board = await page.evaluate(() => ({
+    word: word(), slots: $("slots").children.length,
+    bank: [...$("bank").children].map(t => t.dataset.letter)
+  }));
+  check("משבצת לכל אות, ובבנק בדיוק אותיות המילה",
+    board.slots === board.word.length && [...board.bank].sort().join("") === [...board.word].sort().join(""), board);
+  const unshuffled = await page.evaluate(() => {
+    let same = 0;
+    for(let n = 0; n < 200; n++)
+      for(const w of ["ox", "cat", "bee"]) if(shuffled([...w]).join("") === w) same++;
+    return same;
+  });
+  check("הבנק אף פעם לא מגיע בסדר של המילה", unshuffled === 0, unshuffled);
+
+  const wrongTap = await page.evaluate(() => {
+    const before = score;
+    const tile = [...$("bank").children].find(t => t.dataset.letter !== word()[0]);
+    tile.click();
+    return { spelled, slot: $("slots").children[0].textContent, stars: score - before, inBank: !tile.disabled };
+  });
+  check("אות לא נכונה נשארת בבנק ולא עולה כוכב",
+    wrongTap.spelled === 0 && wrongTap.slot === "" && wrongTap.stars === 0 && wrongTap.inBank, wrongTap);
+
+  // good() עובר למילה הבאה אחרי המשוב, ושם הלוח מתחיל מחדש.
+  const spellAll = async withHint => {
+    await page.waitForFunction(() => spelled === 0);
+    return page.evaluate(withHint => {
+      const before = score, target = word();
+      if(withHint) $("hint").click();
+      while(spelled < target.length)
+        [...$("bank").children].find(t => !t.disabled && t.dataset.letter === target[spelled]).click();
+      return { stars: score - before, card: $("picture").textContent, row: $("stars").textContent,
+               hinted: $("slots").querySelectorAll(".hinted").length, hintOff: $("hint").disabled };
+    }, withHint);
+  };
+  const clean = await spellAll(false);
+  check("מילה שלמה בלי רמז — שלושה כוכבים", clean.stars === 3 && clean.card === "⭐⭐⭐", clean);
+  check("שלושת הכוכבים נכנסים לשורה כמדליה", clean.row === "🏅", clean);
+  const helped = await spellAll(true);
+  check("רמז ממלא אות אחת ומוריד לשני כוכבים",
+    helped.stars === 2 && helped.hinted === 1 && helped.card === "⭐⭐", helped);
+  check("אחרי שהמילה הושלמה אין רמז", helped.hintOff, helped);
+  await page.waitForFunction(() => spelled === 0);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(800);
+  check("מצב הכתיבה נשמר בין טעינות",
+    await page.evaluate(() => mode) === "spell" && !(await shown("say")) && await shown("spell"));
+  await page.click('#modeSwitch [data-mode="say"]');
+  check("חזרה לאמירה מחזירה את 🎤 ואת המילה",
+    await shown("say") && !(await shown("hint")) && await shown("word") && !(await shown("spell")));
+
+  // --------------------------------------------------------------
   group("נגישות");
   // התמונה היא פקד להשמעת המילה, אז צריך להגיע אליה במקלדת ושיהיה לה שם.
   const pic = await page.evaluate(() => {
@@ -392,6 +455,25 @@ async function main(){
   check("מילה נכונה בסוף החלון מזכה", lateRight.won && !lateRight.active, lateRight);
   const lateNothing = await atWindowEnd(null);
   check("בלי תשובה מהמנוע החלון נסגר בכישלון", !lateNothing.won && !lateNothing.active, lateNothing);
+
+  // מעבר לכתיבה באמצע הקשבה עוצר אותה בשקט: זה לא ניסיון שנכשל, ו"נסו שוב"
+  // היה נשמע כאילו הילד טעה.
+  const switched = await page.evaluate(async () => {
+    const realAgain = again;
+    let failures = 0;
+    again = () => { failures++; };
+    try{
+      await listen();
+      const wasActive = active;
+      setMode("spell");
+      return { wasActive, active, failures, listening: $("say").classList.contains("listening") };
+    } finally {
+      again = realAgain;
+      setMode("say");
+    }
+  });
+  check("מעבר לכתיבה באמצע הקשבה לא נחשב כישלון",
+    switched.wasActive && !switched.active && switched.failures === 0 && !switched.listening, switched);
   // good() ו-again() מזמנים מעברים והודעות; שלא ידרסו את הקבוצה הבאה.
   await page.waitForTimeout(1500);
   await page.evaluate(() => { score = 0; renderScore(); });
