@@ -716,8 +716,22 @@ if("speechSynthesis" in window){
   speechSynthesis.addEventListener("voiceschanged", refreshVoices);
 }
 function voiceFor(lang){
-  const pre = lang.slice(0, 2).toLowerCase();
-  return voices.find(v => String(v.lang || "").toLowerCase().replace("_", "-").startsWith(pre)) || null;
+  const normalize = value => String(value || "").toLowerCase().replace(/_/g, "-");
+  const wanted = normalize(lang);
+  const pre = wanted.split("-")[0];
+  let best = null, bestScore = -1;
+  for(const voice of voices){
+    const language = normalize(voice.lang);
+    if(language.split("-")[0] !== pre) continue;
+    // Keep on-device voices first so classroom playback also works offline.
+    // Quality names are hints supplied by the device, not a quality guarantee.
+    const quality = /premium|enhanced|natural|neural/i.test(voice.name + " " + voice.voiceURI);
+    const score = (voice.localService === true ? 100 : 0)
+      + (language === wanted ? 20 : 0) + (quality ? 10 : 0)
+      + (voice.default ? 1 : 0);
+    if(score > bestScore){ best = voice; bestScore = score; }
+  }
+  return best;
 }
 
 // גבול עליון להמתנה לסיום הקראה. "כל הכבוד!" נמשך כשנייה, אז בדרך כלל
@@ -742,7 +756,8 @@ function speak(text, lang, onDone){
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = lang;
-  u.rate = lang === HE ? 0.95 : 0.8;
+  // Heavy slowdown stretches individual words and can sound mechanical.
+  u.rate = lang === HE ? 1 : 0.95;
   if(v) u.voice = v;
   u.onend = done;
   u.onerror = done;
