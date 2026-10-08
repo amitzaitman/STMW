@@ -102,8 +102,8 @@ async function main(){
 
   // --------------------------------------------------------------
   group("בחירת קול");
-  // Voice order varies by device. A remote or compact first entry must not
-  // hide a better local voice, and a missing Hebrew voice must stay silent.
+  // סדר הקולות משתנה ממכשיר למכשיר. קול מרוחק או בסיסי שמופיע ראשון לא אמור
+  // להסתיר קול מקומי טוב יותר, ובלי קול עברי המשוב שותק ולא מוקרא במבטא זר.
   const voiceSelection = await page.evaluate(() => {
     const original = voices;
     try {
@@ -116,12 +116,16 @@ async function main(){
       const missingHebrew = voiceFor(HE) === null;
       voices = [{name: "Hebrew", lang: "he_IL", localService: true}];
       const hebrew = voiceFor(HE) === voices[0];
-      return {localQuality, missingHebrew, hebrew};
+      // אנדרואיד ישן מדווח עברית בקוד הישן של Java, iw ולא he.
+      voices = [{name: "Hebrew", lang: "iw-IL", localService: true}];
+      const legacyHebrew = voiceFor(HE) === voices[0];
+      return {localQuality, missingHebrew, hebrew, legacyHebrew};
     } finally { voices = original; }
   });
   check("קול מקומי איכותי במבטא המבוקש מועדף", voiceSelection.localQuality, voiceSelection);
   check("אין קול עברי — לא נבחר קול משפה אחרת", voiceSelection.missingHebrew, voiceSelection);
   check("תג שפה עברי עם קו תחתון נתמך", voiceSelection.hebrew, voiceSelection);
+  check("תג השפה הישן iw-IL נחשב עברית", voiceSelection.legacyHebrew, voiceSelection);
 
   // --------------------------------------------------------------
   group("מנוע ההתאמה");

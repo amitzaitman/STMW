@@ -716,15 +716,18 @@ if("speechSynthesis" in window){
   speechSynthesis.addEventListener("voiceschanged", refreshVoices);
 }
 function voiceFor(lang){
-  const normalize = value => String(value || "").toLowerCase().replace(/_/g, "-");
+  // אנדרואיד ישן מדווח עברית כ-iw, הקוד הישן של Java, ובלעדי ההמרה המשוב
+  // שותק שם כאילו אין קול עברי במכשיר.
+  const normalize = value => String(value || "").toLowerCase().replace(/_/g, "-")
+    .replace(/^iw(?=-|$)/, "he");
   const wanted = normalize(lang);
   const pre = wanted.split("-")[0];
   let best = null, bestScore = -1;
   for(const voice of voices){
     const language = normalize(voice.lang);
     if(language.split("-")[0] !== pre) continue;
-    // Keep on-device voices first so classroom playback also works offline.
-    // Quality names are hints supplied by the device, not a quality guarantee.
+    // קול מקומי קודם, כדי שההקראה תעבוד גם בכיתה בלי אינטרנט. השמות "איכותיים"
+    // הם רמז שהמכשיר נותן, לא הבטחה, ולכן הם שוקלים פחות מקול מקומי ומהמבטא.
     const quality = /premium|enhanced|natural|neural/i.test(voice.name + " " + voice.voiceURI);
     const score = (voice.localService === true ? 100 : 0)
       + (language === wanted ? 20 : 0) + (quality ? 10 : 0)
@@ -756,7 +759,7 @@ function speak(text, lang, onDone){
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = lang;
-  // Heavy slowdown stretches individual words and can sound mechanical.
+  // האטה חזקה מותחת את המילה ונשמעת מכנית.
   u.rate = lang === HE ? 1 : 0.95;
   if(v) u.voice = v;
   u.onend = done;
