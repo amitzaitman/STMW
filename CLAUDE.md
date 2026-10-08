@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # הנחיות לסוכן
 
 אפליקציה לילדים שמתרגלים הגייה באנגלית. הזיהוי רץ במכשיר, בלי שרת ובלי
@@ -60,3 +64,58 @@
 
 **ההודעות למשתמש בעברית, הקוד והמזהים באנגלית.** הערות בקוד מסבירות למה,
 לא מה.
+
+## פקודות
+
+```bash
+npm install && npx playwright install chromium   # פעם אחת
+npm test       # כל הבדיקות
+npm run lint   # רק node --check על server.js, words.js, cache-name.js, test.js
+npm run dev    # server.js על פורט 3000. בלי התקנה: python3 -m http.server 8000
+```
+
+- **אין הרצה של בדיקה בודדת.** `test.js` הוא סקריפט אחד שרץ ברצף על דף
+  אחד, וקבוצות נשענות על מה שהקודמות השאירו (המאגר מוסיף `lion`, הרשימה
+  מוחקת שורה). כדי לבדוק קבוצה אחת מריצים את כולן.
+- `lint` לא נוגע ב-`index.html` וב-`sw.js`. שגיאה שם תתגלה רק ב-`npm test`.
+- הוספת צמד ל-`words.js` משנה את `PAIRS.length`, ו-`test.js` מצפה ל-237
+  בשני מקומות.
+- פתיחה ב-`file://` חוסמת את המיקרופון. צריך שרת.
+
+## המבנה
+
+**אין מודולים.** `index.html` טוען שלושה סקריפטים קלאסיים לפי הסדר:
+`vosk.js` (`Vosk`), `cache-name.js` (`CACHE_NAME`), ו-`words.js?v=4`
+(`PAIRS`, `WORD_BY_EMOJI`, `DEFAULT_WORDS` — גם 16 מילות ההתחלה יושבות
+שם). אחריהם בא סקריפט inline אחד שמכיל את כל הלוגיקה כמשתנים ופונקציות
+גלובליים. `test.js` ניגש אליהם בשם דרך `page.evaluate` (`scoreToken`,
+`matchThreshold`, `words`, `score`, `good`, `micStream`, `ensureAudio`,
+`listenWindowMs`…), ולכן שינוי שם שובר בדיקות.
+
+**טעינת המודל.** `loadModel` ← `controlled()` מחכה עד 3 שניות שה-service
+worker ישלוט בדף ← `fetchModel` מוריד את `model.tar.gz` בזרימה ישר
+ל-Cache Storage תחת `CACHE_NAME`, ומזה בא פס ההתקדמות ←
+`Vosk.createModel(MODEL_URL)` מבקש את אותה כתובת, וה-SW מגיש אותה
+מהמטמון. ה-recognizer נבנה עם דקדוק סגור: מילות רשימת התרגול ועוד
+`[unk]` (`grammar()`). לכן `applyWords` בונה אותו מחדש בכל שינוי ברשימה.
+
+**ההחלטה.** אודיו נכנס למפענח רק כש-`active`. `scoreToken` רק נותן ציון
+בין 0 ל-100, ו-`processRecognition` משווה אותו פעם אחת מול `matchThreshold`.
+תוצאה חלקית יכולה רק לזכות. תוצאה סופית, או סוף `listenWindowMs()`,
+מסיימות בכישלון. `test.js` נועל את הציונים (התאמה מדויקת = ביטחון×100,
+פונטית 88, קידומת 80, חלקית 85) ושתי תכונות: מילה שגויה לא עוברת באף
+רף, והעלאת הרף רק מקשה.
+
+**`sw.js`.** `vosk.js` ו-`model.tar.gz` (לפי שם הקובץ) נלקחים קודם
+מהמטמון. כל השאר — קודם מהרשת, עם גבול של 3 שניות, ואחר כך מהמטמון
+(`ignoreSearch`, בגלל `?v=`). `index.html` חוזר כחלופה רק לבקשת ניווט.
+`activate` מוחק כל מטמון ששמו שונה מ-`CACHE_NAME`, כך ששינוי השם מכריח
+כל מכשיר להוריד שוב את 29MB של המודל.
+
+**שני יעדי פרסום.** GitHub Pages, העיקרי, מגיש תחת `/REPO/`, ולכן כל נתיב
+בדף, ב-SW ובמניפסט יחסי (`./`). `server.js` קיים רק בשביל AI Studio /
+Cloud Run (`PORT` מהסביבה), ומחזיר את `index.html` רק לנתיב בלי סיומת.
+
+**עוגני הבקלוג** כתובים כך: `` עוגן: `קובץ` — `קטע קוד` ``, ואפשר להוסיף
+`×N` כדי לדרוש מספר מופעים מדויק. שינוי של קטע הקוד מפיל את קבוצת
+"בקלוג" ב-`npm test`.
