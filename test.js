@@ -134,13 +134,11 @@ async function main(){
     exact:    scoreToken("dog", 0.9, "dog"),
     phonetic: scoreToken("kat", 0.9, "cat"),
     prefix:   scoreToken("butterf", 0.9, "butterfly"),
-    partial:  scoreToken("dog", PARTIAL_CONFIDENCE, "dog"),
     junk:     scoreToken("[unk]", 0.9, "dog")
   }));
   check("זיהוי מדויק נמדד בביטחון המנוע", scores.exact === 90, scores);
   check("התאמה פונטית לא עוברת רף גבוה", scores.phonetic === 88 && scores.phonetic < 90, scores);
   check("התאמת קידומת מתחת להתאמה פונטית", scores.prefix === 80, scores);
-  check("זיהוי מדויק בתוצאה חלקית לא עובר 90", scores.partial === 85, scores);
   check("רעש לא מקבל ניקוד", scores.junk === 0, scores);
 
   // --------------------------------------------------------------
@@ -300,6 +298,37 @@ async function main(){
   });
   await page.waitForTimeout(300);
   check("המיקרופון חוזר לעבוד", await page.evaluate(() => !!micStream));
+
+  // --------------------------------------------------------------
+  group("החלטה");
+  // רק תוצאה סופית מחליטה. תוצאה חלקית היא ניחוש באמצע הדיבור, ומול המודל
+  // האמיתי "elephant" עבר דרך apple ונגמר כ-[unk], ורעש ורוד נשמע כ-house.
+  // כשתוצאה חלקית הספיקה, הילד קיבל 🎉 על מילה שגויה. האירועים נשלחים
+  // ל-recognizer עצמו, כך שגם החיווט ב-buildRecognizer נבדק ולא רק הפונקציה.
+  await page.waitForFunction(() => model !== null, null, { timeout: 60000 });
+  await page.evaluate(() => { setThreshold(DEFAULT_THRESHOLD); return ensureAudio(); });
+  const attempt = async events => await page.evaluate(async evs => {
+    await listen();
+    const target = word(), before = score;
+    for(const [type, detail] of evs)
+      rec.dispatchEvent(new CustomEvent(type, { detail: JSON.parse(JSON.stringify(detail).replaceAll("TARGET", target)) }));
+    const out = { active, won: score > before };
+    if(active) finish(false);
+    return out;
+  }, events);
+  const said = (w, conf = 1) => ["result", { result: { result: [{ word: w, conf }], text: w } }];
+
+  const partialOnly = await attempt([["partialresult", { result: { partial: "TARGET" } }]]);
+  check("תוצאה חלקית לבדה לא מזכה", !partialOnly.won && partialOnly.active, partialOnly);
+  const unkOnly = await attempt([said("[unk]")]);
+  check("[unk] בתוצאה סופית ממשיך להקשיב", unkOnly.active && !unkOnly.won, unkOnly);
+  const right = await attempt([["partialresult", { result: { partial: "TARGET" } }], said("TARGET")]);
+  check("המילה הנכונה בתוצאה סופית מזכה", right.won && !right.active, right);
+  const wrong = await attempt([said("zzz")]);
+  check("מילה שגויה בתוצאה סופית מסיימת בכישלון", !wrong.won && !wrong.active, wrong);
+  // good() ו-again() מזמנים מעברים והודעות; שלא ידרסו את הקבוצה הבאה.
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => { score = 0; renderScore(); });
 
   // --------------------------------------------------------------
   group("הודעה נעלמת");

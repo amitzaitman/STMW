@@ -884,11 +884,6 @@ const PHONETIC_SCORE = 88;
 const PREFIX_SCORE = 80, PREFIX_MIN_LETTERS = 3, PREFIX_MIN_RATIO = 0.55;
 // ביטחון נמוך של המנוע מוריד ניקוד של התאמה מקורבת, אבל לא מאפס אותה.
 const CONFIDENCE_FLOOR = 0.25;
-// תוצאה חלקית מגיעה בלי ביטחון מהמנוע, אז מניחים לה ביטחון גבוה אך לא ודאי.
-// זה מה שמאפשר לזהות כבר תוך כדי דיבור בלי שתוצאה חלקית תעקוף אחוז גבוה:
-// זיהוי מדויק בתוך תוצאה חלקית שווה 85, ולכן הוא לא עובר רף של 90.
-const PARTIAL_CONFIDENCE = 0.85;
-
 // כמה מה שנשמע דומה למילה שמתרגלים, 0 עד 100. אין כאן החלטה — רק ציון.
 // מי שמחליט הוא processRecognition, בהשוואה אחת מול matchThreshold.
 function scoreToken(spokenWord, conf, target){
@@ -917,14 +912,13 @@ function buildRecognizer(){
   rec = new model.KaldiRecognizer(ctx.sampleRate, grammar());
   try{ rec.setWords(true); }catch(e){}
 
+  // רק תוצאה סופית מחליטה. תוצאה חלקית היא ניחוש באמצע הדיבור, ועם דקדוק
+  // סגור היא כמעט תמיד מילה מהרשימה: "elephant" נשמע בדרך כ-apple ונגמר
+  // כ-[unk], ורעש רקע נשמע כ-house. כשהיא הספיקה כדי לזכות, הילד קיבל 🎉
+  // על מילה שגויה לפני שהמנוע הספיק לתקן את עצמו.
   rec.on("result", msg=>{
     if(!active) return;
-    processRecognition(msg, false);
-  });
-
-  rec.on("partialresult", msg=>{
-    if(!active) return;
-    processRecognition(msg, true);
+    processRecognition(msg);
   });
 }
 
@@ -935,8 +929,7 @@ function textTokens(text, conf){
     .map(w => ({word: w, conf: conf}));
 }
 
-function tokensOf(res, isPartial){
-  if(isPartial) return textTokens(res.partial, PARTIAL_CONFIDENCE);
+function tokensOf(res){
   const details = Array.isArray(res.result) ? res.result : [];
   if(!details.length) return textTokens(res.text, null);
   return details.map(w => ({
@@ -945,22 +938,20 @@ function tokensOf(res, isPartial){
   })).filter(t => t.word && t.word !== "[unk]");
 }
 
-function processRecognition(msg, isPartial){
+function processRecognition(msg){
   if(!active) return;
   const res = msg && msg.result;
   if(!res) return;
 
-  const tokens = tokensOf(res, isPartial);
+  const tokens = tokensOf(res);
   if(!tokens.length) return;   // שקט: ממשיכים להקשיב עד סוף החלון
 
   const target = word().toLowerCase().trim();
   let best = 0;
   for(const tok of tokens) best = Math.max(best, scoreToken(tok.word, tok.conf, target));
 
-  // ההחלטה כולה, במקום אחד. תוצאה חלקית יכולה רק לזכות — אם היא לא מספיקה
-  // ממשיכים להקשיב, ורק תוצאה סופית או סוף החלון מסיימים בכישלון.
-  if(best >= matchThreshold) finish(true);
-  else if(!isPartial) finish(false);
+  // ההחלטה כולה, במקום אחד.
+  finish(best >= matchThreshold);
 }
 
 async function ensureAudio(){
