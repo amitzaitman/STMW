@@ -326,6 +326,33 @@ async function main(){
   check("המילה הנכונה בתוצאה סופית מזכה", right.won && !right.active, right);
   const wrong = await attempt([said("zzz")]);
   check("מילה שגויה בתוצאה סופית מסיימת בכישלון", !wrong.won && !wrong.active, wrong);
+
+  // ילד שאומר את המילה ממש בסוף החלון: המנוע עוד לא שמע שקט אחריה ולא שלח
+  // תוצאה סופית מעצמו. מול המודל האמיתי, הקלטה שנחתכה מיד אחרי המילה החזירה
+  // אותה רק דרך retrieveFinalResult. כאן ה-recognizer מדומה בדיוק כך: עונה
+  // רק כשמבקשים, ובאיחור קטן, כמו ה-worker.
+  const atWindowEnd = async answer => await page.evaluate(async answer => {
+    const realWindow = listenWindowMs, realRetrieve = rec.retrieveFinalResult;
+    listenWindowMs = () => 100;
+    rec.retrieveFinalResult = function(){
+      if(answer) setTimeout(() => this.dispatchEvent(new CustomEvent("result",
+        { detail: { result: { result: [{ word: answer === "TARGET" ? word() : answer, conf: 1 }] } } })), 50);
+    };
+    try{
+      const before = score;
+      await listen();
+      await new Promise(r => setTimeout(r, 1500));
+      return { active, won: score > before };
+    } finally {
+      listenWindowMs = realWindow;
+      rec.retrieveFinalResult = realRetrieve;
+      if(active) finish(false);
+    }
+  }, answer);
+  const lateRight = await atWindowEnd("TARGET");
+  check("מילה נכונה בסוף החלון מזכה", lateRight.won && !lateRight.active, lateRight);
+  const lateNothing = await atWindowEnd(null);
+  check("בלי תשובה מהמנוע החלון נסגר בכישלון", !lateNothing.won && !lateNothing.active, lateNothing);
   // good() ו-again() מזמנים מעברים והודעות; שלא ידרסו את הקבוצה הבאה.
   await page.waitForTimeout(1500);
   await page.evaluate(() => { score = 0; renderScore(); });

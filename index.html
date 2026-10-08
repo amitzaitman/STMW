@@ -1011,9 +1011,18 @@ async function listen(){
   setNote("");
   active = true;
   $("say").classList.add("listening");
-  // אם עד סוף החלון לא היה ניקוד שעבר את הרף, זה כישלון. אין מה לשקלל כאן:
-  // כל תוצאה שעברה את הרף כבר סיימה את הניסיון ברגע שהיא הגיעה.
-  timer = setTimeout(()=>{ if(active) finish(false); }, listenWindowMs());
+  timer = setTimeout(closeWindow, listenWindowMs());
+}
+
+// מילה שנאמרה ממש בסוף החלון עוד לא קיבלה תוצאה סופית: המנוע שולח אותה
+// מעצמו רק אחרי שהוא שומע שקט. לכן בסוף החלון מבקשים ממנו את מה שנשמע עד
+// עכשיו, והניסיון עדיין פעיל כשהתשובה מגיעה. אין תשובה, או שהיא לא עוברת
+// את הרף — כישלון, כמו קודם, רק באיחור של FINAL_GRACE_MS לכל היותר.
+const FINAL_GRACE_MS = 500;
+function closeWindow(){
+  if(!active) return;
+  if(rec){ try{ rec.retrieveFinalResult(); }catch(err){} }
+  timer = setTimeout(()=>{ if(active) finish(false); }, FINAL_GRACE_MS);
 }
 
 function finish(ok){
