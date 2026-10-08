@@ -101,6 +101,29 @@ async function main(){
   check("מוצגת מילה על המסך", (await page.textContent("#word")).length > 0);
 
   // --------------------------------------------------------------
+  group("בחירת קול");
+  // Voice order varies by device. A remote or compact first entry must not
+  // hide a better local voice, and a missing Hebrew voice must stay silent.
+  const voiceSelection = await page.evaluate(() => {
+    const original = voices;
+    try {
+      const remote = {name: "Remote Natural", lang: "en-US", localService: false};
+      const compact = {name: "Compact", lang: "en-US", localService: true};
+      const enhanced = {name: "Enhanced", lang: "en-US", localService: true};
+      const british = {name: "Premium", lang: "en-GB", localService: true};
+      voices = [remote, compact, british, enhanced];
+      const localQuality = voiceFor(EN) === enhanced;
+      const missingHebrew = voiceFor(HE) === null;
+      voices = [{name: "Hebrew", lang: "he_IL", localService: true}];
+      const hebrew = voiceFor(HE) === voices[0];
+      return {localQuality, missingHebrew, hebrew};
+    } finally { voices = original; }
+  });
+  check("קול מקומי איכותי במבטא המבוקש מועדף", voiceSelection.localQuality, voiceSelection);
+  check("אין קול עברי — לא נבחר קול משפה אחרת", voiceSelection.missingHebrew, voiceSelection);
+  check("תג שפה עברי עם קו תחתון נתמך", voiceSelection.hebrew, voiceSelection);
+
+  // --------------------------------------------------------------
   group("מנוע ההתאמה");
   // הניקוד הוא מספר אחד, וההחלטה היא השוואה אחת מולו. אלה התכונות
   // שחייבות להישמר גם אם הנוסחה תשתנה.
