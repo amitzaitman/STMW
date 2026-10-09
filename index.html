@@ -216,18 +216,6 @@
   .match-btn-name{font-size:13px; font-weight:700; color:#1B2140}
   .match-btn-sub{font-size:10px; color:#64748B}
   .match-btn.active .match-btn-sub{color:#1B2140; font-weight:600}
-  .match-slider-wrap{
-    display:flex; flex-direction:column; gap:4px; padding-top:4px;
-  }
-  .match-slider-labels{
-    display:flex; justify-content:space-between; font-size:11px; color:#64748B; font-weight:600;
-  }
-  #sliderValueText{color:#2B6CB0; font-weight:700}
-  #matchThresholdSlider{
-    width:100%; height:8px; accent-color:#1B2140; cursor:pointer;
-    border-radius:4px; margin:2px 0;
-  }
-
   /* Multi-view navigation inside settings panel */
   .panel-view{
     display:flex; flex-direction:column; gap:12px; width:100%;
@@ -577,15 +565,6 @@
             <span class="match-btn-sub">למתקדמים</span>
           </button>
         </div>
-
-        <div class="match-slider-wrap">
-          <div class="match-slider-labels">
-            <span>🌱 קלה (30%)</span>
-            <span id="sliderValueText">דיוק נדרש: 70%</span>
-            <span>🎯 קפדנית (95%)</span>
-          </div>
-          <input type="range" id="matchThresholdSlider" min="30" max="95" step="5" value="70" aria-label="שינוי אחוז התאמה נדרש">
-        </div>
       </div>
 
       <div class="match-section">
@@ -702,14 +681,15 @@ const MODE_KEY = "practice_mode";
 let mode = (()=>{ try{ return localStorage.getItem(MODE_KEY) === "spell" ? "spell" : "say"; }catch(e){ return "say"; } })();
 
 // --- רמת ההתאמה לדיבור הילד: מספר אחד, 30 עד 95 ---
-// האחוז הוא המצב היחיד, וההתנהגות נגזרת ממנו ברצף, כך שהזזת הסליידר
-// באחוז אחד משנה את ההתנהגות באחוז אחד ולא מחליפה אלגוריתם. שלושת
-// הכפתורים הם קיצורי דרך אליו, לא מצב נוסף שצריך להסכים איתו.
+// האחוז הוא המצב היחיד, ושלושת הכפתורים קובעים אותו. אין כיוון עדין
+// באמצע: מול הקלטות עם ציוני הגייה של מומחים, 30 עד 60 מתנהגים כמעט אותו
+// דבר ו-90 עד 95 בדיוק אותו דבר, והביטחון של המנוע על אותה הקלטה קופץ
+// יותר מצעד של 5%. אחוז שמור שאינו של אחד הכפתורים נטען כמו שהוא.
 const MATCH_KEY = "speech_match_config";
 const MIN_THRESHOLD = 30, MAX_THRESHOLD = 95, DEFAULT_THRESHOLD = 70;
 
-// הכפתורים במסך ההגדרות. upTo הוא הגבול העליון להצגה: אחוז שנבחר בסליידר
-// מסומן על הכפתור הראשון שהוא נכנס לתחומו. תצוגה בלבד — לא התנהגות.
+// הכפתורים במסך ההגדרות. upTo הוא הגבול העליון להצגה: אחוז שמור שאינו של
+// אחד הכפתורים מסומן על הכפתור הראשון שהוא נכנס לתחומו. תצוגה בלבד — לא התנהגות.
 // התיאורים לא מבטיחים בדיקת הגייה: בדקדוק סגור המנוע מחזיר את מילת היעד
 // בביטחון מלא גם על הגייה שגויה, כך שגם הסף הגבוה מסנן רק חלק מהשגיאות.
 const PRESETS = [
@@ -750,8 +730,6 @@ function updateMatchUI(){
   const preset = presetFor(matchThreshold);
   $("matchLevelBadge").textContent = `${preset.badge} (${matchThreshold}%)`;
   $("matchLevelDesc").textContent = preset.desc;
-  $("matchThresholdSlider").value = matchThreshold;
-  $("sliderValueText").textContent = `דיוק נדרש: ${matchThreshold}%`;
   for(const p of PRESETS) $(p.btn).classList.toggle("active", p === preset);
 }
 
@@ -1667,7 +1645,6 @@ $("addSetBtn").addEventListener("click", addShown);
 for(const p of PRESETS){
   $(p.btn).addEventListener("click", ()=>setThreshold(p.threshold));
 }
-$("matchThresholdSlider").addEventListener("input", e=>setThreshold(Number(e.target.value)));
 
 $("hebrewToggle").addEventListener("change", e=>setHebrew(e.target.checked));
 

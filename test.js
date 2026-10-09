@@ -210,9 +210,17 @@ async function main(){
   check("חלון ההקשבה מתקצר ככל שהאחוז עולה",
         windows.every((v, n) => n === 0 || v < windows[n - 1]), windows);
 
-  await page.evaluate(() => { const s = $("matchThresholdSlider"); s.value = 55; s.dispatchEvent(new Event("input")); });
-  check("הסליידר מעדכן את התווית", (await page.textContent("#matchLevelBadge")).includes("55%"));
-  check("הסליידר נשמר", JSON.parse(await page.evaluate(() => localStorage.getItem("speech_match_config"))).threshold === 55);
+  check("הכפתור נשמר", JSON.parse(await page.evaluate(() => localStorage.getItem("speech_match_config"))).threshold === 90);
+
+  // אחוז שאינו של אחד הכפתורים יכול לשבת שמור במכשיר. הוא נטען כמו שהוא,
+  // לא מועבר לכפתור הקרוב, ומסומן על הכפתור שבתחומו.
+  await page.evaluate(() => localStorage.setItem("speech_match_config", JSON.stringify({threshold:55})));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(800);
+  check("אחוז שמור שאינו של כפתור נטען כמו שהוא", await page.evaluate(() => matchThreshold) === 55);
+  check("ומסומן על הכפתור שבתחומו",
+        (await page.textContent("#matchLevelBadge")).includes("55%") &&
+        await page.evaluate(() => $("btnLevelNormal").classList.contains("active")));
 
   // הגדרה שנשמרה בפורמט הישן, עם level, חייבת להמשיך לעבוד.
   await page.evaluate(() => localStorage.setItem("speech_match_config", JSON.stringify({level:"strict", threshold:90})));
