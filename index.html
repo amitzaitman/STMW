@@ -558,7 +558,7 @@
           <span id="matchLevelBadge" class="match-badge">רגילה (70%)</span>
         </div>
 
-        <p id="matchLevelDesc" class="match-desc">איזון מומלץ בין עידוד הילד לבין דיוק ההגייה.</p>
+        <p id="matchLevelDesc" class="match-desc">המילה הנכונה, כשהיא נשמעת די ברור. דוחה חלק מההגיות השגויות.</p>
 
         <div class="match-preset-group" role="radiogroup" aria-label="רמת התאמה לקול הילד">
           <button type="button" class="match-btn" data-level="lenient" id="btnLevelLenient" aria-label="רמת התאמה סלחנית לפעוטות">
@@ -710,13 +710,15 @@ const MIN_THRESHOLD = 30, MAX_THRESHOLD = 95, DEFAULT_THRESHOLD = 70;
 
 // הכפתורים במסך ההגדרות. upTo הוא הגבול העליון להצגה: אחוז שנבחר בסליידר
 // מסומן על הכפתור הראשון שהוא נכנס לתחומו. תצוגה בלבד — לא התנהגות.
+// התיאורים לא מבטיחים בדיקת הגייה: בדקדוק סגור המנוע מחזיר את מילת היעד
+// בביטחון מלא גם על הגייה שגויה, כך שגם הסף הגבוה מסנן רק חלק מהשגיאות.
 const PRESETS = [
   { btn: "btnLevelLenient", badge: "🌱 סלחנית", threshold: 45, upTo: 50,
-    desc: "סלחנית: מתאים לפעוטות ולמתחילים. מקבלת גם הגייה מקורבת, קול שקט או שיבוש קל באותיות." },
+    desc: "סלחנית: מתאים לפעוטות ולמתחילים. בודקת שהילד אמר את המילה הנכונה, גם אם ההגייה לא מדויקת." },
   { btn: "btnLevelNormal",  badge: "⭐ רגילה",  threshold: 70, upTo: 84,
-    desc: "רגילה (ברירת מחדל): איזון מומלץ בין עידוד הילד לבין דיוק ההגייה." },
+    desc: "רגילה (ברירת מחדל): המילה הנכונה, כשהיא נשמעת די ברור. דוחה חלק מההגיות השגויות." },
   { btn: "btnLevelStrict",  badge: "🎯 מדויקת", threshold: 90, upTo: MAX_THRESHOLD,
-    desc: "מדויקת: מתאים לילדים מתקדמים. דורשת הגייה מלאה, ברורה ומדויקת באנגלית." }
+    desc: "מדויקת: מתאים לילדים מתקדמים. המילה צריכה להישמע ברור מאוד. תופסת חלק משגיאות ההגייה, לא את כולן, ולפעמים דוחה גם הגייה נכונה." }
 ];
 
 let matchThreshold = loadThreshold();
