@@ -6,6 +6,7 @@
 
 import http from "node:http";
 import fs from "node:fs";
+import zlib from "node:zlib";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -30,6 +31,21 @@ function staticServer(){
     res.writeHead(200, {"Content-Type": TYPES[path.extname(file)] || "application/octet-stream"});
     fs.createReadStream(file).pipe(res);
   });
+}
+
+// מילון המודל, מתוך model.tar.gz עצמו. tar הוא רצף של כותרות בנות 512
+// בתים, ובכל אחת שם הקובץ וגודלו באוקטלי; התוכן מרופד לכפולה של 512.
+function modelWords(){
+  const tar = zlib.gunzipSync(fs.readFileSync(path.join(DIR, "model.tar.gz")));
+  for(let off = 0; off + 512 <= tar.length; ){
+    const name = tar.toString("latin1", off, off + 100).replace(/\0.*$/s, "");
+    if(!name) break;
+    const size = parseInt(tar.toString("latin1", off + 124, off + 136).replace(/\0/g, "").trim(), 8) || 0;
+    if(name.endsWith("graph/words.txt"))
+      return new Set(tar.toString("utf8", off + 512, off + 512 + size).split("\n").map(l => l.split("\t")[0]));
+    off += 512 + Math.ceil(size / 512) * 512;
+  }
+  return new Set();
 }
 
 let passed = 0, failed = [];
@@ -96,9 +112,17 @@ async function main(){
   // --------------------------------------------------------------
   group("טעינה");
   // words.js נטען מכתובת עם ?v=. אם הוא חוזר כ-HTML, PAIRS ריק.
-  check("מאגר המילים נטען", await page.evaluate(() => PAIRS.length) === 237);
+  check("מאגר המילים נטען", await page.evaluate(() => PAIRS.length) === 345);
   check("יש מילים לתרגול", await page.evaluate(() => words.length) > 0);
   check("מוצגת מילה על המסך", (await page.textContent("#word")).length > 0);
+
+  // --------------------------------------------------------------
+  group("מילון המודל");
+  // KaldiRecognizer מקבל בשקט גם מילה שהמודל לא מכיר, ואז היא לא תזוהה
+  // לעולם, גם כשהילד אומר אותה מושלם. מילה חדשה במאגר צריכה להופיע במילון.
+  const vocab = modelWords();
+  const unknown = (await page.evaluate(() => PAIRS.map(p => p[1]))).filter(w => !vocab.has(w));
+  check("המודל מכיר כל מילה במאגר", unknown.length === 0, unknown);
 
   // --------------------------------------------------------------
   group("בחירת קול");
@@ -210,7 +234,7 @@ async function main(){
         .filter(b => getComputedStyle(b).display !== "none").length;
   });
   const built = await page.evaluate(() => document.querySelectorAll("#catalog .catalog-item").length);
-  check("כל המאגר נבנה", built === 237, built);
+  check("כל המאגר נבנה", built === 345, built);
 
   await page.fill("#search", "lion");
   await page.waitForTimeout(150);

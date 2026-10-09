@@ -18,7 +18,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <script src="./vosk.js"></script>
 <script src="./cache-name.js"></script>
-<script src="./words.js?v=6"></script>
+<script src="./words.js?v=7"></script>
 <style>
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -1426,7 +1426,7 @@ function span(cls, text){
   return el;
 }
 
-// 237 כפתורים. הם נבנים פעם אחת והחיפוש רק מסתיר ומציג אותם, כדי שהקלדה
+// כפתור לכל מילה במאגר. הם נבנים פעם אחת והחיפוש רק מסתיר ומציג אותם, כדי שהקלדה
 // לא תבנה את כולם מחדש בכל הקשה.
 let catalogItems = null;
 // הנושא והרמה מצטרפים לחיפוש. "" הוא הכל.
@@ -1477,7 +1477,7 @@ function renderCatalog(){
       && (!catalogLevel || b.dataset.level === catalogLevel);
     b.hidden = !match;
     // הסימון "כבר בתרגול" משתנה רק כשמוסיפים או מוחקים מילה. בלי התנאי הזה
-    // כל הקשה בחיפוש הייתה בונה 237 מחרוזות title מחדש בלי שום סיבה.
+    // כל הקשה בחיפוש הייתה בונה מחדש title לכל המאגר בלי שום סיבה.
     if(b.classList.contains("in-list") !== isTaken){
       b.classList.toggle("in-list", isTaken);
       b.title = isTaken ? `${w} (כבר בתרגול)` : `הוספת ${w} לתרגול`;
@@ -1624,7 +1624,7 @@ $("panel").addEventListener("click", e=>{
   to === "close" ? closePanel() : showSettingsView(to, !btn.hasAttribute("data-nofocus"));
 });
 
-// מאזין אחד לכל הקטלוג, במקום אחד לכל אחת מ-237 המילים.
+// מאזין אחד לכל הקטלוג, במקום אחד לכל מילה.
 $("catalog").addEventListener("click", e=>{
   const b = e.target.closest(".catalog-item");
   if(!b) return;
