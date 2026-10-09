@@ -45,10 +45,14 @@ self.addEventListener('install', e=>{
   );
 });
 
+// מוחקים רק מטמונים ישנים שלנו. ב-GitHub Pages כל הריפו של המשתמש יושבים
+// על אותו origin וחולקים את Cache Storage, וכל מטמון אחר שייך לאפליקציה אחרת.
+const OWN_PREFIX = 'say-the-word-';
+
 self.addEventListener('activate', e=>{
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k=>k.startsWith(OWN_PREFIX) && k!==CACHE_NAME).map(k=>caches.delete(k))))
       .then(()=>self.clients.claim())
   );
 });

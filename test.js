@@ -622,6 +622,26 @@ async function main(){
   const realBytes = fs.statSync(path.join(DIR, "model.tar.gz")).size;
   check("המודל נשמר במטמון במלואו", modelBytes === realBytes, { modelBytes, realBytes });
 
+  // ב-GitHub Pages כל הריפו של אותו משתמש חולקים origin אחד, ואיתו את
+  // Cache Storage. ה-service worker מנקה בהפעלה רק מטמונים ישנים שלנו; מחיקה
+  // של כל השאר השאירה את AlefBet בלי עבודה ללא אינטרנט אחרי ביקור אחד כאן.
+  // דפדפן נקי, כדי שההפעלה תקרה אחרי שהמטמונים כבר שם.
+  const fresh = await browser.newContext();
+  const freshPage = await fresh.newPage();
+  await freshPage.goto(base + "/manifest.json");
+  const ours = await page.evaluate(() => CACHE_NAME);
+  const planted = { foreign: "alefbet-release-test", old: ours + "-old" };
+  await freshPage.evaluate(async names => {
+    for(const name of Object.values(names)) await caches.open(name);
+  }, planted);
+  await freshPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  // controller מופיע רק אחרי clients.claim, שבא אחרי הניקוי
+  await freshPage.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 30000 });
+  const keys = await freshPage.evaluate(() => caches.keys());
+  await fresh.close();
+  check("מטמון של אפליקציה אחרת שורד את ההפעלה", keys.includes(planted.foreign), keys);
+  check("מטמון ישן שלנו נמחק בהפעלה", !keys.includes(planted.old) && keys.includes(ours), keys);
+
   server.closeAllConnections();
   await new Promise(r => server.close(r));
 
