@@ -413,27 +413,89 @@ async function main(){
   });
   check("הבנק אף פעם לא מגיע בסדר של המילה", unshuffled === 0, unshuffled);
 
+  // כל אות נכנסת, גם לא נכונה, ונבדקת רק כשהמילה מלאה. אילו רק הנכונה
+  // נכנסה, היה מספיק ללחוץ על כל הבנק עד שמשהו נתפס.
+  const newBoard = () => page.waitForFunction(() => !busy && slotList().every(s => !s.tile));
   const wrongTap = await page.evaluate(() => {
     const before = score;
     const tile = [...$("bank").children].find(t => t.dataset.letter !== word()[0]);
     tile.click();
-    return { spelled, slot: $("slots").children[0].textContent, stars: score - before, inBank: !tile.disabled };
+    const slot = $("slots").children[0];
+    return { letter: tile.dataset.letter, slot: slot.textContent, stars: score - before, inBank: !tile.disabled };
   });
-  check("אות לא נכונה נשארת בבנק ולא עולה כוכב",
-    wrongTap.spelled === 0 && wrongTap.slot === "" && wrongTap.stars === 0 && wrongTap.inBank, wrongTap);
+  check("אות לא נכונה נכנסת למשבצת ולא עולה כוכב",
+    wrongTap.slot === wrongTap.letter && wrongTap.stars === 0 && !wrongTap.inBank, wrongTap);
+  const takeBack = await page.evaluate(() => {
+    const slot = $("slots").children[0], tile = slot.tile;
+    slot.click();
+    return { slot: slot.textContent, inBank: !tile.disabled && !tile.classList.contains("used") };
+  });
+  check("לחיצה על אות במשבצת מחזירה אותה לבנק", takeBack.slot === "" && takeBack.inBank, takeBack);
+
+  // מילה מלאה ושגויה: האות הראשונה במקומה, והשאר מסובבות באחת — כך יש גם
+  // נכונות וגם שגויות. מילה שכל אותיותיה אחרי הראשונה זהות לא מתאימה.
+  const filled = await page.evaluate(() => {
+    i = words.findIndex(w => new Set(w.word.slice(1)).size > 1);
+    show();
+    const target = word(), rest = target.slice(1);
+    const order = target[0] + rest.slice(1) + rest[0];
+    const before = score;
+    for(const ch of order)
+      [...$("bank").children].find(t => !t.disabled && t.dataset.letter === ch).click();
+    const slots = slotList();
+    return {
+      target, order, stars: score - before, again: $("picture").className,
+      right: slots.map((s, k) => s.classList.contains("right") === (order[k] === target[k])),
+      red: slots.map((s, k) => s.classList.contains("wrong") === (order[k] !== target[k]))
+    };
+  });
+  check("מילה מלאה ושגויה — נסו שוב, בלי כוכבים",
+    filled.stars === 0 && filled.again === "again", filled);
+  check("הנכונות בירוק והשגויות באדום",
+    filled.right.every(Boolean) && filled.red.every(Boolean), filled);
+  await page.waitForTimeout(1200);
+  const after = await page.evaluate(({ target, order }) => {
+    const slots = slotList();
+    const board = slots.map(s => s.textContent || "_").join("");
+    slots[0].click();
+    return {
+      board, expected: [...order].map((ch, k) => ch === target[k] ? ch : "_").join(""),
+      firstStays: slots[0].textContent === target[0],
+      inBank: [...$("bank").children].filter(t => !t.disabled).length
+    };
+  }, filled);
+  check("השגויות חוזרות לבנק והנכונות נשארות",
+    after.board === after.expected && after.inBank === after.board.split("_").length - 1, after);
+  check("אות שנבדקה ונמצאה נכונה לא יוצאת בלחיצה", after.firstStays, after);
+
+  // משלים את המשבצות הריקות באותיות הנכונות, משמאל לימין.
+  await page.evaluate(() => {
+    window.completeWord = () => {
+      const target = word();
+      for(let n; (n = slotList().findIndex(s => !s.tile)) >= 0; )
+        [...$("bank").children].find(t => !t.disabled && t.dataset.letter === target[n]).click();
+    };
+  });
+  const fixed = await page.evaluate(() => {
+    const before = score;
+    completeWord();
+    return { stars: score - before, card: $("picture").textContent };
+  });
+  check("טעות בדרך לא מורידה כוכב", fixed.stars === 3 && fixed.card === "⭐⭐⭐", fixed);
+  await newBoard();
 
   // good() עובר למילה הבאה אחרי המשוב, ושם הלוח מתחיל מחדש.
   const spellAll = async withHint => {
-    await page.waitForFunction(() => spelled === 0);
+    await newBoard();
     return page.evaluate(withHint => {
-      const before = score, target = word();
+      const before = score;
       if(withHint) $("hint").click();
-      while(spelled < target.length)
-        [...$("bank").children].find(t => !t.disabled && t.dataset.letter === target[spelled]).click();
+      completeWord();
       return { stars: score - before, card: $("picture").textContent, row: $("stars").textContent,
                hinted: $("slots").querySelectorAll(".hinted").length, hintOff: $("hint").disabled };
     }, withHint);
   };
+  await page.evaluate(() => { score = 0; renderScore(); });
   const clean = await spellAll(false);
   check("מילה שלמה בלי רמז — שלושה כוכבים", clean.stars === 3 && clean.card === "⭐⭐⭐", clean);
   check("שלושת הכוכבים נכנסים לשורה כמדליה", clean.row === "🏅", clean);
@@ -441,7 +503,29 @@ async function main(){
   check("רמז ממלא אות אחת ומוריד לשני כוכבים",
     helped.stars === 2 && helped.hinted === 1 && helped.card === "⭐⭐", helped);
   check("אחרי שהמילה הושלמה אין רמז", helped.hintOff, helped);
-  await page.waitForFunction(() => spelled === 0);
+  await newBoard();
+
+  // רמז על משבצת שיש בה אות שגויה: היא חוזרת לבנק, והאות הנכונה באה
+  // ממשבצת שאינה שלה כשאין אחת כזו בבנק.
+  const swapped = await page.evaluate(() => {
+    i = words.findIndex(w => w.word.length >= 3 && w.word[0] !== w.word[1]
+      && [...w.word].filter(ch => ch === w.word[0]).length === 1);
+    show();
+    const target = word(), bank = () => [...$("bank").children];
+    bank().find(t => t.dataset.letter === target[1]).click();
+    bank().find(t => t.dataset.letter === target[0]).click();
+    $("hint").click();
+    const slots = slotList();
+    return {
+      target, first: slots[0].textContent, hinted: slots[0].classList.contains("hinted"),
+      emptied: slots.slice(1).every(s => s.textContent === ""),
+      inBank: bank().filter(t => !t.disabled).length
+    };
+  });
+  check("רמז מחליף אות שגויה ומביא את הנכונה ממקום אחר",
+    swapped.first === swapped.target[0] && swapped.hinted && swapped.emptied
+      && swapped.inBank === swapped.target.length - 1, swapped);
+  await page.evaluate(() => show());
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(800);

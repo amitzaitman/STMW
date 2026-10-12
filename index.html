@@ -100,8 +100,10 @@
     font-size:clamp(20px,7vw,30px); font-weight:800;
     display:flex; align-items:center; justify-content:center;
   }
-  .slot.filled{border-style:solid; border-color:#1B2140}
+  .slot.filled{border-style:solid; border-color:#1B2140; cursor:pointer}
   .slot.hinted{border-style:solid; border-color:#2B6CB0; color:#2B6CB0; background:#EBF8FF}
+  .slot.right{border-style:solid; border-color:#2F855A; color:#2F855A; background:#F0FFF4}
+  .slot.wrong{border-color:#C53030; color:#C53030; background:#FFECEC; animation:shake .3s}
   .tile{
     width:52px; height:52px; padding:0; font-size:30px; font-weight:800;
     border-width:3px; border-radius:14px; box-shadow:0 3px 0 #1B2140;
@@ -110,7 +112,6 @@
   .tile:active{transform:translateY(2px); box-shadow:0 1px 0 #1B2140}
   /* אות שכבר במקומה משאירה חור, כדי ששאר האותיות לא יזוזו מתחת לאצבע. */
   .tile.used{visibility:hidden}
-  .tile.wrong{animation:shake .3s; background:#FFECEC}
   @keyframes shake{25%{transform:translateX(-6px)} 75%{transform:translateX(6px)}}
   .btn-icon{font-size:34px; line-height:1; display:inline-block}
   #say .btn-icon{font-size:42px}
@@ -1173,7 +1174,7 @@ function stopListening(){
 
 function finish(ok){
   if(!stopListening()) return;
-  ok ? good() : again();
+  ok ? good() : again(matchThreshold >= HIGH_BAR ? "בדיוק גבוה נדרשת הגייה ברורה. נסו שוב!" : "");
 }
 
 // מעל זה מסבירים לילד למה זה לא התקבל, אחרת "נסו שוב" נשמע שרירותי.
@@ -1201,9 +1202,10 @@ function good(stars = 1){
   $("picture").textContent = stars > 1 ? "⭐".repeat(stars) : "🎉";
   speak("כל הכבוד!", HE, ()=>setTimeout(next, 400));
 }
-function again(){
+// why: הסבר מתחת לתמונה, כשיש מה להסביר.
+function again(why = ""){
   $("picture").className = "again";
-  const note = setNote(matchThreshold >= HIGH_BAR ? "בדיוק גבוה נדרשת הגייה ברורה. נסו שוב!" : "");
+  const note = setNote(why);
   speak("נסו שוב", HE, ()=>setTimeout(()=>{
     $("picture").className = "";
     clearNote(note);
@@ -1227,8 +1229,12 @@ function next(){
 
 // --- כתיבה: בונים את המילה מהאותיות שלה, משמאל לימין ---
 const SPELL_STARS = 3, HINTED_STARS = 2;
-// כמה אותיות כבר במקומן, והאם נעזרו ברמז. מתאפסים בכל מילה.
-let spelled = 0, hinted = false;
+// כמה זמן האותיות השגויות נשארות אדומות לפני שהן חוזרות לבנק.
+const WRONG_MS = 1000;
+// האם נעזרו ברמז, והאם הלוח ממתין למשוב ולא מקבל לחיצות. מתאפסים בכל
+// מילה. board מתקדם בכל מילה, כדי שאותיות שחוזרות לבנק באיחור לא ייגעו
+// בלוח של המילה הבאה.
+let hinted = false, busy = false, board = 0;
 
 function shuffled(letters){
   const out = letters.slice();
@@ -1243,8 +1249,9 @@ function shuffled(letters){
 }
 
 function startSpelling(){
-  spelled = 0;
+  board++;
   hinted = false;
+  busy = false;
   const letters = [...word()];
   $("slots").replaceChildren(...letters.map(() => span("slot", "")));
   $("bank").replaceChildren(...shuffled(letters).map(ch => {
@@ -1258,32 +1265,78 @@ function startSpelling(){
   $("hint").disabled = false;
 }
 
-function place(tile, byHint){
-  const slot = $("slots").children[spelled];
+function slotList(){ return [...$("slots").children]; }
+
+// המשבצת זוכרת איזו אות מהבנק יושבת בה, כדי להחזיר בדיוק אותה.
+function put(tile, slot, cls){
+  slot.tile = tile;
   slot.textContent = tile.dataset.letter;
-  slot.classList.add(byHint ? "hinted" : "filled");
+  slot.className = "slot " + cls;
   tile.disabled = true;
   tile.classList.add("used");
-  spelled++;
-  if(spelled === word().length){
+}
+function takeOut(slot){
+  slot.tile.disabled = false;
+  slot.tile.classList.remove("used");
+  slot.tile = null;
+  slot.textContent = "";
+  slot.className = "slot";
+}
+
+// כל אות נכנסת, גם לא נכונה. אילו רק הנכונה נכנסה, היה מספיק ללחוץ על
+// כל הבנק לפי הסדר עד שמשהו נתפס — מילה שלמה בלי לדעת אותה. הבדיקה
+// מחכה למילה מלאה, וטעות לא עולה כוכב.
+function tapTile(tile){
+  const slot = slotList().find(s => !s.tile);
+  if(busy || !slot) return;
+  put(tile, slot, "filled");
+  checkWord();
+}
+
+// אות שהילד הניח חוזרת לבנק בלחיצה. אות מרמז, או אות שנבדקה ונמצאה
+// במקומה, נשארת.
+function tapSlot(slot){
+  if(busy || !slot.classList.contains("filled")) return;
+  takeOut(slot);
+}
+
+// מילה שגויה: הנכונות ננעלות בירוק, והשגויות מאדימות וחוזרות לבנק.
+function checkWord(){
+  const slots = slotList(), target = word();
+  if(slots.some(s => !s.tile)) return;
+  const wrong = slots.filter((s, k) => s.textContent !== target[k]);
+  busy = true;
+  if(!wrong.length){
     $("hint").disabled = true;
     good(hinted ? HINTED_STARS : SPELL_STARS);
+    return;
   }
+  for(const s of slots) if(s.classList.contains("filled") && !wrong.includes(s)) s.className = "slot right";
+  for(const s of wrong) s.classList.add("wrong");
+  again();
+  const mine = board;
+  setTimeout(()=>{
+    if(mine !== board) return;
+    wrong.forEach(takeOut);
+    busy = false;
+  }, WRONG_MS);
 }
 
-// טעות לא עולה כוכב: האות רועדת ונשארת בבנק. רק רמז מוריד כוכב.
-function tapTile(tile){
-  if(tile.dataset.letter === word()[spelled]) place(tile, false);
-  else tile.classList.add("wrong");
-}
-
+// ממלא את המשבצת הראשונה שאין בה האות הנכונה. אות שגויה שישבה שם חוזרת
+// לבנק, והאות הנכונה באה מהבנק, או ממשבצת שהיא לא שלה. באות כפולה, כמו
+// p ב-apple, כל אחת מהשתיים מתאימה.
 function giveHint(){
-  // באות כפולה, כמו p ב-apple, כל אחת מהשתיים מתאימה.
-  const tile = [...$("bank").children]
-    .find(t => !t.disabled && t.dataset.letter === word()[spelled]);
-  if(!tile) return;
+  if(busy) return;
+  const slots = slotList(), target = word();
+  const k = slots.findIndex((s, n) => s.textContent !== target[n]);
+  if(k < 0) return;
+  if(slots[k].tile) takeOut(slots[k]);
+  const inBank = () => [...$("bank").children].find(t => !t.disabled && t.dataset.letter === target[k]);
+  if(!inBank()) takeOut(slots.find((s, n) => s.textContent === target[k] && target[n] !== target[k]));
+  const tile = inBank();
   hinted = true;
-  place(tile, true);
+  put(tile, slots[k], "hinted");
+  checkWord();
 }
 
 function renderMode(){
@@ -1604,8 +1657,10 @@ $("bank").addEventListener("click", e=>{
   const tile = e.target.closest(".tile");
   if(tile && !tile.disabled) tapTile(tile);
 });
-// הרעידה מסתיימת והאות חוזרת לצבעה, ומוכנה לרעוד שוב בטעות הבאה.
-$("bank").addEventListener("animationend", e=>e.target.classList.remove("wrong"));
+$("slots").addEventListener("click", e=>{
+  const slot = e.target.closest(".slot");
+  if(slot) tapSlot(slot);
+});
 
 // כפתורי הניווט בפאנל אומרים לאן ללכת ב-data-goto, ומאזין אחד מקשיב.
 // data-nofocus: מכרטיס הערכות באים לבחור נושא, ומקלדת שקופצת לחיפוש
