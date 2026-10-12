@@ -666,7 +666,10 @@ var THEME_BY_WORD = window.THEME_BY_WORD || {};
 
 const $ = id => document.getElementById(id);
 let words = load() || DEFAULT_WORDS.slice();
-let i = 0, score = 0;
+// לכל תרגול ניקוד משלו, והשורה מראה את של התרגול הפתוח. מילה שנכתבה
+// שווה שלושה כוכבים ומילה שנאמרה אחד, ובשורה משותפת הכתיבה הייתה מטביעה
+// את האמירה.
+let i = 0, scores = { say: 0, spell: 0 };
 
 let model = null, rec = null;
 let ctx = null, srcNode = null, procNode = null, sinkNode = null, micStream = null;
@@ -1187,7 +1190,7 @@ const PER_MEDAL = 3, MEDALS_PER_TROPHY = 5;
 const PER_TROPHY = PER_MEDAL * MEDALS_PER_TROPHY;
 
 function renderScore(){
-  const rest = score % PER_TROPHY;
+  const score = scores[mode], rest = score % PER_TROPHY;
   $("stars").textContent = "🏆".repeat(Math.floor(score / PER_TROPHY))
     + "🏅".repeat(Math.floor(rest / PER_MEDAL))
     + "⭐".repeat(rest % PER_MEDAL);
@@ -1196,7 +1199,7 @@ function renderScore(){
 // מילה שנאמרה שווה כוכב אחד. מילה שנכתבה שווה שלושה, או שניים אם נעזרו
 // ברמז, והכרטיס מראה כמה כוכבים הרוויחו לפני שהם נכנסים לשורה.
 function good(stars = 1){
-  score += stars;
+  scores[mode] += stars;
   renderScore();
   $("picture").className = stars > 1 ? "good earned" : "good";
   $("picture").textContent = stars > 1 ? "⭐".repeat(stars) : "🎉";
@@ -1345,6 +1348,7 @@ function renderMode(){
   $("spell").hidden = !spell;
   $("say").hidden = spell;
   $("hint").hidden = !spell;
+  renderScore();
   for(const b of $("modeSwitch").children){
     const on = b.dataset.mode === mode;
     b.classList.toggle("active", on);

@@ -355,7 +355,7 @@ async function main(){
   // שורת התגמול לא גדלה בלי גבול ולא קופאת: שלוש הצלחות מתחלפות במדליה,
   // וחמש מדליות בגביע.
   const row = async n => await page.evaluate(count => {
-    score = 0;
+    scores[mode] = 0;
     for(let k = 0; k < count; k++) good();
     return $("stars").textContent;
   }, n);
@@ -367,7 +367,7 @@ async function main(){
   // בלי ההמתנה הזאת המעברים של הבדיקה הזאת מוחקים את ההודעה שהבדיקה
   // הבאה מציגה, והיא נופלת בלי קשר למה שהיא באמת בודקת.
   await page.waitForTimeout(1200);
-  await page.evaluate(() => { score = 0; renderScore(); });
+  await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
 
   // --------------------------------------------------------------
   group("תעתיק לעברית");
@@ -394,7 +394,7 @@ async function main(){
   // רמז מוריד לשניים, וטעות לא עולה כלום. ההחלפה בין 🎤 ל-💡 נמדדת במה
   // שמוצג בפועל, כי display של כפתורי השורה גובר על התכונה hidden.
   const shown = id => page.evaluate(id => getComputedStyle($(id)).display !== "none", id);
-  await page.evaluate(() => { score = 0; renderScore(); });
+  await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
   await page.click('#modeSwitch [data-mode="spell"]');
   check("במצב כתיבה 🎤 מוסתר ו-💡 מוצג", !(await shown("say")) && await shown("hint"));
   check("במצב כתיבה המילה באנגלית לא מוצגת", !(await shown("word")) && await shown("spell"));
@@ -417,11 +417,11 @@ async function main(){
   // נכנסה, היה מספיק ללחוץ על כל הבנק עד שמשהו נתפס.
   const newBoard = () => page.waitForFunction(() => !busy && slotList().every(s => !s.tile));
   const wrongTap = await page.evaluate(() => {
-    const before = score;
+    const before = scores.spell;
     const tile = [...$("bank").children].find(t => t.dataset.letter !== word()[0]);
     tile.click();
     const slot = $("slots").children[0];
-    return { letter: tile.dataset.letter, slot: slot.textContent, stars: score - before, inBank: !tile.disabled };
+    return { letter: tile.dataset.letter, slot: slot.textContent, stars: scores.spell - before, inBank: !tile.disabled };
   });
   check("אות לא נכונה נכנסת למשבצת ולא עולה כוכב",
     wrongTap.slot === wrongTap.letter && wrongTap.stars === 0 && !wrongTap.inBank, wrongTap);
@@ -439,12 +439,12 @@ async function main(){
     show();
     const target = word(), rest = target.slice(1);
     const order = target[0] + rest.slice(1) + rest[0];
-    const before = score;
+    const before = scores.spell;
     for(const ch of order)
       [...$("bank").children].find(t => !t.disabled && t.dataset.letter === ch).click();
     const slots = slotList();
     return {
-      target, order, stars: score - before, again: $("picture").className,
+      target, order, stars: scores.spell - before, again: $("picture").className,
       right: slots.map((s, k) => s.classList.contains("right") === (order[k] === target[k])),
       red: slots.map((s, k) => s.classList.contains("wrong") === (order[k] !== target[k]))
     };
@@ -477,9 +477,9 @@ async function main(){
     };
   });
   const fixed = await page.evaluate(() => {
-    const before = score;
+    const before = scores.spell;
     completeWord();
-    return { stars: score - before, card: $("picture").textContent };
+    return { stars: scores.spell - before, card: $("picture").textContent };
   });
   check("טעות בדרך לא מורידה כוכב", fixed.stars === 3 && fixed.card === "⭐⭐⭐", fixed);
   await newBoard();
@@ -488,14 +488,14 @@ async function main(){
   const spellAll = async withHint => {
     await newBoard();
     return page.evaluate(withHint => {
-      const before = score;
+      const before = scores.spell;
       if(withHint) $("hint").click();
       completeWord();
-      return { stars: score - before, card: $("picture").textContent, row: $("stars").textContent,
+      return { stars: scores.spell - before, card: $("picture").textContent, row: $("stars").textContent,
                hinted: $("slots").querySelectorAll(".hinted").length, hintOff: $("hint").disabled };
     }, withHint);
   };
-  await page.evaluate(() => { score = 0; renderScore(); });
+  await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
   const clean = await spellAll(false);
   check("מילה שלמה בלי רמז — שלושה כוכבים", clean.stars === 3 && clean.card === "⭐⭐⭐", clean);
   check("שלושת הכוכבים נכנסים לשורה כמדליה", clean.row === "🏅", clean);
@@ -526,6 +526,21 @@ async function main(){
     swapped.first === swapped.target[0] && swapped.hinted && swapped.emptied
       && swapped.inBank === swapped.target.length - 1, swapped);
   await page.evaluate(() => show());
+
+  // לכל תרגול שורה משלו: שלושה כוכבים של מילה כתובה לא נכנסים לשורה של
+  // האמירה. רגע לפני הטעינה מחדש, שמבטלת את המעברים ש-good() מזמן.
+  const apart = await page.evaluate(() => {
+    scores = { say: 0, spell: 0 };
+    setMode("say"); good();
+    setMode("spell"); good(SPELL_STARS);
+    const spellRow = $("stars").textContent;
+    setMode("say");
+    const sayRow = $("stars").textContent;
+    setMode("spell");
+    return { sayRow, spellRow, back: $("stars").textContent };
+  });
+  check("לאמירה ולכתיבה ניקוד נפרד",
+    apart.sayRow === "⭐" && apart.spellRow === "🏅" && apart.back === "🏅", apart);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(800);
@@ -601,10 +616,10 @@ async function main(){
   await page.evaluate(() => { setThreshold(DEFAULT_THRESHOLD); return ensureAudio(); });
   const attempt = async events => await page.evaluate(async evs => {
     await listen();
-    const target = word(), before = score;
+    const target = word(), before = scores.say;
     for(const [type, detail] of evs)
       rec.dispatchEvent(new CustomEvent(type, { detail: JSON.parse(JSON.stringify(detail).replaceAll("TARGET", target)) }));
-    const out = { active, won: score > before };
+    const out = { active, won: scores.say > before };
     if(active) finish(false);
     return out;
   }, events);
@@ -631,10 +646,10 @@ async function main(){
         { detail: { result: { result: [{ word: answer === "TARGET" ? word() : answer, conf: 1 }] } } })), 50);
     };
     try{
-      const before = score;
+      const before = scores.say;
       await listen();
       await new Promise(r => setTimeout(r, 1500));
-      return { active, won: score > before };
+      return { active, won: scores.say > before };
     } finally {
       listenWindowMs = realWindow;
       rec.retrieveFinalResult = realRetrieve;
@@ -666,7 +681,7 @@ async function main(){
     switched.wasActive && !switched.active && switched.failures === 0 && !switched.listening, switched);
   // good() ו-again() מזמנים מעברים והודעות; שלא ידרסו את הקבוצה הבאה.
   await page.waitForTimeout(1500);
-  await page.evaluate(() => { score = 0; renderScore(); });
+  await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
 
   // --------------------------------------------------------------
   group("כפתור ההקשבה");
