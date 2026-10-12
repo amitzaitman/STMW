@@ -390,9 +390,9 @@ async function main(){
 
   // --------------------------------------------------------------
   group("כתיבה");
-  // הילד בונה את המילה מבנק של האותיות שלה. מילה שלמה שווה שלושה כוכבים,
-  // רמז מוריד לשניים, וטעות לא עולה כלום. ההחלפה בין 🎤 ל-💡 נמדדת במה
-  // שמוצג בפועל, כי display של כפתורי השורה גובר על התכונה hidden.
+  // הילד בונה את המילה מבנק של האותיות שלה. מילה שלמה שווה כוכב אחד, עם
+  // רמז או בלי, וטעות לא עולה כלום. ההחלפה בין 🎤 ל-💡 נמדדת במה שמוצג
+  // בפועל, כי display של כפתורי השורה גובר על התכונה hidden.
   const shown = id => page.evaluate(id => getComputedStyle($(id)).display !== "none", id);
   await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
   await page.click('#modeSwitch [data-mode="spell"]');
@@ -481,7 +481,7 @@ async function main(){
     completeWord();
     return { stars: scores.spell - before, card: $("picture").textContent };
   });
-  check("טעות בדרך לא מורידה כוכב", fixed.stars === 3 && fixed.card === "⭐⭐⭐", fixed);
+  check("טעות בדרך לא מורידה כוכב", fixed.stars === 1 && fixed.card === "🎉", fixed);
   await newBoard();
 
   // good() עובר למילה הבאה אחרי המשוב, ושם הלוח מתחיל מחדש.
@@ -497,11 +497,11 @@ async function main(){
   };
   await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
   const clean = await spellAll(false);
-  check("מילה שלמה בלי רמז — שלושה כוכבים", clean.stars === 3 && clean.card === "⭐⭐⭐", clean);
-  check("שלושת הכוכבים נכנסים לשורה כמדליה", clean.row === "🏅", clean);
+  check("מילה שנכתבה — כוכב אחד, כמו באמירה",
+    clean.stars === 1 && clean.card === "🎉" && clean.row === "⭐", clean);
   const helped = await spellAll(true);
-  check("רמז ממלא אות אחת ומוריד לשני כוכבים",
-    helped.stars === 2 && helped.hinted === 1 && helped.card === "⭐⭐", helped);
+  check("רמז ממלא אות אחת ולא מוריד כוכב",
+    helped.stars === 1 && helped.hinted === 1 && helped.card === "🎉", helped);
   check("אחרי שהמילה הושלמה אין רמז", helped.hintOff, helped);
   await newBoard();
 
@@ -527,12 +527,12 @@ async function main(){
       && swapped.inBank === swapped.target.length - 1, swapped);
   await page.evaluate(() => show());
 
-  // לכל תרגול שורה משלו: שלושה כוכבים של מילה כתובה לא נכנסים לשורה של
-  // האמירה. רגע לפני הטעינה מחדש, שמבטלת את המעברים ש-good() מזמן.
+  // לכל תרגול שורה משלו: כוכב של מילה כתובה לא נכנס לשורה של האמירה.
+  // רגע לפני הטעינה מחדש, שמבטלת את המעברים ש-good() מזמן.
   const apart = await page.evaluate(() => {
     scores = { say: 0, spell: 0 };
     setMode("say"); good();
-    setMode("spell"); good(SPELL_STARS);
+    setMode("spell"); good(); good();
     const spellRow = $("stars").textContent;
     setMode("say");
     const sayRow = $("stars").textContent;
@@ -540,7 +540,7 @@ async function main(){
     return { sayRow, spellRow, back: $("stars").textContent };
   });
   check("לאמירה ולכתיבה ניקוד נפרד",
-    apart.sayRow === "⭐" && apart.spellRow === "🏅" && apart.back === "🏅", apart);
+    apart.sayRow === "⭐" && apart.spellRow === "⭐⭐" && apart.back === "⭐⭐", apart);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(800);

@@ -85,8 +85,6 @@
     font-size:15px; font-weight:700; color:#4A5480;
   }
   #modeSwitch button.active{background:#FFD65A; color:#1B2140}
-  /* שלושה כוכבים בשורה אחת על הכרטיס, גם בטלפון צר */
-  #picture.earned{font-size:clamp(48px,18vw,120px)}
   #spell{
     display:flex; flex-direction:column; align-items:center; gap:10px;
     width:100%; max-width:520px; direction:ltr;
@@ -666,9 +664,7 @@ var THEME_BY_WORD = window.THEME_BY_WORD || {};
 
 const $ = id => document.getElementById(id);
 let words = load() || DEFAULT_WORDS.slice();
-// לכל תרגול ניקוד משלו, והשורה מראה את של התרגול הפתוח. מילה שנכתבה
-// שווה שלושה כוכבים ומילה שנאמרה אחד, ובשורה משותפת הכתיבה הייתה מטביעה
-// את האמירה.
+// לכל תרגול ניקוד משלו, והשורה מראה את של התרגול הפתוח.
 let i = 0, scores = { say: 0, spell: 0 };
 
 let model = null, rec = null;
@@ -1196,13 +1192,12 @@ function renderScore(){
     + "⭐".repeat(rest % PER_MEDAL);
 }
 
-// מילה שנאמרה שווה כוכב אחד. מילה שנכתבה שווה שלושה, או שניים אם נעזרו
-// ברמז, והכרטיס מראה כמה כוכבים הרוויחו לפני שהם נכנסים לשורה.
-function good(stars = 1){
-  scores[mode] += stars;
+// כל הצלחה שווה כוכב אחד, באמירה ובכתיבה, עם רמז או בלי.
+function good(){
+  scores[mode]++;
   renderScore();
-  $("picture").className = stars > 1 ? "good earned" : "good";
-  $("picture").textContent = stars > 1 ? "⭐".repeat(stars) : "🎉";
+  $("picture").className = "good";
+  $("picture").textContent = "🎉";
   speak("כל הכבוד!", HE, ()=>setTimeout(next, 400));
 }
 // why: הסבר מתחת לתמונה, כשיש מה להסביר.
@@ -1231,13 +1226,11 @@ function next(){
 }
 
 // --- כתיבה: בונים את המילה מהאותיות שלה, משמאל לימין ---
-const SPELL_STARS = 3, HINTED_STARS = 2;
 // כמה זמן האותיות השגויות נשארות אדומות לפני שהן חוזרות לבנק.
 const WRONG_MS = 1000;
-// האם נעזרו ברמז, והאם הלוח ממתין למשוב ולא מקבל לחיצות. מתאפסים בכל
-// מילה. board מתקדם בכל מילה, כדי שאותיות שחוזרות לבנק באיחור לא ייגעו
-// בלוח של המילה הבאה.
-let hinted = false, busy = false, board = 0;
+// האם הלוח ממתין למשוב ולא מקבל לחיצות. מתאפס בכל מילה. board מתקדם בכל
+// מילה, כדי שאותיות שחוזרות לבנק באיחור לא ייגעו בלוח של המילה הבאה.
+let busy = false, board = 0;
 
 function shuffled(letters){
   const out = letters.slice();
@@ -1253,7 +1246,6 @@ function shuffled(letters){
 
 function startSpelling(){
   board++;
-  hinted = false;
   busy = false;
   const letters = [...word()];
   $("slots").replaceChildren(...letters.map(() => span("slot", "")));
@@ -1288,7 +1280,7 @@ function takeOut(slot){
 
 // כל אות נכנסת, גם לא נכונה. אילו רק הנכונה נכנסה, היה מספיק ללחוץ על
 // כל הבנק לפי הסדר עד שמשהו נתפס — מילה שלמה בלי לדעת אותה. הבדיקה
-// מחכה למילה מלאה, וטעות לא עולה כוכב.
+// מחכה למילה מלאה.
 function tapTile(tile){
   const slot = slotList().find(s => !s.tile);
   if(busy || !slot) return;
@@ -1311,7 +1303,7 @@ function checkWord(){
   busy = true;
   if(!wrong.length){
     $("hint").disabled = true;
-    good(hinted ? HINTED_STARS : SPELL_STARS);
+    good();
     return;
   }
   for(const s of slots) if(s.classList.contains("filled") && !wrong.includes(s)) s.className = "slot right";
@@ -1337,7 +1329,6 @@ function giveHint(){
   const inBank = () => [...$("bank").children].find(t => !t.disabled && t.dataset.letter === target[k]);
   if(!inBank()) takeOut(slots.find((s, n) => s.textContent === target[k] && target[n] !== target[k]));
   const tile = inBank();
-  hinted = true;
   put(tile, slots[k], "hinted");
   checkWord();
 }
