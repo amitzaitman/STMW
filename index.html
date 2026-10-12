@@ -66,7 +66,8 @@
   #playWord:active:not([disabled]){background:#D8EFFF}
   #playWord.playing{background:#BAE3FF}
   #say{flex:2; background:#FFD65A; height:80px}
-  #say:active:not([disabled]){background:#FAD04C}
+  /* אדום תחת האצבע נשאר אדום: ההקשבה ממשיכה, וצהוב היה נראה כמו כפתור שכבה. */
+  #say:active:not([disabled]):not(.listening){background:#FAD04C}
   #say.listening{background:#FF6B8A; color:#fff}
   #next{flex:1; background:#F8FAFC}
   #next:active:not([disabled]){background:#EDF2F7}
@@ -1130,10 +1131,17 @@ document.addEventListener("visibilitychange", ()=>{
   }
 });
 
+// המיקרופון פתוח והשמע רץ, כך שההקשבה מתחילה מיד, בלי לבקש דבר מהדפדפן.
+function audioReady(){
+  return !!(ctx && ctx.state === "running" && micStream && rec);
+}
+
 async function listen(){
   if(active || !model) return;
-  try{ await ensureAudio(); }
-  catch(err){ setNote("צריך לאשר את המיקרופון."); return; }
+  if(!audioReady()){
+    try{ await ensureAudio(); }
+    catch(err){ setNote("צריך לאשר את המיקרופון."); return; }
+  }
 
   setNote("");
   active = true;
@@ -1578,6 +1586,11 @@ function playCurrentWord(){
 $("playWord").addEventListener("click", playCurrentWord);
 $("picture").addEventListener("click", playCurrentWord);
 $("toggleSound").addEventListener("click", toggleSound);
+// ההקשבה מתחילה בנגיעה ולא בהרמת האצבע, כך שכפתור לחוץ כבר מקשיב, וילד
+// שמחזיק את האצבע בזמן שהוא מדבר נשמע. אבל נגיעה במסך מגע עוד לא מתירה לדף
+// לפתוח שמע — רק הרמת האצבע — ולכן כשצריך לפתוח את המיקרופון, בפעם
+// הראשונה ואחרי שהדף ירד מהמסך, מחכים ל-click.
+$("say").addEventListener("pointerdown", e=>{ if(e.button === 0 && audioReady()) listen(); });
 $("say").addEventListener("click", listen);
 $("next").addEventListener("click", next);
 $("hint").addEventListener("click", giveHint);

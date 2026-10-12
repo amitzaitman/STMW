@@ -585,6 +585,41 @@ async function main(){
   await page.evaluate(() => { score = 0; renderScore(); });
 
   // --------------------------------------------------------------
+  group("כפתור ההקשבה");
+  // ילדים מחזיקים את הכפתור בזמן שהם מדברים, ונוגעים בו שוב כדי "לסיים". לכן
+  // לחוץ ומקשיב הם אותו מצב, ואדום נשאר אדום תחת האצבע. הצבע נקרא אחרי
+  // שהמעבר של ה-CSS נגמר, אחרת יוצא גוון באמצע הדרך.
+  const sayState = () => page.evaluate(() => ({ active, bg: getComputedStyle($("say")).backgroundColor }));
+  const press = async () => { await page.mouse.down(); await page.waitForTimeout(300); return sayState(); };
+  const lift = async () => { await page.mouse.up(); await page.waitForTimeout(300); return sayState(); };
+  // מה שהמיקרופון המזויף משמיע לא יסיים את ההקשבה באמצע הבדיקה.
+  await page.evaluate(() => { window.realProcess = processRecognition; processRecognition = () => {}; });
+  try{
+    await page.evaluate(() => ensureAudio());
+    const idle = await sayState();
+    await page.locator("#say").hover();
+    const held = await press();
+    check("נגיעה בכפתור כבר מקשיבה", held.active, held);
+    const listening = await lift();
+    const pressedRed = await press();
+    check("כפתור מקשיב נשאר אדום תחת האצבע",
+      pressedRed.active && pressedRed.bg === listening.bg && listening.bg !== idle.bg, { idle, listening, pressedRed });
+    await lift();
+    await page.evaluate(() => stopListening());
+
+    // כשהמיקרופון סגור, נגיעה לא מותרת לפתוח אותו במסך מגע, וההקשבה מחכה להרמה.
+    await page.evaluate(() => releaseMic());
+    const closedHeld = await press();
+    await page.mouse.up();
+    await page.waitForFunction(() => active, null, { timeout: 5000 }).catch(() => {});
+    const closedLifted = await sayState();
+    check("כשהמיקרופון סגור, ההקשבה מתחילה בהרמת האצבע",
+      !closedHeld.active && closedLifted.active, { closedHeld, closedLifted });
+  } finally {
+    await page.evaluate(() => { stopListening(); processRecognition = window.realProcess; });
+  }
+
+  // --------------------------------------------------------------
   group("הודעה נעלמת");
   await page.click("#toggleSound");
   await page.waitForTimeout(150);
