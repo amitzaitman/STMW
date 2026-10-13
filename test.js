@@ -276,17 +276,17 @@ async function main(){
   const wrongAccepted = await page.evaluate(() => {
     const bad = [];
     for(const [target, spoken] of [["dog","cat"],["lion","house"],["sun","moon"],["apple","car"]])
-      for(let th = 30; th <= 95; th += 5)
+      for(const { threshold: th } of PRESETS)
         for(const conf of [null, 0.5, 0.9, 1])
           if(scoreToken(spoken, conf, target) >= th) bad.push(`${spoken}/${target} th=${th}`);
     return bad;
   });
-  check("מילה שגויה ורחוקה מהיעד לא מתקבלת באף אחוז", wrongAccepted.length === 0, wrongAccepted.slice(0, 5));
+  check("מילה שגויה ורחוקה מהיעד לא מתקבלת באף רמה", wrongAccepted.length === 0, wrongAccepted.slice(0, 5));
 
-  // ההחלטה עצמה, דרך processRecognition, בכל אחוז בנפרד: ניקוד שמחושב פעם
-  // אחת מחוץ ללולאה לא רואה נוסחה שתלויה באחוז.
+  // ההחלטה עצמה, דרך processRecognition, בכל רמה בנפרד: ניקוד שמחושב פעם
+  // אחת מחוץ ללולאה לא רואה נוסחה שתלויה ברמה.
   const nonMonotonic = await page.evaluate(() => {
-    const saved = { words, i, active, matchThreshold, finish };
+    const saved = { words, i, active, preset, finish };
     const bad = [];
     try {
       for(const [target, spoken] of [["dog","dog"],["cat","kat"],["butterfly","butterf"],["banana","banan"]])
@@ -294,10 +294,11 @@ async function main(){
           words = [{emoji: "", word: target}];
           i = 0;
           let prev = true;
-          for(let th = 30; th <= 95; th += 5){
+          for(const p of PRESETS){
+            const th = p.threshold;
             let now;
             finish = ok => { now = ok; };
-            matchThreshold = th;
+            preset = p;
             active = true;
             processRecognition({ result: { result: [{ word: spoken, conf }] } });
             if(now === undefined) bad.push(`${spoken}/${target} conf=${conf} th=${th}: אין החלטה`);
@@ -307,45 +308,44 @@ async function main(){
         }
     } finally {
       words = saved.words; i = saved.i; active = saved.active;
-      matchThreshold = saved.matchThreshold; finish = saved.finish;
+      preset = saved.preset; finish = saved.finish;
     }
     return bad;
   });
   check("העלאת האחוז רק מקשה", nonMonotonic.length === 0, nonMonotonic);
 
   // בדקדוק סגור המנוע מחזיר רק מילים מהרשימה. ship כשהיעד sheep היא מילה
-  // אחרת, גם כשהניקוד הפונטי שלה גבוה. הגבול בין הרמות הוא זה שעל הכפתורים.
-  // ושכנה באותה תוצאה מדלגים עליה: לפני היעד היא לא עוצרת, ואחריו היא לא
-  // מבטלת אותו.
+  // אחרת, גם כשהניקוד הפונטי שלה גבוה. ושכנה באותה תוצאה מדלגים עליה: לפני
+  // היעד היא לא עוצרת, ואחריו היא לא מבטלת אותו.
   const listNeighbour = await page.evaluate(() => {
-    const saved = { words, i, active, matchThreshold, finish };
-    const decide = (list, target, spoken, th) => {
+    const saved = { words, i, active, preset, finish };
+    const decide = (list, target, spoken, p) => {
       words = list.map(w => ({emoji: "", word: w}));
       i = list.indexOf(target);
       let now;
       finish = ok => { now = ok; };
-      matchThreshold = th;
+      preset = p;
       active = true;
       processRecognition({ result: { result: [].concat(spoken).map(word => ({ word, conf: 1 })) } });
       return now;
     };
     try {
-      const farm = ["sheep", "ship", "dog"], edge = PRESETS[0].upTo;
+      const farm = ["sheep", "ship", "dog"], [lenient, normal, strict] = PRESETS;
       return {
         rejected: {
-          shipEdge: decide(farm, "sheep", "ship", edge + 1),
-          ship70:   decide(farm, "sheep", "ship", 70),
-          ball:     decide(["ball", "balloon"], "balloon", "ball", 70),
-          grandma:  decide(["grandpa", "grandma"], "grandpa", "grandma", 70),
-          grandpa:  decide(["grandpa", "grandma"], "grandma", "grandpa", 70)
+          shipNormal: decide(farm, "sheep", "ship", normal),
+          shipStrict: decide(farm, "sheep", "ship", strict),
+          ball:       decide(["ball", "balloon"], "balloon", "ball", normal),
+          grandma:    decide(["grandpa", "grandma"], "grandpa", "grandma", normal),
+          grandpa:    decide(["grandpa", "grandma"], "grandma", "grandpa", normal)
         },
-        target: [45, 70, 90].map(th => decide(farm, "sheep", "sheep", th)),
-        withNeighbour: [["ship", "sheep"], ["sheep", "ship"]].map(said => decide(farm, "sheep", said, 70)),
-        lenient: [45, edge].map(th => decide(farm, "sheep", "ship", th))
+        target: PRESETS.map(p => decide(farm, "sheep", "sheep", p)),
+        withNeighbour: [["ship", "sheep"], ["sheep", "ship"]].map(said => decide(farm, "sheep", said, normal)),
+        lenient: decide(farm, "sheep", "ship", lenient)
       };
     } finally {
       words = saved.words; i = saved.i; active = saved.active;
-      matchThreshold = saved.matchThreshold; finish = saved.finish;
+      preset = saved.preset; finish = saved.finish;
     }
   });
   check("מילה אחרת מהרשימה לא מתקבלת מעל הרמה הסלחנית",
@@ -354,8 +354,7 @@ async function main(){
         listNeighbour.target.every(ok => ok === true), listNeighbour);
   check("מילת היעד מתקבלת גם לפני או אחרי שכנה מהרשימה באותה תוצאה",
         listNeighbour.withNeighbour.every(ok => ok === true), listNeighbour);
-  check("ברמה הסלחנית שכנה קרובה מהרשימה מתקבלת",
-        listNeighbour.lenient.every(ok => ok === true), listNeighbour);
+  check("ברמה הסלחנית שכנה קרובה מהרשימה מתקבלת", listNeighbour.lenient === true, listNeighbour);
 
   const scores = await page.evaluate(() => ({
     exact:    scoreToken("dog", 0.9, "dog"),
@@ -370,39 +369,28 @@ async function main(){
 
   // --------------------------------------------------------------
   group("רמת ההתאמה");
-  // האחוז הוא המצב היחיד. שלושת הכפתורים רק קובעים אותו.
+  // נשמרת הרמה עצמה; האחוז וחלון ההקשבה באים ממנה.
   await page.click("#openSettings");
   await page.waitForTimeout(150);
   for(const [id, want] of [["btnLevelLenient",45], ["btnLevelNormal",70], ["btnLevelStrict",90]]){
     await page.click("#" + id);
-    check(`הכפתור ${id} קובע ${want}%`, await page.evaluate(() => matchThreshold) === want);
+    check(`הכפתור ${id} קובע ${want}%`, await page.evaluate(() => preset.threshold) === want);
   }
   const windows = await page.evaluate(() => {
-    const before = matchThreshold, out = [];
-    for(const th of [30, 50, 70, 90, 95]){ matchThreshold = th; out.push(listenWindowMs()); }
-    matchThreshold = before;
+    const before = preset;
+    const out = PRESETS.map(p => { preset = p; return listenWindowMs(); });
+    preset = before;
     return out;
   });
   check("חלון ההקשבה מתקצר ככל שהאחוז עולה",
         windows.every((v, n) => n === 0 || v < windows[n - 1]), windows);
 
-  check("הכפתור נשמר", JSON.parse(await page.evaluate(() => localStorage.getItem("speech_match_config"))).threshold === 90);
-
-  // אחוז שאינו של אחד הכפתורים יכול לשבת שמור במכשיר. הוא נטען כמו שהוא,
-  // לא מועבר לכפתור הקרוב, ומסומן על הכפתור שבתחומו.
-  await page.evaluate(() => localStorage.setItem("speech_match_config", JSON.stringify({threshold:55})));
+  // הטעינה מחדש גם סוגרת את ההגדרות לפני הקבוצה הבאה.
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(800);
-  check("אחוז שמור שאינו של כפתור נטען כמו שהוא", await page.evaluate(() => matchThreshold) === 55);
-  check("ומסומן על הכפתור שבתחומו",
-        (await page.textContent("#matchLevelBadge")).includes("55%") &&
-        await page.evaluate(() => $("btnLevelNormal").classList.contains("active")));
-
-  // הגדרה שנשמרה בפורמט הישן, עם level, חייבת להמשיך לעבוד.
-  await page.evaluate(() => localStorage.setItem("speech_match_config", JSON.stringify({level:"strict", threshold:90})));
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(800);
-  check("הגדרה מהפורמט הישן נטענת", await page.evaluate(() => matchThreshold) === 90);
+  check("הרמה שנבחרה נטענת בפתיחה הבאה ומסומנת", await page.evaluate(() =>
+    preset.id === "strict" && $("btnLevelStrict").classList.contains("active") &&
+    $("matchLevelBadge").textContent === "🎯 מדויקת (90%)"));
 
   // --------------------------------------------------------------
   group("מאגר המילים");
@@ -1113,7 +1101,7 @@ async function main(){
   // האירועים נשלחים ל-recognizer עצמו, כך שגם החיווט ב-buildRecognizer
   // נבדק ולא רק הפונקציה.
   await page.waitForFunction(() => model !== null, null, { timeout: 60000 });
-  await page.evaluate(() => { setThreshold(DEFAULT_THRESHOLD); return ensureAudio(); });
+  await page.evaluate(() => { setPreset(DEFAULT_PRESET); return ensureAudio(); });
   const attempt = async events => await page.evaluate(async evs => {
     await listen();
     const target = word(), before = scores.say;

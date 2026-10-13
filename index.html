@@ -561,17 +561,17 @@
         <p id="matchLevelDesc" class="match-desc">המילה הנכונה, כשהיא נשמעת די ברור. דוחה חלק מההגיות השגויות.</p>
 
         <div class="match-preset-group" role="radiogroup" aria-label="רמת התאמה לקול הילד">
-          <button type="button" class="match-btn" data-level="lenient" id="btnLevelLenient" aria-label="רמת התאמה סלחנית לפעוטות">
+          <button type="button" class="match-btn" id="btnLevelLenient" aria-label="רמת התאמה סלחנית לפעוטות">
             <span class="match-btn-icon">🌱</span>
             <span class="match-btn-name">סלחנית</span>
             <span class="match-btn-sub">לפעוטות ומתחילים</span>
           </button>
-          <button type="button" class="match-btn active" data-level="normal" id="btnLevelNormal" aria-label="רמת התאמה רגילה ומאוזנת">
+          <button type="button" class="match-btn active" id="btnLevelNormal" aria-label="רמת התאמה רגילה ומאוזנת">
             <span class="match-btn-icon">⭐</span>
             <span class="match-btn-name">רגילה</span>
             <span class="match-btn-sub">מאוזן (מומלץ)</span>
           </button>
-          <button type="button" class="match-btn" data-level="strict" id="btnLevelStrict" aria-label="רמת התאמה מדויקת וקפדנית">
+          <button type="button" class="match-btn" id="btnLevelStrict" aria-label="רמת התאמה מדויקת וקפדנית">
             <span class="match-btn-icon">🎯</span>
             <span class="match-btn-name">מדויקת</span>
             <span class="match-btn-sub">למתקדמים</span>
@@ -693,56 +693,43 @@ let hebrewEnabled = (()=>{ try{ return localStorage.getItem(HEBREW_KEY) !== "0";
 const MODE_KEY = "practice_mode";
 let mode = (()=>{ try{ return localStorage.getItem(MODE_KEY) === "spell" ? "spell" : "say"; }catch(e){ return "say"; } })();
 
-// --- רמת ההתאמה לדיבור הילד: מספר אחד, 30 עד 95 ---
-// האחוז הוא המצב היחיד, ושלושת הכפתורים קובעים אותו. אין כיוון עדין
-// באמצע: מול הקלטות עם ציוני הגייה של מומחים, 30 עד 60 מתנהגים כמעט אותו
-// דבר ו-90 עד 95 בדיוק אותו דבר, והביטחון של המנוע על אותה הקלטה קופץ
-// יותר מצעד של 5%. אחוז שמור שאינו של אחד הכפתורים נטען כמו שהוא.
+// --- רמת ההתאמה לדיבור הילד: אחת משלוש ---
+// אין כיוון עדין באמצע: מול הקלטות עם ציוני הגייה של מומחים, 30 עד 60
+// מתנהגים כמעט אותו דבר ו-90 עד 95 בדיוק אותו דבר, והביטחון של המנוע על
+// אותה הקלטה קופץ יותר מצעד של 5%. במכשיר נשמר ה-id של הרמה ולא האחוז שלה,
+// כדי שאחוז או חלון שישתנו בגרסה הבאה יגיעו גם למי שכבר בחר בה. id שמשנים
+// את שמו מחזיר את מי שבחר בו לברירת המחדל.
 const MATCH_KEY = "speech_match_config";
-const MIN_THRESHOLD = 30, MAX_THRESHOLD = 95, DEFAULT_THRESHOLD = 70;
 
-// הכפתורים במסך ההגדרות. upTo הוא הגבול העליון של כל רמה: אחוז שמור שאינו של
-// אחד הכפתורים מסומן על הכפתור הראשון שהוא נכנס לתחומו, ו-processRecognition
-// מתייחס אליו כאל אותה רמה.
 // התיאורים לא מבטיחים בדיקת הגייה: בדקדוק סגור המנוע מחזיר את מילת היעד
 // בביטחון מלא גם על הגייה שגויה, כך שגם הסף הגבוה מסנן רק חלק מהשגיאות.
+// listenMs: מי שדורש דיוק גבוה גם מדבר בבירור ומהר יותר, ולילד קטן מגיע יותר
+// זמן. why: ברמה המדויקת מסבירים לילד למה זה לא התקבל, אחרת "נסו שוב" נשמע
+// שרירותי.
 const PRESETS = [
-  { btn: "btnLevelLenient", badge: "🌱 סלחנית", threshold: 45, upTo: 50,
+  { id: "lenient", btn: "btnLevelLenient", badge: "🌱 סלחנית", threshold: 45, listenMs: 4650,
     desc: "סלחנית: מתאים לפעוטות ולמתחילים. מקבלת את המילה גם כשההגייה לא מדויקת, ולפעמים גם מילה דומה מהרשימה." },
-  { btn: "btnLevelNormal",  badge: "⭐ רגילה",  threshold: 70, upTo: 84,
+  { id: "normal",  btn: "btnLevelNormal",  badge: "⭐ רגילה",  threshold: 70, listenMs: 4100,
     desc: "רגילה (ברירת מחדל): המילה הנכונה, כשהיא נשמעת די ברור. דוחה חלק מההגיות השגויות." },
-  { btn: "btnLevelStrict",  badge: "🎯 מדויקת", threshold: 90, upTo: MAX_THRESHOLD,
+  { id: "strict",  btn: "btnLevelStrict",  badge: "🎯 מדויקת", threshold: 90, listenMs: 3600,
+    why: "בדיוק גבוה נדרשת הגייה ברורה. נסו שוב!",
     desc: "מדויקת: מתאים לילדים מתקדמים. המילה צריכה להישמע ברור מאוד. תופסת חלק משגיאות ההגייה, לא את כולן, ולפעמים דוחה גם הגייה נכונה." }
 ];
+const DEFAULT_PRESET = PRESETS[1];
 
-let matchThreshold = loadThreshold();
+let preset = (()=>{
+  try{ return PRESETS.find(p => p.id === localStorage.getItem(MATCH_KEY)) || DEFAULT_PRESET; }
+  catch(e){ return DEFAULT_PRESET; }
+})();
 
-function clampThreshold(th){
-  return Math.max(MIN_THRESHOLD, Math.min(MAX_THRESHOLD, Math.round(th)));
-}
-
-function presetFor(th){
-  return PRESETS.find(p => th <= p.upTo) || PRESETS[PRESETS.length - 1];
-}
-
-function loadThreshold(){
-  try {
-    // המפתח והשדה קבועים: מהם נקראת הגדרה שכבר שמורה במכשירים.
-    const parsed = JSON.parse(localStorage.getItem(MATCH_KEY));
-    if(parsed && typeof parsed.threshold === "number") return clampThreshold(parsed.threshold);
-  } catch(e){}
-  return DEFAULT_THRESHOLD;
-}
-
-function setThreshold(th){
-  matchThreshold = clampThreshold(th);
-  try { localStorage.setItem(MATCH_KEY, JSON.stringify({threshold: matchThreshold})); } catch(e){}
+function setPreset(p){
+  preset = p;
+  try { localStorage.setItem(MATCH_KEY, p.id); } catch(e){}
   updateMatchUI();
 }
 
 function updateMatchUI(){
-  const preset = presetFor(matchThreshold);
-  $("matchLevelBadge").textContent = `${preset.badge} (${matchThreshold}%)`;
+  $("matchLevelBadge").textContent = `${preset.badge} (${preset.threshold}%)`;
   $("matchLevelDesc").textContent = preset.desc;
   for(const p of PRESETS) $(p.btn).classList.toggle("active", p === preset);
 }
@@ -1077,7 +1064,7 @@ const PREFIX_SCORE = 80, PREFIX_MIN_LETTERS = 3, PREFIX_MIN_RATIO = 0.55;
 // ביטחון נמוך של המנוע מוריד ניקוד של התאמה מקורבת, אבל לא מאפס אותה.
 const CONFIDENCE_FLOOR = 0.25;
 // כמה מה שנשמע דומה למילה שמתרגלים, 0 עד 100. אין כאן החלטה — רק ציון.
-// מי שמחליט הוא processRecognition, בהשוואה אחת מול matchThreshold.
+// מי שמחליט הוא processRecognition, בהשוואה אחת מול preset.threshold.
 function scoreToken(spokenWord, conf, target){
   const said = (spokenWord || "").toLowerCase().trim();
   const want = (target || "").toLowerCase().trim();
@@ -1142,7 +1129,7 @@ function processRecognition(msg){
   // בדקדוק סגור, מה שאינו היעד הוא מילה אחרת מהרשימה, ו-scoreToken נותן לשכנה
   // קרובה ניקוד שעובר את הרף הרגיל: ship מול sheep, ball מול balloon. מעל הרמה
   // הסלחנית מילה אחרת מהרשימה לא נחשבת; בסלחנית שכנה קרובה עוברת כהגייה לא מדויקת.
-  const others = presetFor(matchThreshold) === PRESETS[0] ? null : takenSet();
+  const others = preset === PRESETS[0] ? null : takenSet();
   let best = 0;
   for(const tok of tokens){
     if(others && tok.word !== target && others.has(tok.word)) continue;
@@ -1150,7 +1137,7 @@ function processRecognition(msg){
   }
 
   // ההחלטה כולה, במקום אחד.
-  finish(best >= matchThreshold);
+  finish(best >= preset.threshold);
 }
 
 // מסלול שנגמר — הרשאה שבוטלה, מיקרופון שנותק — לא חוזר לחיים, וזרם שאין
@@ -1187,12 +1174,7 @@ async function ensureAudio(){
 }
 
 
-// מי שדורש דיוק גבוה גם מדבר בבירור ומהר יותר, ולילד קטן מגיע יותר זמן.
-const LISTEN_MS_EASY = 5000, LISTEN_MS_HARD = 3500;
-function listenWindowMs(){
-  const t = (matchThreshold - MIN_THRESHOLD) / (MAX_THRESHOLD - MIN_THRESHOLD);
-  return Math.round(LISTEN_MS_EASY + t * (LISTEN_MS_HARD - LISTEN_MS_EASY));
-}
+function listenWindowMs(){ return preset.listenMs; }
 
 // המיקרופון נפתח בניסיון הראשון ונשאר פתוח, כי סגירה ופתיחה בכל ניסיון
 // מוסיפה השהיה לפני שהילד מתחיל לדבר. אבל כשהדף יורד מהמסך אין סיבה
@@ -1264,11 +1246,8 @@ function stopListening(){
 
 function finish(ok){
   if(!stopListening()) return;
-  ok ? good() : again(matchThreshold >= HIGH_BAR ? "בדיוק גבוה נדרשת הגייה ברורה. נסו שוב!" : "");
+  ok ? good() : again(preset.why);
 }
-
-// מעל זה מסבירים לילד למה זה לא התקבל, אחרת "נסו שוב" נשמע שרירותי.
-const HIGH_BAR = 85;
 
 // שלושה כוכבים מתחלפים במדליה, וחמישה מכל סמל אחר בסמל שמעליו — מדליות
 // בגביע, גביעים בכתר, כתרים ביהלום — כך שהשורה משתנה כל עוד הילד מתרגל
@@ -1851,7 +1830,7 @@ $("practiceSetBtn").addEventListener("click", practiceShown);
 $("addSetBtn").addEventListener("click", addShown);
 
 for(const p of PRESETS){
-  $(p.btn).addEventListener("click", ()=>setThreshold(p.threshold));
+  $(p.btn).addEventListener("click", ()=>setPreset(p));
 }
 
 $("hebrewToggle").addEventListener("change", e=>setHebrew(e.target.checked));
@@ -1859,7 +1838,7 @@ $("hebrewToggle").addEventListener("change", e=>setHebrew(e.target.checked));
 $("resetBtn").addEventListener("click", ()=>{
   if(!confirm("לאפס את רשימת המילים ורמת ההתאמה לברירת המחדל?")) return;
   applyWords(DEFAULT_WORDS.slice(), 0);
-  setThreshold(DEFAULT_THRESHOLD);
+  setPreset(DEFAULT_PRESET);
 });
 
 if("serviceWorker" in navigator){
