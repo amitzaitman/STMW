@@ -985,6 +985,46 @@ async function main(){
   check("מטמון של אפליקציה אחרת שורד את ההפעלה", keys.includes(planted.foreign), keys);
   check("מטמון ישן שלנו נמחק בהפעלה", !keys.includes(planted.old) && keys.includes(ours), keys);
 
+  // קובץ כבד מוגש מהמטמון בלי לשאול את הרשת, ולכן תשובת שגיאה שנשמרה פעם
+  // אחת (סינון אתרים בבית הספר, תקלה בשרת) מוגשת לנצח, והמכשיר נשאר בלי
+  // זיהוי דיבור. הענף הכבד מזהה לפי שם הקובץ בלבד, אז no-such-dir/vosk.js
+  // עובר בו ומקבל 404 מהשרת.
+  const heavyMissing = new URL("no-such-dir/vosk.js", base + "/").href;
+  const missingLine = page.waitForEvent("console", {
+    predicate: m => m.type() === "error" && m.location().url === heavyMissing,
+    timeout: 2000
+  }).catch(() => null);
+  const notStored = await page.evaluate(async url => {
+    const status = (await fetch(url)).status;
+    await new Promise(r => setTimeout(r, 500));   // ה-service worker שומר בלי לחכות
+    return { status, stored: !!(await caches.match(url)) };
+  }, heavyMissing);
+  const missingErr = await missingLine;
+  if(missingErr){
+    const n = errors.lastIndexOf("console: " + missingErr.text());
+    if(n >= 0) errors.splice(n, 1);
+  }
+  check("קובץ כבד שחזר עם שגיאה לא נשמר במטמון", notStored.status === 404 && !notStored.stored, notStored);
+
+  // ומכשיר שכבר שמר תשובה כזו מתרפא בביקור הבא עם רשת. הרשומה האמיתית של
+  // vosk.js מוחלפת ב-503 ומוחזרת למקומה בסוף.
+  const healed = await page.evaluate(async () => {
+    const url = new URL("vosk.js", location.href).href;
+    const c = await caches.open(CACHE_NAME);
+    const real = await c.match(url);
+    await c.put(url, new Response("x", { status: 503 }));
+    const r = await fetch(url);
+    const bytes = (await r.blob()).size;
+    let stored;
+    for(let n = 0; n < 20 && !(stored = await c.match(url))?.ok; n++) await new Promise(r => setTimeout(r, 100));
+    const result = { status: r.status, bytes, storedOk: !!stored?.ok };
+    if(real) await c.put(url, real);
+    return result;
+  });
+  const voskBytes = fs.statSync(path.join(DIR, "vosk.js")).size;
+  check("קובץ כבד שנשמר עם שגיאה מוחלף בעותק תקין",
+        healed.status === 200 && healed.bytes === voskBytes && healed.storedOk, { ...healed, voskBytes });
+
   server.closeAllConnections();
   await new Promise(r => server.close(r));
 
