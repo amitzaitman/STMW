@@ -912,9 +912,8 @@ function speak(text, lang, onDone){
   speechSynthesis.speak(u);
 }
 
-// צליל קצר עם "כל הכבוד!" ועם "נסו שוב", מסונתז ב-Web Audio: אין קובץ
-// להוריד ולשמור במטמון, והוא נשמע גם במכשיר שאין בו קול עברי. נשמע יחד עם
-// ההקראה ולא לפניה, כדי שהמעבר למילה הבאה לא יתארך.
+// צליל קצר בהצלחה ובניסיון נוסף, מסונתז ב-Web Audio: אין קובץ להוריד
+// ולשמור במטמון.
 // [תדר, השהיה בשניות]. הצלחה: דו-מי-סול עולים. ניסיון נוסף: מי-דו יורדים,
 // שקט יותר, כדי שלא יישמע כמו עונש.
 const CHEER = { notes: [[1046.5, 0], [1318.5, 0.08], [1568, 0.16]], volume: 0.2 };
@@ -1317,6 +1316,9 @@ function renderScore(){
 }
 
 // כל הצלחה שווה כוכב אחד, באמירה ובכתיבה, עם רמז או בלי.
+// המשוב הוא הצבע, ה-🎉 והצליל, בלי הקראה. ה-🎉 נשאר כשנייה ואז עוברים למילה
+// הבאה; האדום של ניסיון נוסף נשאר מעט יותר, כדי שיספיקו לראות אותו.
+const GOOD_MS = 1000, AGAIN_MS = 1300;
 function good(){
   scores[mode]++;
   renderScore();
@@ -1324,17 +1326,17 @@ function good(){
   $("picture").textContent = "🎉";
   const mine = shownCount;
   chime(CHEER);
-  speak("כל הכבוד!", HE, ()=>setTimeout(()=>{ if(mine === shownCount) next(); }, 400));
+  setTimeout(()=>{ if(mine === shownCount) next(); }, GOOD_MS);
 }
 // why: הסבר מתחת לתמונה, כשיש מה להסביר.
 function again(why = ""){
   $("picture").className = "again";
   const note = setNote(why);
   chime(OOPS);
-  speak("נסו שוב", HE, ()=>setTimeout(()=>{
+  setTimeout(()=>{
     $("picture").className = "";
     clearNote(note);
-  }, 700));
+  }, AGAIN_MS);
 }
 function pick(){
   return Math.floor(Math.random() * words.length);

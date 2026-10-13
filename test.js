@@ -1375,6 +1375,14 @@ async function main(){
   check("הצלחה מנגנת צליל עולה", !!chimes.cheer && rising(chimes.cheer), chimes);
   check("ניסיון נוסף מנגן צליל יורד", !!chimes.oops && rising(chimes.oops.slice().reverse()), chimes);
   check("שמע מכובה — אין צלילים", !!chimes.muted && chimes.muted.length === 0, chimes);
+  // המשוב הוא הצליל והתמונה. speak() נשאר רק להקראת המילה באנגלית.
+  const spokenFeedback = await page.evaluate(() => {
+    const calls = [], original = speak;
+    speak = (text, lang, onDone) => { calls.push({ text, lang }); return original(text, lang, onDone); };
+    try { good(); again(); } finally { speak = original; }
+    return calls;
+  });
+  check("הצלחה וניסיון נוסף לא מקריאים כלום", spokenFeedback.length === 0, spokenFeedback);
 
   // --------------------------------------------------------------
   group("עבודה ללא אינטרנט");
