@@ -1249,18 +1249,25 @@ function finish(ok){
 // מעל זה מסבירים לילד למה זה לא התקבל, אחרת "נסו שוב" נשמע שרירותי.
 const HIGH_BAR = 85;
 
-// שלושה כוכבים מתחלפים במדליה, וחמש מדליות בגביע, כך שהשורה משתנה כל עוד
-// הילד מתרגל ובכל זאת נשארת קצרה: לכל היותר ארבע מדליות ושני כוכבים לפני
-// כל גביע. בטלפון צר גם זה לא נכנס בשורה אחת בין הכפתורים שבצדי הסרגל,
-// והיא נשברת לשתיים (ראו #topBar).
-const PER_MEDAL = 3, MEDALS_PER_TROPHY = 5;
+// שלושה כוכבים מתחלפים במדליה, וחמישה מכל סמל אחר בסמל שמעליו — מדליות
+// בגביע, גביעים בכתר, כתרים ביהלום — כך שהשורה משתנה כל עוד הילד מתרגל
+// ובכל זאת לא מתארכת בלי סוף ודוחקת את התמונה. מעל היהלום אין סמל: כבר
+// יהלום אחד הוא מאות הצלחות בפתיחה אחת של הדף. בטלפון צר שורה ארוכה נשברת
+// בין הכפתורים שבצדי הסרגל (ראו #topBar).
+const PER_MEDAL = 3, MEDALS_PER_TROPHY = 5, TROPHIES_PER_CROWN = 5, CROWNS_PER_DIAMOND = 5;
 const PER_TROPHY = PER_MEDAL * MEDALS_PER_TROPHY;
+const PER_CROWN = PER_TROPHY * TROPHIES_PER_CROWN;
+const PER_DIAMOND = PER_CROWN * CROWNS_PER_DIAMOND;
+// מהגדול לקטן, וכמה כוכבים שווה כל סמל.
+const SCORE_ICONS = [["💎", PER_DIAMOND], ["👑", PER_CROWN], ["🏆", PER_TROPHY], ["🏅", PER_MEDAL], ["⭐", 1]];
 
 function renderScore(){
-  const score = scores[mode], rest = score % PER_TROPHY;
-  $("stars").textContent = "🏆".repeat(Math.floor(score / PER_TROPHY))
-    + "🏅".repeat(Math.floor(rest / PER_MEDAL))
-    + "⭐".repeat(rest % PER_MEDAL);
+  let rest = scores[mode];
+  $("stars").textContent = SCORE_ICONS.map(([icon, worth]) => {
+    const n = Math.floor(rest / worth);
+    rest %= worth;
+    return icon.repeat(n);
+  }).join("");
 }
 
 // כל הצלחה שווה כוכב אחד, באמירה ובכתיבה, עם רמז או בלי.
