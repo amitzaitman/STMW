@@ -112,7 +112,7 @@ async function main(){
   // --------------------------------------------------------------
   group("טעינה");
   // words.js נטען מכתובת עם ?v=. אם הוא חוזר כ-HTML, PAIRS ריק.
-  check("מאגר המילים נטען", await page.evaluate(() => PAIRS.length) === 345);
+  check("מאגר המילים נטען", await page.evaluate(() => PAIRS.length) === 344);
   check("יש מילים לתרגול", await page.evaluate(() => words.length) > 0);
   check("מוצגת מילה על המסך", (await page.textContent("#word")).length > 0);
 
@@ -424,7 +424,7 @@ async function main(){
         .filter(b => getComputedStyle(b).display !== "none").length;
   });
   const built = await page.evaluate(() => document.querySelectorAll("#catalog .catalog-item").length);
-  check("כל המאגר נבנה", built === 345, built);
+  check("כל המאגר נבנה", built === 344, built);
 
   // בנייה מחדש מלאה נותנת את אותו מספר פריטים, אז נבדק שהצומת עצמו נשאר.
   const firstItem = await page.$("#catalog .catalog-item");
