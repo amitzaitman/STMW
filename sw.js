@@ -26,8 +26,12 @@ function pageOrCache(req){
     return res;
   });
   const slow = new Promise((_, reject)=>setTimeout(()=>reject(new Error('slow network')), NET_TIMEOUT));
-  const fromCache = () => caches.match(req, MATCH).then(hit =>
-    hit || (req.mode === 'navigate' ? caches.match('./index.html') : undefined));
+  // קודם הכתובת המדויקת. ignoreSearch מחזיר את הרשומה הוותיקה ביותר שמתאימה,
+  // כלומר ./words.js מההתקנה, גם כשה-?v= שהדף החדש מבקש כבר במטמון, ובלי
+  // רשת הדף החדש היה רץ עם words.js ישן.
+  const fromCache = () => caches.match(req)
+    .then(hit => hit || caches.match(req, MATCH))
+    .then(hit => hit || (req.mode === 'navigate' ? caches.match('./index.html') : undefined));
   return Promise.race([net, slow])
     .catch(()=> fromCache().then(hit => hit || net));
 }

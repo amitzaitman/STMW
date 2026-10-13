@@ -1032,13 +1032,25 @@ async function main(){
     try {
       const r = await fetch(url, { cache: "no-store" });
       const t = await r.text();
-      return { status: r.status, type: r.headers.get("content-type") || "", html: t.trim().startsWith("<!DOCTYPE") };
+      return { status: r.status, type: r.headers.get("content-type") || "", html: t.trim().startsWith("<!DOCTYPE"),
+               start: t.slice(0, 40) };
     } catch(e) { return { threw: e.name }; }
   }, url);
   // ?v= הוא רק שובר-מטמון, והסקריפט שבמטמון חוזר גם לגרסה שלא נשמרה.
   const versioned = await fetchOffline("./words.js?v=999");
   check("סקריפט שבמטמון עם ?v= אחר חוזר כסקריפט",
         versioned.html === false && versioned.type.includes("javascript"), versioned);
+  // אבל כשה-?v= המדויק במטמון, הוא זה שחוזר ולא words.js מההתקנה. אחרת
+  // דף חדש שנפתח בלי רשת רץ עם words.js ישן.
+  const exactUrl = new URL("words.js?v=exact-test", base + "/").href;
+  const exactBody = "// exact ?v= copy";
+  await page.evaluate(async ([url, body]) => {
+    const c = await caches.open(CACHE_NAME);
+    await c.put(url, new Response(body, { headers: { "Content-Type": "text/javascript" } }));
+  }, [exactUrl, exactBody]);
+  const exact = await fetchOffline(exactUrl);
+  await page.evaluate(async url => (await caches.open(CACHE_NAME)).delete(url), exactUrl);
+  check("בלי רשת חוזר העותק של ה-?v= המדויק", exact.start === exactBody, exact);
   // ומה שאין במטמון בכלל נכשל. הדפדפן מדווח על הכישלון בקונסולה, וזו
   // השורה היחידה שלא נחשבת שגיאה.
   const failLine = page.waitForEvent("console", {
