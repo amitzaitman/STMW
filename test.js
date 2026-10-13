@@ -928,6 +928,11 @@ async function main(){
   check("Esc סוגר את ההגדרות ומחזיר את הפוקוס ל-⚙️, ושום דבר מאחוריהן לא הופעל",
     closed.hidden && closed.focus === "openSettings" && closed.behind.length === 0
       && closed.word === opened.word && !closed.active, { opened, closed });
+  // וכשהן סגורות Esc לא עושה כלום. אחרת הוא מקפיץ את הפוקוס ל-⚙️ מכל מקום בדף.
+  await page.focus("#next");
+  await page.keyboard.press("Escape");
+  const escIdle = await page.evaluate(() => ({ hidden: $("overlay").hidden, focus: document.activeElement.id }));
+  check("Esc כשההגדרות סגורות לא מזיז את הפוקוס", escIdle.hidden && escIdle.focus === "next", escIdle);
 
   // --------------------------------------------------------------
   group("קישורי המשוב");
