@@ -888,6 +888,52 @@ async function main(){
   });
   check("מעבר לכתיבה באמצע הקשבה לא נחשב כישלון",
     switched.wasActive && !switched.active && switched.failures === 0 && !switched.listening, switched);
+
+  // וכך גם מילה אחרת על המסך. בלי זה שאר החלון, או תוצאה סופית שמגיעה
+  // באיחור, נשפטים מול המילה החדשה, והילד שומע "נסו שוב" על מילה שלא ניסה.
+  // ההמתנה בדף היא שרשרת של אותם שני טיימרים שסוגרים את החלון, כך שהיא
+  // נגמרת אחריהם גם כשהמכונה עמוסה. כל מה שהתמונה הייתה נאסף, כי "נסו שוב"
+  // נשאר עליה רק לרגע. גם הקריאות ל-again() ול-good() נספרות: עצירה שאומרת
+  // "נסו שוב" לפני ש-show() מנקה את התמונה לא משאירה עליה סימן.
+  const skipWhileListening = how => page.evaluate(async how => {
+    const real = { listenWindowMs, again, good }, pic = $("picture"), seen = [], calls = [];
+    listenWindowMs = () => 200;
+    again = why => { calls.push("again"); return real.again(why); };
+    good = () => { calls.push("good"); return real.good(); };
+    try{
+      await listen();
+      const was = active, from = word();
+      if(how === "jump"){
+        renderList();
+        $("wordList").querySelector(`li[data-index="${(i + 1) % words.length}"] .jump`).click();
+      } else next();
+      const out = { was, from, to: word(), active, listening: $("say").classList.contains("listening") };
+      const obs = new MutationObserver(ms => { for(const m of ms) seen.push(m.oldValue); });
+      obs.observe(pic, { attributes: true, attributeFilter: ["class"], attributeOldValue: true });
+      if(how === "late") rec.dispatchEvent(new CustomEvent("result",
+        { detail: { result: { result: [{ word: from, conf: 1 }], text: from } } }));
+      await new Promise(r => setTimeout(r, listenWindowMs()));
+      await new Promise(r => setTimeout(r, FINAL_GRACE_MS + 200));
+      for(const m of obs.takeRecords()) seen.push(m.oldValue);
+      obs.disconnect();
+      return { ...out, calls, seen: seen.concat(pic.className) };
+    } finally {
+      listenWindowMs = real.listenWindowMs;
+      again = real.again;
+      good = real.good;
+      if(active) finish(false);
+    }
+  }, how);
+  const skips = {
+    next: "⏭️ באמצע הקשבה עוצר אותה בלי \"נסו שוב\"",
+    jump: "קפיצה מהרשימה באמצע הקשבה עוצרת אותה בלי \"נסו שוב\"",
+    late: "תוצאה סופית מאוחרת למילה הקודמת לא נשפטת מול החדשה"
+  };
+  for(const [how, name] of Object.entries(skips)){
+    const s = await skipWhileListening(how);
+    check(name, s.was && s.to !== s.from && !s.active && !s.listening && s.calls.length === 0
+      && !s.seen.some(c => c === "again" || c === "good"), s);
+  }
   // good() ו-again() מזמנים מעברים והודעות; שלא ידרסו את הקבוצה הבאה.
   await page.waitForTimeout(1500);
   await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });

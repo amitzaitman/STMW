@@ -804,6 +804,10 @@ function word(){ return words[i].word; }
 // הציג מילה: ⏭️ של הילד, או מורה שקפצה למילה מהרשימה.
 let shownCount = 0;
 function show(){
+  // הקשבה שהתחילה על המילה הקודמת נעצרת בשקט, כמו במעבר לכתיבה. אחרת שאר
+  // החלון, ותוצאה סופית שמגיעה באיחור, נשפטים מול המילה החדשה, והילד שומע
+  // "נסו שוב" על מילה שלא ניסה.
+  stopListening();
   shownCount++;
   $("picture").textContent = words[i].emoji;
   $("picture").className = "";
