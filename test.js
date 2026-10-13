@@ -523,7 +523,7 @@ async function main(){
     saved: JSON.parse(localStorage.getItem("words")).map(w => w.word).sort().join(),
     current: word()
   }));
-  check("תרגלו רק אותן מחליף את הרשימה ושומר",
+  check("▶ תרגלו רק את האלה מחליף את הרשימה ושומר",
         await practiced() === easyFruit && replaced.saved === easyFruit &&
         easyFruit.split(",").includes(replaced.current), replaced);
 
