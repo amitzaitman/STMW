@@ -1510,6 +1510,7 @@ async function main(){
 
   // --------------------------------------------------------------
   group("server.js");
+  // השרת מגיש רק קבצים, בלי נפילה ל-index.html: לאפליקציה אין נתיב מלבד /.
   // אותו כלל כמו ב-sw.js: קובץ חסר לא מקבל את index.html עם 200.
   const port = 8000 + Math.floor(Math.random() * 1000);
   const child = spawn(process.execPath, [path.join(DIR, "server.js")],
