@@ -655,6 +655,18 @@ async function main(){
     check(`בטלפון צר כל סמל בשורה על המסך ולא מתחת לכפתורים (${n})`,
           layout.glyphs > 0 && layout.bad.length === 0, layout);
   }
+  // והמרווח ליד ⚙️💬 רחב מזה שליד 🔇, אבל שורה קצרה לא זזה בגללו הצידה:
+  // היא ממורכזת כמו המתג שמתחתיה, כמו שההערה ב-#topBar מבטיחה.
+  const centred = await page.evaluate(() => {
+    scores[mode] = 2;
+    renderScore();
+    const range = document.createRange();
+    range.selectNodeContents($("stars"));
+    const r = range.getBoundingClientRect(), m = $("modeSwitch").getBoundingClientRect();
+    return { row: $("stars").textContent, at: (r.left + r.right) / 2, modeSwitch: (m.left + m.right) / 2 };
+  });
+  check("בטלפון צר שורה קצרה ממורכזת מעל המתג",
+        centred.row === "⭐⭐" && Math.abs(centred.at - centred.modeSwitch) <= 1, centred);
   await page.setViewportSize(viewport);
 
   // אחרי ה-🎉 עוברים למילה הבאה, אבל ילד שלחץ ⏭️ או מורה שקפצה למילה
