@@ -71,10 +71,9 @@ self.addEventListener('fetch', e=>{
   if(heavy){
     // קודם מהמטמון — לא מורידים 29MB בכל פתיחה. בגלל זה נשמרת רק תשובה
     // תקינה: 503 או 403 (סינון אתרים בבית הספר, תקלה בשרת) היה מוגש מכאן
-    // לנצח, והמכשיר נשאר בלי זיהוי דיבור עד שמנקים את נתוני האתר. רשומה
-    // כזו שכבר נשמרה נחשבת כאילו אינה, ומוחלפת בפעם הבאה שיש רשת.
+    // לנצח, והמכשיר נשאר בלי זיהוי דיבור עד שמנקים את נתוני האתר.
     e.respondWith(
-      caches.match(e.request, MATCH).then(hit => hit && hit.ok ? hit : fetch(e.request).then(res=>{
+      caches.match(e.request, MATCH).then(hit => hit || fetch(e.request).then(res=>{
         if(res.ok){
           const copy = res.clone();
           caches.open(CACHE_NAME).then(c=>c.put(e.request, copy)).catch(()=>{});

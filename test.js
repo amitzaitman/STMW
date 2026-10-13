@@ -1417,25 +1417,6 @@ async function main(){
   }
   check("קובץ כבד שחזר עם שגיאה לא נשמר במטמון", notStored.status === 404 && !notStored.stored, notStored);
 
-  // ומכשיר שכבר שמר תשובה כזו מתרפא בביקור הבא עם רשת. הרשומה האמיתית של
-  // vosk.js מוחלפת ב-503 ומוחזרת למקומה בסוף.
-  const healed = await page.evaluate(async () => {
-    const url = new URL("vosk.js", location.href).href;
-    const c = await caches.open(CACHE_NAME);
-    const real = await c.match(url);
-    await c.put(url, new Response("x", { status: 503 }));
-    const r = await fetch(url);
-    const bytes = (await r.blob()).size;
-    let stored;
-    for(let n = 0; n < 20 && !(stored = await c.match(url))?.ok; n++) await new Promise(r => setTimeout(r, 100));
-    const result = { status: r.status, bytes, storedOk: !!stored?.ok };
-    if(real) await c.put(url, real);
-    return result;
-  });
-  const voskBytes = fs.statSync(path.join(DIR, "vosk.js")).size;
-  check("קובץ כבד שנשמר עם שגיאה מוחלף בעותק תקין",
-        healed.status === 200 && healed.bytes === voskBytes && healed.storedOk, { ...healed, voskBytes });
-
   server.closeAllConnections();
   await new Promise(r => server.close(r));
 
