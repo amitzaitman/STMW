@@ -132,9 +132,18 @@ async function main(){
     shown: $("word").textContent,
     listed: words.some(w => w.word === $("word").textContent)
   }));
+  const kept = await junkPage.evaluate(() => {
+    const emoji = Object.keys(WORD_BY_EMOJI)[0];
+    localStorage.setItem("words", JSON.stringify(["dog", { emoji }]));
+    return WORD_BY_EMOJI[emoji];
+  });
+  await junkPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  const mixed = await junkPage.evaluate(() => words.map(w => w.word));
   await junkWords.close();
   check("רשימה שמורה בלי אף מילה תקינה — עולה רשימת ברירת המחדל",
     fallback.defaults && fallback.listed && crashes.length === 0, { ...fallback, crashes });
+  check("רשימה שמורה עם מילה תקינה אחת נטענת, והפגומות נופלות",
+    mixed.length === 1 && mixed[0] === kept, { mixed, kept });
 
   // --------------------------------------------------------------
   group("מנוע שלא נטען");
@@ -442,9 +451,9 @@ async function main(){
   const jumpFrom = await page.evaluate(() => i);
   await page.click("#wordList li:first-child .jump");
   await page.waitForTimeout(200);
-  const jumped = await page.evaluate(() => ({ closed: $("overlay").hidden, now: word() }));
+  const jumped = await page.evaluate(() => ({ closed: $("overlay").hidden, now: word(), shown: $("word").textContent }));
   check("לחיצה על מילה קופצת אליה וסוגרת",
-        jumpFrom !== 0 && jumped.closed && jumped.now === afterDelete.rows[0], { jumpFrom, jumped });
+        jumpFrom !== 0 && jumped.closed && jumped.now === afterDelete.rows[0] && jumped.shown === jumped.now, { jumpFrom, jumped });
 
   // --------------------------------------------------------------
   group("כוכבים ומדליות");
@@ -471,16 +480,22 @@ async function main(){
   const afterGood = async skip => await page.evaluate(async skip => {
     const before = i;
     good();
-    if(skip) next();
+    if(skip === "next") next();
+    if(skip === "jump"){
+      renderList();
+      $("wordList").querySelector(`li[data-index="${(i + 1) % words.length}"] .jump`).click();
+    }
     const chosen = i;
     await new Promise(r => setTimeout(r, 1500));
     return { before, chosen, now: i, words: words.length };
   }, skip);
   const advanced = await afterGood(false);
   check("אחרי הצלחה עוברים למילה הבאה", advanced.words > 1 && advanced.now !== advanced.before, advanced);
-  const skipped = await afterGood(true);
-  check("מילה שנבחרה בזמן ה-🎉 לא מוחלפת אחריו",
-    skipped.words > 1 && skipped.chosen !== skipped.before && skipped.now === skipped.chosen, skipped);
+  for(const skip of ["next", "jump"]){
+    const skipped = await afterGood(skip);
+    check(`מילה שנבחרה בזמן ה-🎉 לא מוחלפת אחריו (${skip})`,
+      skipped.words > 1 && skipped.chosen !== skipped.before && skipped.now === skipped.chosen, skipped);
+  }
   await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
 
   // --------------------------------------------------------------
@@ -786,14 +801,19 @@ async function main(){
   const ended = await page.evaluate(async () => {
     await ensureAudio();
     const readyBefore = audioReady();
+    const oldSrc = srcNode, disconnect = oldSrc.disconnect.bind(oldSrc);
+    let detached = false;
+    oldSrc.disconnect = (...a) => { detached = true; return disconnect(...a); };
     micStream.getTracks().forEach(t => t.stop());
     const ready = audioReady();
     await ensureAudio();
-    return { readyBefore, ready, after: micStream.getTracks().map(t => t.readyState) };
+    return { readyBefore, ready, detached, replaced: srcNode !== oldSrc,
+             after: micStream.getTracks().map(t => t.readyState) };
   });
   check("מיקרופון שהמסלול שלו נגמר לא נחשב פתוח", ended.readyBefore && !ended.ready, ended);
   check("מיקרופון שהמסלול שלו נגמר נפתח מחדש",
     ended.after.length > 0 && ended.after.every(s => s === "live"), ended);
+  check("הזרם המת מנותק מגרף השמע", ended.detached && ended.replaced, ended);
 
   // --------------------------------------------------------------
   group("החלטה");

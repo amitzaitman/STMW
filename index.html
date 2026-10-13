@@ -1669,7 +1669,7 @@ $("toggleSound").addEventListener("click", toggleSound);
 // ההקשבה מתחילה בנגיעה ולא בהרמת האצבע, כך שכפתור לחוץ כבר מקשיב, וילד
 // שמחזיק את האצבע בזמן שהוא מדבר נשמע. אבל נגיעה במסך מגע עוד לא מתירה לדף
 // לפתוח שמע — רק הרמת האצבע — ולכן כשצריך לפתוח את המיקרופון, בפעם
-// הראשונה ואחרי שהדף ירד מהמסך, מחכים ל-click.
+// הראשונה, אחרי שהדף ירד מהמסך או אחרי שהמיקרופון נותק, מחכים ל-click.
 $("say").addEventListener("pointerdown", e=>{ if(e.button === 0 && audioReady()) listen(); });
 $("say").addEventListener("click", listen);
 $("next").addEventListener("click", next);
