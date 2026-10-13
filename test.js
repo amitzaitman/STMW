@@ -228,6 +228,9 @@ async function main(){
   group("מנוע ההתאמה");
   // הניקוד הוא מספר אחד, וההחלטה היא השוואה אחת מולו. אלה התכונות
   // שחייבות להישמר גם אם הנוסחה תשתנה.
+
+  // מילים רחוקות מהיעד. שכנה קרובה מהרשימה, כמו ship מול sheep, מתקבלת ברמה
+  // הסלחנית בכוונה, ונבדקת בנפרד.
   const wrongAccepted = await page.evaluate(() => {
     const bad = [];
     for(const [target, spoken] of [["dog","cat"],["lion","house"],["sun","moon"],["apple","car"]])
@@ -236,7 +239,7 @@ async function main(){
           if(scoreToken(spoken, conf, target) >= th) bad.push(`${spoken}/${target} th=${th}`);
     return bad;
   });
-  check("מילה שגויה לא מתקבלת באף אחוז", wrongAccepted.length === 0, wrongAccepted.slice(0, 5));
+  check("מילה שגויה ורחוקה מהיעד לא מתקבלת באף אחוז", wrongAccepted.length === 0, wrongAccepted.slice(0, 5));
 
   // ההחלטה עצמה, דרך processRecognition, בכל אחוז בנפרד: ניקוד שמחושב פעם
   // אחת מחוץ ללולאה לא רואה נוסחה שתלויה באחוז.
@@ -267,6 +270,45 @@ async function main(){
     return bad;
   });
   check("העלאת האחוז רק מקשה", nonMonotonic.length === 0, nonMonotonic);
+
+  // בדקדוק סגור המנוע מחזיר רק מילים מהרשימה. ship כשהיעד sheep היא מילה
+  // אחרת, גם כשהניקוד הפונטי שלה גבוה. הגבול בין הרמות הוא זה שעל הכפתורים.
+  const listNeighbour = await page.evaluate(() => {
+    const saved = { words, i, active, matchThreshold, finish };
+    const decide = (list, target, spoken, th) => {
+      words = list.map(w => ({emoji: "", word: w}));
+      i = list.indexOf(target);
+      let now;
+      finish = ok => { now = ok; };
+      matchThreshold = th;
+      active = true;
+      processRecognition({ result: { result: [{ word: spoken, conf: 1 }] } });
+      return now;
+    };
+    try {
+      const farm = ["sheep", "ship", "dog"], edge = PRESETS[0].upTo;
+      return {
+        rejected: {
+          shipEdge: decide(farm, "sheep", "ship", edge + 1),
+          ship70:   decide(farm, "sheep", "ship", 70),
+          ball:     decide(["ball", "balloon"], "balloon", "ball", 70),
+          grandma:  decide(["grandpa", "grandma"], "grandpa", "grandma", 70),
+          grandpa:  decide(["grandpa", "grandma"], "grandma", "grandpa", 70)
+        },
+        target: [45, 70, 90].map(th => decide(farm, "sheep", "sheep", th)),
+        lenient: [45, edge].map(th => decide(farm, "sheep", "ship", th))
+      };
+    } finally {
+      words = saved.words; i = saved.i; active = saved.active;
+      matchThreshold = saved.matchThreshold; finish = saved.finish;
+    }
+  });
+  check("מילה אחרת מהרשימה לא מתקבלת מעל הרמה הסלחנית",
+        Object.values(listNeighbour.rejected).every(ok => ok === false), listNeighbour);
+  check("מילת היעד מתקבלת בכל רמה כששכנותיה ברשימה",
+        listNeighbour.target.every(ok => ok === true), listNeighbour);
+  check("ברמה הסלחנית שכנה קרובה מהרשימה מתקבלת",
+        listNeighbour.lenient.every(ok => ok === true), listNeighbour);
 
   const scores = await page.evaluate(() => ({
     exact:    scoreToken("dog", 0.9, "dog"),

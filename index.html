@@ -689,8 +689,9 @@ let mode = (()=>{ try{ return localStorage.getItem(MODE_KEY) === "spell" ? "spel
 const MATCH_KEY = "speech_match_config";
 const MIN_THRESHOLD = 30, MAX_THRESHOLD = 95, DEFAULT_THRESHOLD = 70;
 
-// הכפתורים במסך ההגדרות. upTo הוא הגבול העליון להצגה: אחוז שמור שאינו של
-// אחד הכפתורים מסומן על הכפתור הראשון שהוא נכנס לתחומו. תצוגה בלבד — לא התנהגות.
+// הכפתורים במסך ההגדרות. upTo הוא הגבול העליון של כל רמה: אחוז שמור שאינו של
+// אחד הכפתורים מסומן על הכפתור הראשון שהוא נכנס לתחומו, ו-processRecognition
+// מתייחס אליו כאל אותה רמה.
 // התיאורים לא מבטיחים בדיקת הגייה: בדקדוק סגור המנוע מחזיר את מילת היעד
 // בביטחון מלא גם על הגייה שגויה, כך שגם הסף הגבוה מסנן רק חלק מהשגיאות.
 const PRESETS = [
@@ -1024,9 +1025,12 @@ function phoneticKey(s) {
   return k;
 }
 
-// שני צלילים שנכתבים אחרת ונשמעים אותו דבר, למשל cat מול kat.
+// בדקדוק סגור המנוע לא מחזיר kat או butterf, רק מילים מהרשימה, ולכן ההתאמות
+// המקורבות משוות תמיד שתי מילים מהרשימה. processRecognition מתחשב בהן רק
+// ברמה הסלחנית.
+// מילה שנכתבת אחרת ונשמעת אותו דבר, למשל ship מול sheep.
 const PHONETIC_SCORE = 88;
-// הילד אמר את תחילת המילה, למשל butterf מתוך butterfly.
+// מילה שהיעד מתחיל בה, למשל ball מתוך balloon.
 const PREFIX_SCORE = 80, PREFIX_MIN_LETTERS = 3, PREFIX_MIN_RATIO = 0.55;
 // ביטחון נמוך של המנוע מוריד ניקוד של התאמה מקורבת, אבל לא מאפס אותה.
 const CONFIDENCE_FLOOR = 0.25;
@@ -1093,8 +1097,15 @@ function processRecognition(msg){
   if(!tokens.length) return;   // שקט: ממשיכים להקשיב עד סוף החלון
 
   const target = word().toLowerCase().trim();
+  // בדקדוק סגור, מה שאינו היעד הוא מילה אחרת מהרשימה, ו-scoreToken נותן לשכנה
+  // קרובה ניקוד שעובר את הרף הרגיל: ship מול sheep, ball מול balloon. מעל הרמה
+  // הסלחנית מילה אחרת מהרשימה לא נחשבת; בסלחנית שכנה קרובה עוברת כהגייה לא מדויקת.
+  const others = presetFor(matchThreshold) === PRESETS[0] ? null : takenSet();
   let best = 0;
-  for(const tok of tokens) best = Math.max(best, scoreToken(tok.word, tok.conf, target));
+  for(const tok of tokens){
+    if(others && tok.word !== target && others.has(tok.word)) continue;
+    best = Math.max(best, scoreToken(tok.word, tok.conf, target));
+  }
 
   // ההחלטה כולה, במקום אחד.
   finish(best >= matchThreshold);
