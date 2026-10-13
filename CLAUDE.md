@@ -58,6 +58,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **עשו commit לפני שאתם שוברים קוד בכוונה.** `git checkout --` מוחק
 עבודה שלא נשמרה.
 
+**אחרי אישור דוחפים ישר ל-`main`, בלי ענף צדדי.** כל דחיפה ל-`main`
+עולה לאוויר ב-GitHub Pages, ולכן לא לפני שהמשתמש אישר.
+
 **מוחקים פריט מ-`BACKLOG.md` באותו commit שסוגר אותו.** `npm test` בודק
 שהעוגן של כל פריט קיים, ופריט שתוקן ולא נמחק מפיל את הבדיקות.
 
