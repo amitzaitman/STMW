@@ -124,6 +124,14 @@
     width:100%; max-width:520px; display:flex; align-items:center;
     justify-content:center; position:relative; min-height:44px;
   }
+  /* הכפתורים שבצדדים מונחים מעל הסרגל ולא תופסים בו מקום, אז שני מרווחים
+     שומרים להם את הרוחב. כל עוד השורה קצרה המרווחים שווים, והיא ממורכזת
+     כמו המתג שמתחתיה; שורה ארוכה ממלאת את מה שנשאר ביניהם ונשברת לשורה
+     נוספת, במקום להיכנס מתחת ל-⚙️. הדף מימין לשמאל, אז ::before הוא הצד
+     של 🔇 ו-::after הצד של ⚙️💬, ולכל אחד עוד מרווח קטן. */
+  #topBar::before, #topBar::after{content:""; flex:1}
+  #topBar::before{min-width:50px}
+  #topBar::after{min-width:100px}
   #stars{font-size:26px; letter-spacing:3px; min-height:32px; text-align:center}
   #topBarLeft{
     position:absolute; left:0; top:50%; transform:translateY(-50%);
@@ -1243,7 +1251,8 @@ const HIGH_BAR = 85;
 
 // שלושה כוכבים מתחלפים במדליה, וחמש מדליות בגביע, כך שהשורה משתנה כל עוד
 // הילד מתרגל ובכל זאת נשארת קצרה: לכל היותר ארבע מדליות ושני כוכבים לפני
-// כל גביע. שורה ארוכה יותר נכנסת מתחת לכפתורים שבצדי הסרגל בטלפון צר.
+// כל גביע. בטלפון צר גם זה לא נכנס בשורה אחת בין הכפתורים שבצדי הסרגל,
+// והיא נשברת לשתיים (ראו #topBar).
 const PER_MEDAL = 3, MEDALS_PER_TROPHY = 5;
 const PER_TROPHY = PER_MEDAL * MEDALS_PER_TROPHY;
 

@@ -541,6 +541,34 @@ async function main(){
   // הבאה מציגה, והיא נופלת בלי קשר למה שהיא באמת בודקת.
   await page.waitForTimeout(1200);
 
+  // הכפתורים שבצדי הסרגל מונחים מעליו, ושורה שנכנסת מתחתם מסתירה דווקא
+  // את הכוכב שהילד הרגע הרוויח. בודקים כל סמל בנפרד, ברוחב של טלפון צר:
+  // המלבן של השורה כולה רחב מהסמלים שבה, והשאלה היא איפה הם.
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: 360, height: 640 });
+  for(const n of [14, 374]){
+    const layout = await page.evaluate(n => {
+      scores[mode] = n;
+      renderScore();
+      const box = r => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+      const buttons = ["openSettings", "openFeedback", "toggleSound"].map(id => box($(id).getBoundingClientRect()));
+      const text = $("stars").firstChild;
+      const glyphs = [...new Intl.Segmenter().segment(text.data)].map(({ index, segment }) => {
+        const range = document.createRange();
+        range.setStart(text, index);
+        range.setEnd(text, index + segment.length);
+        return box(range.getBoundingClientRect());
+      });
+      const hits = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      const bad = glyphs.filter(g => g.left < 0 || g.top < 0 || g.right > innerWidth || g.bottom > innerHeight
+                                     || buttons.some(b => hits(g, b)));
+      return { glyphs: glyphs.length, bad, buttons };
+    }, n);
+    check(`בטלפון צר כל סמל בשורה על המסך ולא מתחת לכפתורים (${n})`,
+          layout.glyphs > 0 && layout.bad.length === 0, layout);
+  }
+  await page.setViewportSize(viewport);
+
   // אחרי ה-🎉 עוברים למילה הבאה, אבל ילד שלחץ ⏭️ או מורה שקפצה למילה
   // מהרשימה בזמן ה-🎉 כבר בחרו מילה, והמעבר המאוחר לא מחליף אותה. ההמתנה
   // היא טיימר בדף שמתחיל אחרי good(), ולכן נגמרת אחרי המעבר שהוא מזמן גם
