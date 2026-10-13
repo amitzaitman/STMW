@@ -120,9 +120,13 @@
   #bar{height:16px; border:3px solid #1B2140; border-radius:10px; background:#fff; overflow:hidden}
   #fill{display:block; height:100%; width:0; background:#FFD65A; transition:width .2s}
   #loadtext{font-size:14px; color:#8B93AD; text-align:center}
+  /* בעמודה של הדף הסרגל הוא פריט שמתכווץ, ו-min-height שלו מחליף את הגובה
+     המינימלי שלפי התוכן. בלי flex-shrink:0, כשחסר גובה — במצב כתיבה, בטלפון
+     נמוך — שורת כוכבים של שלוש שורות נדחסת, עד 44px, וגולשת מעל קצה המסך ועל
+     מתג התרגול. כשגם כך אין מקום, מה שבתחתית הדף יורד מתחת לקצה. */
   #topBar{
     width:100%; max-width:520px; display:flex; align-items:center;
-    justify-content:center; position:relative; min-height:44px;
+    justify-content:center; position:relative; min-height:44px; flex-shrink:0;
   }
   /* הכפתורים שבצדדים מונחים מעל הסרגל ולא תופסים בו מקום, אז שני מרווחים
      שומרים להם את הרוחב. כל עוד השורה קצרה המרווחים שווים, והיא ממורכזת

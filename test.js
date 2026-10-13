@@ -646,26 +646,27 @@ async function main(){
   // הכפתורים שבצדי הסרגל מונחים מעליו, ושורה שנכנסת מתחתם מסתירה דווקא
   // את הכוכב שהילד הרגע הרוויח. בודקים כל סמל בנפרד, ברוחב של טלפון צר:
   // המלבן של השורה כולה רחב מהסמלים שבה, והשאלה היא איפה הם.
+  const starsLayout = (n, avoid) => page.evaluate(([n, avoid]) => {
+    scores[mode] = n;
+    renderScore();
+    const box = r => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+    const others = avoid.map(id => box($(id).getBoundingClientRect()));
+    const text = $("stars").firstChild;
+    const glyphs = [...new Intl.Segmenter().segment(text.data)].map(({ index, segment }) => {
+      const range = document.createRange();
+      range.setStart(text, index);
+      range.setEnd(text, index + segment.length);
+      return box(range.getBoundingClientRect());
+    });
+    const hits = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const bad = glyphs.filter(g => g.left < 0 || g.top < 0 || g.right > innerWidth || g.bottom > innerHeight
+                                   || others.some(b => hits(g, b)));
+    return { word: word(), glyphs: glyphs.length, bad, others };
+  }, [n, avoid]);
   const viewport = page.viewportSize();
   await page.setViewportSize({ width: 360, height: 640 });
   for(const n of [14, 374]){
-    const layout = await page.evaluate(n => {
-      scores[mode] = n;
-      renderScore();
-      const box = r => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
-      const buttons = ["openSettings", "openFeedback", "toggleSound"].map(id => box($(id).getBoundingClientRect()));
-      const text = $("stars").firstChild;
-      const glyphs = [...new Intl.Segmenter().segment(text.data)].map(({ index, segment }) => {
-        const range = document.createRange();
-        range.setStart(text, index);
-        range.setEnd(text, index + segment.length);
-        return box(range.getBoundingClientRect());
-      });
-      const hits = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-      const bad = glyphs.filter(g => g.left < 0 || g.top < 0 || g.right > innerWidth || g.bottom > innerHeight
-                                     || buttons.some(b => hits(g, b)));
-      return { glyphs: glyphs.length, bad, buttons };
-    }, n);
+    const layout = await starsLayout(n, ["openSettings", "openFeedback", "toggleSound"]);
     check(`בטלפון צר כל סמל בשורה על המסך ולא מתחת לכפתורים (${n})`,
           layout.glyphs > 0 && layout.bad.length === 0, layout);
   }
@@ -681,6 +682,25 @@ async function main(){
   });
   check("בטלפון צר שורה קצרה ממורכזת מעל המתג",
         centred.row === "⭐⭐" && Math.abs(centred.at - centred.modeSwitch) <= 1, centred);
+  // במצב כתיבה, עם מילה שהבנק שלה נשבר לשתי שורות, לא נשאר גובה פנוי. אילו
+  // הסרגל היה מתכווץ, שורה של שלוש שורות הייתה נדחסת בו וגולשת מעל קצה המסך
+  // ועל המתג שמתחתיו; ובטלפון בגובה 640 גם הכפתורים בתחתית נשארים על המסך.
+  const beforeSpell = await page.evaluate(() => {
+    const before = { mode, at: i, score: scores.spell };
+    setMode("spell");
+    i = Math.max(0, words.findIndex(w => w.word === "banana"));
+    show();
+    return before;
+  });
+  const spellRow = await starsLayout(149, ["modeSwitch", "openSettings", "openFeedback", "toggleSound"]);
+  const spellButtons = await page.evaluate(() => ["playWord", "hint", "next"]
+    .filter(id => $(id) && $(id).offsetParent !== null)
+    .map(id => ({ id, bottom: $(id).getBoundingClientRect().bottom, max: innerHeight })));
+  await page.evaluate(b => { scores.spell = b.score; i = b.at; setMode(b.mode); show(); }, beforeSpell);
+  check("במצב כתיבה בטלפון נמוך כל סמל בשורה על המסך ולא על המתג",
+        spellRow.word === "banana" && spellRow.glyphs > 0 && spellRow.bad.length === 0, spellRow);
+  check("במצב כתיבה בטלפון בגובה 640 הכפתורים בתחתית על המסך",
+        spellButtons.length > 0 && spellButtons.every(b => b.bottom <= b.max), spellButtons);
   await page.setViewportSize(viewport);
 
   // אחרי ה-🎉 עוברים למילה הבאה, אבל ילד שלחץ ⏭️ או מורה שקפצה למילה
