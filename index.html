@@ -376,6 +376,9 @@
   }
   .chip:hover{background:#F8FAFC;}
   .chip[aria-pressed="true"]{background:#FFD65A; border-color:#1B2140;}
+  /* בניגוד לנושאים, השמות נשברים לשורות: בכיתה של 20 ילדים צריך לראות את
+     כולם בלי לגלול לצד. */
+  #childChips{flex-wrap:wrap;}
   #setActions{display:flex; gap:8px;}
   #setActions[hidden]{display:none;}
   #setActions button{
@@ -437,7 +440,7 @@
   .panel-notice.success{background:#F0FDF4; color:#15803D; border:1px solid #BBF7D0;}
   .panel-notice:empty{display:none;}
 
-  #resetBtn{
+  #resetBtn, #deleteChildBtn{
     border-width:2px; border-color:#B9C2D8; border-radius:12px; padding:8px 12px;
     font-size:14px; background:#fff; color:#4A5480; align-self:flex-start;
   }
@@ -505,6 +508,17 @@
           <p id="panelMeta"></p>
         </div>
         <button id="closePanel" class="panel-close-btn" type="button" data-goto="close" aria-label="סגירת הגדרות">×</button>
+      </div>
+
+      <div class="match-section">
+        <div class="match-title-wrap">
+          <span class="match-icon">🧒</span>
+          <span class="match-title">של מי ההגדרות?</span>
+        </div>
+        <div id="childChips" class="chip-row" role="group" aria-label="של מי ההגדרות"></div>
+        <p id="childNotice" class="panel-notice"></p>
+        <p class="match-desc">לכל שם רשימת מילים והגדרות משלו. השמע משותף לכל המכשיר.</p>
+        <button id="deleteChildBtn" type="button" hidden></button>
       </div>
 
       <!-- כפתור גישה לחלון רשימת המילים הקיימות -->
@@ -655,6 +669,35 @@ var THEMES = window.THEMES || [];
 var THEME_BY_WORD = window.THEME_BY_WORD || {};
 
 const $ = id => document.getElementById(id);
+
+// --- כמה ילדים במכשיר אחד ---
+// מה שנשמר לפני שהיו שמות נשאר במפתחות שלו, בלי שינוי, והוא "בלי שם". לכל
+// ילד עותק משלו של ההגדרות, במפתח עם @ וה-id שלו. ה-id נקבע פעם אחת ולא
+// נגזר מהשם, כך ששם שנמחק ונוסף שוב לא מחזיר ולא דורס כלום. השמע לא כאן:
+// הוא תלוי בחדר ולא בילד.
+// חייב לעמוד לפני load(): בלי childId מוגדר, load() נכשל בתוך ה-try שלו,
+// טוען את ברירת המחדל בשקט, והשמירה הבאה מוחקת את הרשימה האמיתית.
+const CHILDREN_KEY = "say-the-word-children", CHILD_KEY = "say-the-word-child";
+// [] כשאין שמות, null כשיש ערך שאי אפשר לקרוא. על null לא כותבים, כדי לא
+// למחוק את כל השמות בגלל ערך פגום אחד.
+function readChildren(){
+  try{
+    const raw = localStorage.getItem(CHILDREN_KEY);
+    if(raw === null) return [];
+    const list = JSON.parse(raw);
+    if(!Array.isArray(list)) return null;
+    return list.filter(c => c && typeof c.id === "string" && /^[a-z0-9]+$/.test(c.id) &&
+                            typeof c.name === "string" && c.name);
+  }catch(e){ return null; }
+}
+let childId = (()=>{
+  try{
+    const id = localStorage.getItem(CHILD_KEY) || "";
+    return (readChildren() || []).some(c => c.id === id) ? id : "";
+  }catch(e){ return ""; }
+})();
+function childKey(base){ return childId ? base + "@" + childId : base; }
+
 let words = load() || DEFAULT_WORDS.slice();
 // לכל תרגול ניקוד משלו, והשורה מראה את של התרגול הפתוח. הניקוד לא נשמר
 // בין פתיחות: הכוכבים מודדים את מה שהילד עושה עכשיו, ושמירה הייתה מחייבת
@@ -670,10 +713,12 @@ const SOUND_KEY = "sound_enabled";
 let soundEnabled = (()=>{ try{ return localStorage.getItem(SOUND_KEY) === "1"; }catch(e){ return false; } })();
 // התעתיק מופיע כברירת מחדל, ונשמר רק כשמורה מכבה אותו.
 const HEBREW_KEY = "hebrew_spelling";
-let hebrewEnabled = (()=>{ try{ return localStorage.getItem(HEBREW_KEY) !== "0"; }catch(e){ return true; } })();
+function readHebrew(){ try{ return localStorage.getItem(childKey(HEBREW_KEY)) !== "0"; }catch(e){ return true; } }
+let hebrewEnabled = readHebrew();
 // "say" — אומרים את המילה למיקרופון. "spell" — כותבים אותה מבנק האותיות שלה.
 const MODE_KEY = "practice_mode";
-let mode = (()=>{ try{ return localStorage.getItem(MODE_KEY) === "spell" ? "spell" : "say"; }catch(e){ return "say"; } })();
+function readMode(){ try{ return localStorage.getItem(childKey(MODE_KEY)) === "spell" ? "spell" : "say"; }catch(e){ return "say"; } }
+let mode = readMode();
 
 // --- רמת ההתאמה לדיבור הילד: אחת משלוש ---
 // אין כיוון עדין באמצע: מול הקלטות עם ציוני הגייה של מומחים, 30 עד 60
@@ -699,14 +744,15 @@ const PRESETS = [
 ];
 const DEFAULT_PRESET = PRESETS[1];
 
-let preset = (()=>{
-  try{ return PRESETS.find(p => p.id === localStorage.getItem(MATCH_KEY)) || DEFAULT_PRESET; }
+function readPreset(){
+  try{ return PRESETS.find(p => p.id === localStorage.getItem(childKey(MATCH_KEY))) || DEFAULT_PRESET; }
   catch(e){ return DEFAULT_PRESET; }
-})();
+}
+let preset = readPreset();
 
 function setPreset(p){
   preset = p;
-  try { localStorage.setItem(MATCH_KEY, p.id); } catch(e){}
+  try { localStorage.setItem(childKey(MATCH_KEY), p.id); } catch(e){}
   updateMatchUI();
 }
 
@@ -752,7 +798,7 @@ function toggleSound(){
 
 function load(){
   try{
-    const data = JSON.parse(localStorage.getItem("words"));
+    const data = JSON.parse(localStorage.getItem(childKey("words")));
     if(!Array.isArray(data) || !data.length) return null;
     const list = data.map(item => {
       const emoji = String(item.emoji || "");
@@ -765,7 +811,7 @@ function load(){
     return list.length ? list : null;
   }catch(e){ return null; }
 }
-function save(){ try{ localStorage.setItem("words", JSON.stringify(words)); }catch(e){} }
+function save(){ try{ localStorage.setItem(childKey("words"), JSON.stringify(words)); }catch(e){} }
 
 function word(){ return words[i].word; }
 // מתקדם בכל הצגה, כדי שהמעבר ש-good() מזמן אחרי ה-🎉 יוותר כשמשהו אחר כבר
@@ -789,7 +835,7 @@ function show(){
 
 function setHebrew(on){
   hebrewEnabled = on;
-  try{ localStorage.setItem(HEBREW_KEY, on ? "1" : "0"); }catch(e){}
+  try{ localStorage.setItem(childKey(HEBREW_KEY), on ? "1" : "0"); }catch(e){}
   show();
 }
 
@@ -1386,7 +1432,7 @@ function setMode(to){
   // הקשבה שנקטעה במעבר אינה ניסיון שנכשל, אז בלי "נסו שוב".
   stopListening();
   mode = to;
-  try{ localStorage.setItem(MODE_KEY, mode); }catch(e){}
+  try{ localStorage.setItem(childKey(MODE_KEY), mode); }catch(e){}
   renderMode();
   show();
 }
@@ -1404,7 +1450,7 @@ function setSettingsNotice(elementId, msg, isError = false){
 }
 
 function updateMainWordsSummary(){
-  $("panelMeta").textContent = words.length + " מילים בתרגול. נשמר במכשיר הזה.";
+  $("panelMeta").textContent = words.length + " מילים בתרגול" + (childId ? " של " + childName() : "") + ". נשמר במכשיר הזה.";
   $("mainWordsCountBadge").textContent = words.length + " מילים";
   $("wordsPreviewEmojis").textContent = words.slice(0, 10).map(w => w.emoji).join(" ") + (words.length > 10 ? " …" : "");
   $("wordsListMeta").textContent = words.length + " מילים פעילות. לחצו על מילה כדי לתרגל אותה כעת.";
@@ -1421,7 +1467,7 @@ const VIEWS = {main: "viewSettingsMain", words: "viewWordsList", catalog: "viewC
 function showSettingsView(tabName, focusSearch = true){
   currentSettingsTab = tabName;
   for(const name in VIEWS) $(VIEWS[name]).hidden = (name !== tabName);
-  for(const id of ["settingsNotice", "wordsListNotice", "catalogNotice"]) setSettingsNotice(id, "");
+  for(const id of ["settingsNotice", "childNotice", "wordsListNotice", "catalogNotice"]) setSettingsNotice(id, "");
   renderPanel();
   if(tabName === "catalog" && focusSearch) setTimeout(()=>$("search").focus(), 50);
 }
@@ -1444,7 +1490,15 @@ function applyWords(nextWords, nextIndex, persist = true){
 // מוחקת את מה שהשנייה הוסיפה. לא שומרים בחזרה: הרשימה כבר שמורה, ושמירה של
 // מה ש-load() ניקה הייתה מעוררת את אותו אירוע בחלון השני.
 window.addEventListener("storage", e=>{
-  if(e.key !== "words") return;
+  if(e.key === CHILDREN_KEY){
+    // ילד שנמחק בחלון אחר: עוברים ל"בלי שם" בלי לשמור את הבחירה, כי זה לא
+    // מה שבחרו כאן. רשימת השמות נכתבת לפני שהנתונים שלו נמחקים, ולכן האירוע
+    // שלה מגיע קודם, ואין רגע שבו ברירת המחדל מוצגת תחת השם שנמחק.
+    if(childId && !(readChildren() || []).some(c => c.id === childId)) switchChild("", false);
+    else renderPanel();
+    return;
+  }
+  if(e.key !== childKey("words")) return;
   const list = load() || DEFAULT_WORDS.slice();
   const n = list.findIndex(w => w.word === word());
   applyWords(list, n >= 0 ? n : i, false);
@@ -1588,8 +1642,106 @@ function renderList(){
 // התוויות והמונים מופיעים בשלושת המסכים, אז הם מתעדכנים בכל שינוי ובכל מעבר.
 function renderPanel(){
   updateMainWordsSummary();
+  renderChildren();
   if(currentSettingsTab === "words") renderList();
   if(currentSettingsTab === "catalog") renderCatalog();
+}
+
+// --- ילדים: בחירה, הוספה ומחיקה ---
+function childName(){
+  const c = (readChildren() || []).find(c => c.id === childId);
+  return c ? c.name : "";
+}
+
+// מה שעובר לילד חדש, באותו פורמט שכל פונקציית שמירה כותבת. גם המחיקה
+// לוקחת מכאן את רשימת המפתחות.
+function profileValues(){
+  return { words: JSON.stringify(words), [MATCH_KEY]: preset.id,
+           [HEBREW_KEY]: hebrewEnabled ? "1" : "0", [MODE_KEY]: mode };
+}
+
+// במקום, בלי לטעון את הדף מחדש: טעינה באמצע ההורדה הראשונה של המודל
+// מתחילה אותה מאפס. applyWords בונה את ה-recognizer מחדש עם המילים של
+// הילד, ולא שומר — הן כבר שמורות. הודעה על ילד אחד לא נשארת מתחת לבא.
+function switchChild(id, remember = true){
+  childId = id;
+  setSettingsNotice("childNotice", "");
+  if(remember) try{ localStorage.setItem(CHILD_KEY, id); }catch(e){}
+  hebrewEnabled = readHebrew();
+  $("hebrewToggle").checked = hebrewEnabled;
+  preset = readPreset();
+  updateMatchUI();
+  mode = readMode();
+  // הכוכבים מודדים את מה שהילד שעל המסך עושה עכשיו, ולא עוברים לבא בתור.
+  scores = { say: 0, spell: 0 };
+  renderMode();
+  const list = load() || DEFAULT_WORDS.slice();
+  applyWords(list, Math.floor(Math.random() * list.length), false);   // גם מרנדר
+}
+
+function childrenNotSaved(){
+  setSettingsNotice("childNotice", "לא הצלחנו לשמור את השמות במכשיר הזה.", true);
+}
+
+// ילד חדש מתחיל ממה שעל המסך, כדי שרשימה שכבר הוכנה לכיתה לא תיבנה מחדש
+// לכל ילד. שם שכבר קיים רק עובר אליו, בלי לדרוס את ההגדרות שלו, ואומר את
+// זה: מי שרצה ילד שני באותו שם היה עורך בלי לדעת את הרשימה של הראשון.
+// Array.from חותך לפי תווים, ולא באמצע אימוג'י.
+function addChild(){
+  const name = Array.from((prompt("איך קוראים לילד או לילדה?") || "").trim().replace(/\s+/g, " ")).slice(0, 20).join("");
+  if(!name) return;
+  const list = readChildren();
+  if(!list) return childrenNotSaved();
+  const same = list.find(c => c.name === name);
+  if(same){
+    if(same.id !== childId) switchChild(same.id);
+    setSettingsNotice("childNotice", `השם ״${name}״ כבר קיים, ועברנו אליו. לילד אחר באותו שם הוסיפו אות, למשל ״${name} כ.״`, false);
+    return;
+  }
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  try{
+    // ההגדרות לפני השם: כתיבה שנכשלת באמצע משאירה לכל היותר מפתחות שאף שם
+    // לא מצביע עליהם, ולא שם בלי הגדרות.
+    const values = profileValues();
+    for(const base in values) localStorage.setItem(base + "@" + id, values[base]);
+    localStorage.setItem(CHILDREN_KEY, JSON.stringify(list.concat({id, name})));
+  }catch(e){ return childrenNotSaved(); }
+  switchChild(id);
+  setSettingsNotice("childNotice", `השם ״${name}״ נוסף, עם ההגדרות שהיו על המסך.`, false);
+}
+
+function deleteChild(){
+  const id = childId, name = childName();
+  // "בלי שם" הוא מה שנשמר לפני שהיו שמות, ואותו לא מוחקים.
+  if(!id) return;
+  if(!confirm(`למחוק את ${name}? רשימת המילים וההגדרות יימחקו מהמכשיר, ואי אפשר לשחזר אותן.`)) return;
+  const list = readChildren();
+  if(!list) return childrenNotSaved();
+  try{ localStorage.setItem(CHILDREN_KEY, JSON.stringify(list.filter(c => c.id !== id))); }
+  catch(e){ return childrenNotSaved(); }
+  switchChild("");
+  // מה-id ולא דרך childKey, שכבר מצביע על "בלי שם".
+  for(const base in profileValues()) try{ localStorage.removeItem(base + "@" + id); }catch(e){}
+  setSettingsNotice("childNotice", `השם ״${name}״ נמחק מהמכשיר.`, false);
+}
+
+// "בלי שם" מופיע רק כשיש שמות. מי שלא משתמש בשמות רואה כאן רק את ➕.
+function renderChildren(){
+  const list = readChildren() || [];
+  const chip = (text, id) => {
+    const b = el("button", "chip", text);
+    b.type = "button";
+    b.dataset.child = id;
+    b.setAttribute("aria-pressed", id === childId);
+    return b;
+  };
+  const named = list.slice().sort((a, b) => a.name.localeCompare(b.name, "he")).map(c => chip(c.name, c.id));
+  const add = el("button", "chip", "➕ הוספת שם");
+  add.type = "button";
+  add.dataset.add = "";
+  $("childChips").replaceChildren(...(named.length ? [chip("בלי שם", "")] : []), ...named, add);
+  $("deleteChildBtn").hidden = !childId;
+  $("deleteChildBtn").textContent = "🗑️ מחיקת " + childName();
 }
 
 // החלונית מכסה את המסך, אבל לא את הפוקוס של המקלדת: בלי inert, Tab עובר על
@@ -1720,8 +1872,16 @@ for(const p of PRESETS){
 
 $("hebrewToggle").addEventListener("change", e=>setHebrew(e.target.checked));
 
+$("childChips").addEventListener("click", e=>{
+  const b = e.target.closest(".chip");
+  if(!b) return;
+  if("add" in b.dataset) addChild();
+  else if(b.dataset.child !== childId) switchChild(b.dataset.child);
+});
+$("deleteChildBtn").addEventListener("click", deleteChild);
+
 $("resetBtn").addEventListener("click", ()=>{
-  if(!confirm("לאפס את רשימת המילים ורמת ההתאמה לברירת המחדל?")) return;
+  if(!confirm(`לאפס את רשימת המילים ורמת ההתאמה${childId ? " של " + childName() : ""} לברירת המחדל?`)) return;
   applyWords(DEFAULT_WORDS.slice(), 0);
   setPreset(DEFAULT_PRESET);
 });
@@ -1773,6 +1933,7 @@ if(navigator.storage && navigator.storage.persist){
 i = pick();
 renderMode();
 show();
+if(childId) setNote(`שלום ${childName()}! 👋`, 3000);
 updateSoundUI();
 updateMatchUI();
 $("hebrewToggle").checked = hebrewEnabled;

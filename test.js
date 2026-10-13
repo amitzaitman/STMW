@@ -1097,6 +1097,34 @@ async function main(){
     recBefore.had && recSync.fresh && recSync.inGrammar && recSync.sent.length === 1 && recSync.sent[0],
     { had: recBefore.had, added: recBefore.added.word, ...recSync });
 
+  // אותו דבר במעבר לילד אחר: המילים שלו צריכות להגיע ל-recognizer, אחרת אף
+  // אחת מהן לא תזוהה. הילד נכתב ישר ל-localStorage, והמצב משוחזר בסוף.
+  const childGrammar = await page.evaluate(() => {
+    const saved = { i, scores: { ...scores } };
+    const taken = takenSet(), [emoji, word] = PAIRS.find(p => !taken.has(p[1]));
+    localStorage.setItem("words@grammartest", JSON.stringify([{ emoji, word }]));
+    localStorage.setItem("say-the-word-children", JSON.stringify([{ id: "grammartest", name: "בדיקה" }]));
+    const before = rec, sent = [];
+    model.postMessage = function(m, ...rest){
+      if(m && m.action === "create") sent.push(m);
+      return Object.getPrototypeOf(this).postMessage.call(this, m, ...rest);
+    };
+    try{
+      switchChild("grammartest");
+      return { word, fresh: !!rec && rec !== before,
+               sent: sent.filter(m => rec && m.recognizerId === rec.id).map(m => JSON.parse(m.grammar)) };
+    } finally {
+      delete model.postMessage;
+      for(const k of ["words@grammartest", "say-the-word-children", "say-the-word-child"]) localStorage.removeItem(k);
+      switchChild("", false);
+      i = saved.i; scores = saved.scores;
+      show(); renderScore();
+    }
+  });
+  check("מעבר לילד אחר בונה את הדקדוק של המנוע מהמילים שלו",
+    childGrammar.fresh && childGrammar.sent.length === 1 && childGrammar.sent[0].includes(childGrammar.word)
+      && childGrammar.sent[0].length === 2, childGrammar);
+
   // --------------------------------------------------------------
   group("החלטה");
   // רק תוצאה סופית מחליטה. תוצאה חלקית היא ניחוש באמצע הדיבור, ומול המודל
@@ -1312,6 +1340,279 @@ async function main(){
   const soundOn = await page.evaluate(() => soundEnabled);
   await reload();
   check("מצב השמע נשמר בין טעינות", await page.evaluate(() => soundEnabled) === soundOn, { soundOn });
+
+  // --------------------------------------------------------------
+  group("ילדים במכשיר");
+  // כמה ילדים על אותו מכשיר, לכל אחד רשימה והגדרות משלו. מה שנשמר לפני שהיו
+  // שמות הוא "בלי שם", ונשאר במפתחות שלו בלי שינוי: שינוי שלהם היה מוחק לילד
+  // את הרשימה, וגרסה קודמת של הדף לא הייתה מוצאת אותה.
+  const LEGACY = ["words", "speech_match_config", "hebrew_spelling", "practice_mode", "sound_enabled"];
+  const PER_CHILD = LEGACY.slice(0, 4);
+  const dumpStorage = p => p.evaluate(() =>
+    JSON.stringify(Object.keys(localStorage).sort().map(k => [k, localStorage.getItem(k)])));
+
+  // מכשיר שכבר יש בו הגדרות פותח את הגרסה החדשה, בהקשר נפרד.
+  const oldDevice = await browser.newContext({ serviceWorkers: "block" });
+  const oldPage = await oldDevice.newPage();
+  await oldPage.goto(base + "/manifest.json");
+  await oldPage.evaluate(() => {
+    localStorage.setItem("words", JSON.stringify([{ emoji: "🐶", word: "dog" }, { emoji: "🐱", word: "cat" }]));
+    localStorage.setItem("speech_match_config", "strict");
+    localStorage.setItem("hebrew_spelling", "0");
+    localStorage.setItem("practice_mode", "spell");
+    localStorage.setItem("sound_enabled", "1");
+  });
+  const oldBefore = await dumpStorage(oldPage);
+  await oldPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  await oldPage.waitForTimeout(300);
+  const oldState = await oldPage.evaluate(() => {
+    openPanel();
+    return { words: words.map(w => w.word).join(), preset: preset.id, hebrew: hebrewEnabled, mode, sound: soundEnabled,
+             childId, note: $("note").textContent, chips: [...$("childChips").children].map(c => c.textContent),
+             del: $("deleteChildBtn").checkVisibility() };
+  });
+  const oldAfter = await dumpStorage(oldPage);
+  await oldDevice.close();
+  check("מכשיר עם הגדרות מלפני השמות טוען אותן כמו שהן, בלי ברכה",
+    oldState.words === "dog,cat" && oldState.preset === "strict" && !oldState.hebrew && oldState.mode === "spell"
+      && oldState.sound && oldState.childId === "" && oldState.note === "", oldState);
+  check("ולא כותב במכשיר שום דבר", oldBefore === oldAfter, { oldBefore, oldAfter });
+  check("בלי שמות, בהגדרות יש רק ➕ ואין כפתור מחיקה",
+    oldState.chips.join() === "➕ הוספת שם" && !oldState.del, oldState);
+
+  // מכאן בדף הראשי, שעוד אין בו שמות.
+  const legacyRaw = () => page.evaluate(keys => JSON.stringify(keys.map(k => localStorage.getItem(k))), LEGACY);
+  const childKeys = id => page.evaluate(([keys, id]) => keys.map(k => localStorage.getItem(k + "@" + id)), [PER_CHILD, id]);
+  const registry = () => page.evaluate(() => localStorage.getItem("say-the-word-children"));
+  const childState = () => page.evaluate(() => ({
+    childId, words: words.map(w => w.word).join(), preset: preset.id, hebrew: hebrewEnabled, mode,
+    ui: { hebrew: $("hebrewToggle").checked, badge: $("matchLevelBadge").textContent,
+          mode: document.querySelector('#modeSwitch [aria-checked="true"]').dataset.mode },
+    shownListed: words.some(w => w.word === $("word").textContent),
+    chips: [...$("childChips").children].map(c => c.textContent + (c.getAttribute("aria-pressed") === "true" ? "*" : "")).join("|"),
+    meta: $("panelMeta").textContent,
+    del: $("deleteChildBtn").checkVisibility() ? $("deleteChildBtn").textContent : null,
+    notice: { cls: $("childNotice").className, text: $("childNotice").textContent }
+  }));
+  const settingsOf = s => JSON.stringify([s.childId, s.words, s.preset, s.hebrew, s.mode, s.ui]);
+  const addName = async name => {
+    page.once("dialog", d => d.accept(name));
+    await page.click("#childChips [data-add]");
+    await page.waitForTimeout(150);
+  };
+  const tapChild = async id => {
+    await page.click(`#childChips [data-child="${id}"]`);
+    await page.waitForTimeout(150);
+  };
+
+  await page.evaluate(() => { scores.say = 4; scores.spell = 2; window.sameDocument = true; });
+  await page.click("#openSettings");
+  await page.waitForTimeout(150);
+  const legacyBefore = await legacyRaw();
+  const unnamed = await childState();
+  const onScreen = await page.evaluate(() => [JSON.stringify(words), preset.id, hebrewEnabled ? "1" : "0", mode]);
+
+  await addName("נועה");
+  const added = await page.evaluate(() => ({
+    reg: JSON.parse(localStorage.getItem("say-the-word-children")), pointer: localStorage.getItem("say-the-word-child"),
+    sameDocument: window.sameDocument === true, scores: { ...scores }
+  }));
+  const noaId = added.reg && added.reg[0] && added.reg[0].id;
+  const onNoa = await childState();
+  check("➕ מוסיף שם ועובר אליו בלי לטעון את הדף מחדש",
+    added.sameDocument && Array.isArray(added.reg) && added.reg.length === 1 && added.reg[0].name === "נועה" && /^[a-z0-9]+$/.test(noaId)
+      && onNoa.childId === noaId && added.pointer === noaId, { added, onNoa });
+  check("ילד חדש מתחיל מההגדרות שהיו על המסך",
+    JSON.stringify(await childKeys(noaId)) === JSON.stringify(onScreen)
+      && settingsOf({ ...onNoa, childId: "" }) === settingsOf(unnamed), { onScreen, onNoa, unnamed });
+  check("הכוכבים מתאפסים במעבר לילד אחר", added.scores.say === 0 && added.scores.spell === 0, added.scores);
+  check("בהגדרות: בלי שם, השם המסומן, ➕, וכפתור מחיקה עם השם",
+    onNoa.chips === "בלי שם|נועה*|➕ הוספת שם" && onNoa.meta.includes("של נועה") && onNoa.del === "🗑️ מחיקת נועה", onNoa);
+
+  // כל הגדרה משתנה אצל נועה לערך אחר ממה שהיה. התעתיק דרך תיבת הסימון,
+  // כי setHebrew לבדו לא מזיז אותה.
+  await page.evaluate(() => {
+    removeAt(0);
+    setPreset(PRESETS.find(p => p !== preset));
+    $("hebrewToggle").click();
+    setMode(mode === "say" ? "spell" : "say");
+  });
+  const noaChanged = await childState();
+  const noaSaved = await page.evaluate(() => [JSON.stringify(words), preset.id, hebrewEnabled ? "1" : "0", mode]);
+  check("שינוי אצל ילד נשמר אצלו, ומה שנשמר בלי שם לא משתנה",
+    JSON.stringify(await childKeys(noaId)) === JSON.stringify(noaSaved) && await legacyRaw() === legacyBefore
+      && noaChanged.words !== unnamed.words && noaChanged.preset !== unnamed.preset
+      && noaChanged.hebrew !== unnamed.hebrew && noaChanged.mode !== unnamed.mode, { noaChanged, unnamed });
+
+  await tapChild("");
+  const backUnnamed = await childState();
+  check("הודעה על ילד אחד לא נשארת אחרי מעבר לאחר",
+    onNoa.notice.text.includes("נוסף") && backUnnamed.notice.text === "", { before: onNoa.notice, after: backUnnamed.notice });
+  check("בלי שם מחזיר את ההגדרות שהיו לפני השמות, גם על המסך",
+    settingsOf(backUnnamed) === settingsOf(unnamed) && backUnnamed.shownListed && backUnnamed.del === null
+      && !backUnnamed.meta.includes(" של ") && await legacyRaw() === legacyBefore
+      && await page.evaluate(() => localStorage.getItem("say-the-word-child")) === "", { backUnnamed, unnamed });
+  await tapChild(noaId);
+  const backNoa = await childState();
+  check("והשם מחזיר את ההגדרות שלו", settingsOf(backNoa) === settingsOf(noaChanged) && backNoa.shownListed,
+    { backNoa, noaChanged });
+
+  await reload();
+  const reloadedNoa = await childState();
+  const greeting = await page.textContent("#note");
+  check("אחרי טעינה מחדש הדף נשאר על אותו ילד ומברך אותו",
+    settingsOf(reloadedNoa) === settingsOf(noaChanged) && greeting === "שלום נועה! 👋", { reloadedNoa, greeting });
+
+  // השמע תלוי בחדר ולא בילד. מדליקים אותו, ההפך מברירת המחדל, כדי שמעבר
+  // שקורא אותו מחדש לפי הילד ייראה.
+  const sound = await page.evaluate(id => {
+    const was = soundEnabled;
+    setSound(true);
+    const set = soundEnabled;
+    switchChild("");
+    const unnamedSound = soundEnabled;
+    switchChild(id);
+    const out = { set, unnamedSound, back: soundEnabled, raw: localStorage.getItem("sound_enabled"),
+                  perChild: Object.keys(localStorage).filter(k => k.startsWith("sound_enabled@")) };
+    setSound(was);
+    return out;
+  }, noaId);
+  check("השמע משותף לכל המכשיר",
+    sound.set === sound.unnamedSound && sound.set === sound.back && sound.raw === (sound.set ? "1" : "0") && sound.perChild.length === 0, sound);
+
+  await page.click("#openSettings");
+  await page.waitForTimeout(150);
+  let resetText = "";
+  page.once("dialog", d => { resetText = d.message(); d.accept(); });
+  await page.click("#resetBtn");
+  await page.waitForTimeout(150);
+  const afterReset = await childKeys(noaId);
+  check("איפוס אצל ילד מאפס רק אותו",
+    resetText.includes("נועה") && afterReset[0] === await page.evaluate(() => JSON.stringify(DEFAULT_WORDS))
+      && afterReset[1] === "normal" && await legacyRaw() === legacyBefore, { resetText, afterReset });
+
+  // שם שכבר קיים רק עובר אליו. אילו הוסיף ילד חדש, ההגדרות שעל המסך היו
+  // נכתבות על אלה של נועה.
+  await tapChild("");
+  const regBefore = await registry();
+  await addName("נועה");
+  const sameName = await childState();
+  check("הוספת שם שכבר קיים עוברת אליו בלי לדרוס את ההגדרות שלו, ואומרת את זה",
+    sameName.childId === noaId && await registry() === regBefore && sameName.notice.text.includes("כבר קיים")
+      && JSON.stringify(await childKeys(noaId)) === JSON.stringify(afterReset), { sameName, keys: await childKeys(noaId) });
+
+  // ילד שני נוסף כשנועה על המסך. ההגדרות שלה שונות מאלה של "בלי שם", ולכן
+  // רק כאן רואים שההעתק הוא של המסך ולא של מה שנשמר בלי שם. השם ארוך מ-20
+  // תווים, והחיתוך נופל באמצע אימוג'י אם סופרים חצאי תווים.
+  const noaOnScreen = await page.evaluate(() => [JSON.stringify(words), preset.id, hebrewEnabled ? "1" : "0", mode]);
+  const longName = "<b>x</b> " + "🦄".repeat(12), cutName = "<b>x</b> " + "🦄".repeat(11);
+  await addName(longName);
+  const marked = await page.evaluate(cut => ({
+    chip: [...$("childChips").children].some(c => c.textContent === cut),
+    tags: $("childChips").querySelectorAll("b").length + $("deleteChildBtn").querySelectorAll("b").length,
+    names: JSON.parse(localStorage.getItem("say-the-word-children")).map(c => c.name),
+    id: childId
+  }), cutName);
+  check("שם עם תגיות מוצג כטקסט", marked.chip && marked.tags === 0 && marked.id !== noaId, marked);
+  check("שם ארוך נחתך בלי לשבור אימוג'י", marked.names.includes(cutName), marked.names);
+  check("ילד שנוסף כשילד אחר על המסך מתחיל מההגדרות שעל המסך",
+    JSON.stringify(await childKeys(marked.id)) === JSON.stringify(noaOnScreen)
+      && noaOnScreen[2] !== JSON.parse(legacyBefore)[2], { noaOnScreen, copied: await childKeys(marked.id) });
+
+  // ערך פגום ברשימת השמות לא נדרס: אולי אפשר עוד לשחזר ממנו את השמות.
+  await page.evaluate(() => localStorage.setItem("say-the-word-children", "{"));
+  await addName("דן");
+  const brokenAdd = { raw: await registry(), notice: (await childState()).notice };
+  await page.evaluate(([reg, id]) => {
+    localStorage.setItem("say-the-word-child", id);
+    localStorage.setItem("say-the-word-children", "{");
+  }, [regBefore, noaId]);
+  await reload();
+  const brokenLoad = await page.evaluate(() => ({ childId, words: words.map(w => w.word).join() }));
+  await page.evaluate(reg => localStorage.setItem("say-the-word-children", reg),
+    JSON.stringify(JSON.parse(regBefore).concat({ id: marked.id, name: cutName })));
+  check("רשימת שמות פגומה לא נדרסת כשמוסיפים שם", brokenAdd.raw === "{" && brokenAdd.notice.cls.includes("error"), brokenAdd);
+  check("ובפתיחה הדף עולה בלי שם, עם ההגדרות שמלפני השמות",
+    brokenLoad.childId === "" && brokenLoad.words === unnamed.words, brokenLoad);
+
+  // כתיבה שנכשלת (מכשיר מלא) לא מדווחת כהצלחה ולא עוברת לשם.
+  await page.click("#openSettings");
+  await page.waitForTimeout(150);
+  const regFull = await registry();
+  await page.evaluate(() => {
+    window.realSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(){ throw new DOMException("full", "QuotaExceededError"); };
+  });
+  try{ await addName("דן"); }
+  finally{ await page.evaluate(() => { Storage.prototype.setItem = window.realSetItem; delete window.realSetItem; }); }
+  const fullAdd = await childState();
+  check("כשאין מקום במכשיר, שם חדש לא נוסף ומוצגת שגיאה",
+    fullAdd.childId === "" && fullAdd.notice.cls.includes("error") && await registry() === regFull, fullAdd);
+
+  // מחיקה: ביטול לא משנה כלום, ואישור מוחק את השם ואת כל מה שנשמר לו.
+  await tapChild(marked.id);
+  page.once("dialog", d => d.dismiss());
+  await page.click("#deleteChildBtn");
+  await page.waitForTimeout(150);
+  const cancelled = { reg: await registry(), id: await page.evaluate(() => childId) };
+  check("ביטול המחיקה לא משנה כלום", cancelled.reg === regFull && cancelled.id === marked.id, cancelled);
+  // אם הביטול מחק בכל זאת, הכפתור כבר מוסתר והלחיצה הייתה נתקעת.
+  if(cancelled.id === marked.id){
+    page.once("dialog", d => d.accept());
+    await page.click("#deleteChildBtn");
+    await page.waitForTimeout(150);
+  }
+  const deleted = await childState();
+  const leftover = await page.evaluate(id => Object.keys(localStorage).filter(k => k.endsWith("@" + id)), marked.id);
+  check("מחיקה מוחקת את השם ואת ההגדרות שלו, ורק אותם",
+    await registry() === regBefore && leftover.length === 0 && deleted.childId === "" && deleted.del === null
+      && await legacyRaw() === legacyBefore && JSON.stringify(await childKeys(noaId)) === JSON.stringify(afterReset),
+    { leftover, deleted });
+
+  // שתי לשוניות: כל אחת מקשיבה רק לרשימה של הילד שעל המסך שלה. הלשונית
+  // השנייה היא manifest.json, בלי האפליקציה עצמה.
+  await tapChild(noaId);
+  const tab = await ctx.newPage();
+  await tab.goto(base + "/manifest.json");
+  // הרשימה נטענת תמיד מהמפתח של הילד שעל המסך, ולכן תגובה לרשימה של ילד
+  // אחר לא משנה אותה. מה שמסגיר אותה הוא הצגה מחדש של המילה.
+  const noaShown = await page.evaluate(() => ({ words: words.map(w => w.word).join(), shownCount }));
+  const fromTab = (fn, arg) => tab.evaluate(fn, arg);
+  const legacyList = [{ emoji: "🐶", word: "dog" }, { emoji: "🐱", word: "cat" }];
+  await fromTab(raw => localStorage.setItem("words", raw), JSON.stringify(legacyList));
+  await page.waitForTimeout(500);
+  const ignored = await page.evaluate(() => ({ words: words.map(w => w.word).join(), shownCount }));
+  const noaList = JSON.stringify([{ word: "dog", emoji: "🐶" }]);
+  await fromTab(([id, raw]) => localStorage.setItem("words@" + id, raw), [noaId, noaList]);
+  await page.waitForFunction(() => words.map(w => w.word).join() === "dog", null, { timeout: 5000 }).catch(() => {});
+  const synced = await page.evaluate(([id, raw]) => ({
+    words: words.map(w => w.word).join(), notWrittenBack: localStorage.getItem("words@" + id) === raw
+  }), [noaId, noaList]);
+  await fromTab(([id, keys]) => {
+    localStorage.setItem("say-the-word-children", "[]");
+    for(const k of keys) localStorage.removeItem(k + "@" + id);
+  }, [noaId, PER_CHILD]);
+  await page.waitForFunction(() => childId === "", null, { timeout: 5000 }).catch(() => {});
+  const fellBack = await page.evaluate(() => ({ childId, words: words.map(w => w.word).join(),
+    pointer: localStorage.getItem("say-the-word-child") }));
+  await fromTab(raw => localStorage.setItem("words", raw), JSON.parse(legacyBefore)[0]);
+  await page.waitForFunction(w => words.map(w => w.word).join() === w, unnamed.words, { timeout: 5000 }).catch(() => {});
+  await tab.close();
+  check("רשימה של ילד אחר שנשמרה בחלון אחר לא נוגעת במה שעל המסך",
+    ignored.words === noaShown.words && ignored.shownCount === noaShown.shownCount, { ignored, noaShown });
+  check("רשימה של הילד שעל המסך מחלון אחר מוצגת ולא נשמרת בחזרה",
+    synced.words === "dog" && synced.notWrittenBack, synced);
+  check("ילד שנמחק בחלון אחר — עוברים לבלי שם, לא לרשימת ברירת המחדל",
+    fellBack.childId === "" && fellBack.words === "dog,cat" && fellBack.pointer === noaId, fellBack);
+
+  await page.evaluate(() => {
+    localStorage.removeItem("say-the-word-children");
+    localStorage.removeItem("say-the-word-child");
+  });
+  await reload();
+  check("בסוף, מה שנשמר בלי שם זהה למה שהיה לפני השמות",
+    await legacyRaw() === legacyBefore && await page.evaluate(() => Object.keys(localStorage).filter(k => k.includes("@")).length) === 0,
+    await dumpStorage(page));
 
   // --------------------------------------------------------------
   group("צלילי משוב");
