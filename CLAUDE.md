@@ -29,7 +29,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   ההערה שלידו, את הפרק "הוכרע" ב-`BACKLOG.md`, ואת `git log -S` על הקטע.
 - **מסלול העבודה ללא אינטרנט:** `sw.js`, `cache-name.js`, והורדת המודל
   ב-`fetchModel`. תקלה שם לא מתגלה עד שמישהו במצב טיסה, בכיתה. שינוי
-  `CACHE_NAME` מוריד מחדש 29MB בכל מכשיר.
+  `CACHE_NAME` כותב בכל מכשיר עותק חדש של 29MB, מהמטמון הישן או, אם הוא
+  כבר נמחק, מהרשת.
 - **מפתחות ה-localStorage:** `words`, `speech_match_config`,
   `sound_enabled`, `hebrew_spelling`, `practice_mode`. שינוי שם או מבנה מוחק לילד את
   רשימת המילים ואת ההגדרות, בלי אזהרה ובלי דרך לשחזר.
@@ -107,7 +108,10 @@ npm run dev    # server.js על פורט 3000. בלי התקנה: python3 -m htt
 
 **המודל והמטמון.** הדף מוריד את `model.tar.gz` בעצמו ל-Cache Storage (משם
 פס ההתקדמות), ו-Vosk מבקש אותו דרך ה-service worker שמגיש מאותו מטמון.
-לכן שם המטמון משותף ויושב ב-`cache-name.js`.
+לכן שם המטמון משותף ויושב ב-`cache-name.js`. Vosk מחלץ את המודל פעם אחת
+ל-IndexedDB (מסד `/vosk`), לפי הכתובת שלו, ומאז לא מבקש אותו שוב: קובץ
+שהוחלף באותו שם, וגם `CACHE_NAME` חדש, לא מחליפים את המודל במכשיר שכבר
+טען אותו.
 
 **שני יעדי פרסום.** GitHub Pages מגיש תחת `/REPO/`, ולכן כל נתיב בדף,
 ב-SW ובמניפסט יחסי (`./`). `server.js` קיים רק בשביל AI Studio.
