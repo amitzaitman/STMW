@@ -1135,11 +1135,21 @@ function audioReady(){
   return !!(ctx && ctx.state === "running" && micStream && rec);
 }
 
+// פתיחת המיקרופון לוקחת זמן, ובפעם הראשונה גם מחכה לאישור. נגיעה נוספת
+// בינתיים לא פותחת זרם שני, שאף אחד לא היה סוגר.
+let opening = false;
+
 async function listen(){
-  if(active || !model) return;
+  if(active || opening || !model) return;
   if(!audioReady()){
+    opening = true;
     try{ await ensureAudio(); }
     catch(err){ setNote("צריך לאשר את המיקרופון."); return; }
+    finally{ opening = false; }
+    // בזמן ההמתנה הדף ירד מהמסך — releaseMic כבר רץ ולא מצא מה לסגור —
+    // או שהילד עבר לכתיבה. בשני המקרים אין למה להקשיב.
+    if(document.hidden){ releaseMic(); return; }
+    if(mode !== "say") return;
   }
 
   setNote("");

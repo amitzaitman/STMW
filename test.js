@@ -613,6 +613,55 @@ async function main(){
   await page.waitForTimeout(300);
   check("המיקרופון חוזר לעבוד", await page.evaluate(() => !!micStream));
 
+  // פתיחת המיקרופון לוקחת זמן, ובינתיים ילד נוגע שוב, יוצא מהאפליקציה או
+  // עובר לכתיבה. כאן listen() נקרא כשהמיקרופון סגור, during קורה בזמן
+  // שהדפדפן פותח אותו, ובסוף הדף יורד מהמסך.
+  await page.waitForFunction(() => model !== null, null, { timeout: 60000 });
+  const whileOpening = ({ taps = 1, during = null }) => page.evaluate(async ({ taps, during }) => {
+    const real = navigator.mediaDevices.getUserMedia, tracks = [];
+    let opens = 0;
+    const live = () => tracks.filter(t => t.readyState === "live").length;
+    const hide = h => {
+      Object.defineProperty(document, "hidden", { value: h, configurable: true });
+      if(h) document.dispatchEvent(new Event("visibilitychange"));
+    };
+    navigator.mediaDevices.getUserMedia = async function(c){
+      opens++;
+      if(during === "deny") throw new DOMException("denied", "NotAllowedError");
+      const s = await real.call(this, c);
+      tracks.push(...s.getTracks());
+      if(during === "hide") hide(true);
+      if(during === "spell") setMode("spell");
+      return s;
+    };
+    try{
+      releaseMic();
+      await Promise.all(Array.from({ length: taps }, () => listen()));
+      const out = { opens, active, opening, listening: $("say").classList.contains("listening"), live: live() };
+      stopListening();
+      hide(true);
+      out.liveAfterHide = live();
+      return out;
+    } finally {
+      navigator.mediaDevices.getUserMedia = real;
+      hide(false);
+      setMode("say");
+    }
+  }, { taps, during });
+  // סירוב שהשאיר את הדגל דולק היה נועל את 🎤 עד טעינה מחדש.
+  const denied = await whileOpening({ during: "deny" });
+  check("סירוב למיקרופון לא נועל את הכפתור",
+    denied.opens === 1 && !denied.active && !denied.opening, denied);
+  const doubleTap = await whileOpening({ taps: 2 });
+  check("נגיעה כפולה פותחת את המיקרופון פעם אחת",
+    doubleTap.opens === 1 && doubleTap.active && doubleTap.liveAfterHide === 0, doubleTap);
+  const hiddenWhileOpening = await whileOpening({ during: "hide" });
+  check("דף שירד מהמסך בזמן שהמיקרופון נפתח לא מקשיב ולא מחזיק אותו",
+    hiddenWhileOpening.opens === 1 && !hiddenWhileOpening.active && hiddenWhileOpening.live === 0, hiddenWhileOpening);
+  const spellWhileOpening = await whileOpening({ during: "spell" });
+  check("מעבר לכתיבה בזמן שהמיקרופון נפתח לא מתחיל להקשיב",
+    spellWhileOpening.opens === 1 && !spellWhileOpening.active && !spellWhileOpening.listening, spellWhileOpening);
+
   // --------------------------------------------------------------
   group("החלטה");
   // רק תוצאה סופית מחליטה. תוצאה חלקית היא ניחוש באמצע הדיבור, ומול המודל
