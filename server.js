@@ -16,7 +16,9 @@ app.use((req, res, next) => {
 
 // Serve static assets from the current directory
 app.use(express.static(__dirname, {
-  dotfiles: 'allow',
+  // התיקייה היא שורש הריפו, ובה .git ו-.env.local. בלי הערך הזה send בודק רק
+  // את החלק האחרון בנתיב, ו-/.git/config היה מוגש.
+  dotfiles: 'ignore',
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('model.tar.gz')) {
       res.setHeader('Content-Type', 'application/gzip');

@@ -1329,6 +1329,15 @@ async function main(){
     check("סקריפט חסר לא מקבל את הדף", missingJs.status === 404 && !missingJs.isAppPage, missingJs);
     const missingPng = await get("/icon-999.png");
     check("תמונה חסרה לא מקבלת את הדף", missingPng.status === 404 && !missingPng.isAppPage, missingPng);
+
+    // השרת מגיש את שורש הריפו לכל מי שברשת, ושם גם .git ו-.env.local. בעותק
+    // שבו .git הוא קובץ ולא תיקייה (git worktree) רק הבדיקה השנייה יכולה ליפול.
+    const text = async u => (await fetch(url + u)).text();
+    const gitHead = await text("/.git/HEAD");
+    check("תיקיית .git לא מוגשת", !gitHead.startsWith("ref:"), gitHead.slice(0, 40));
+    const envFile = fs.readFileSync(path.join(DIR, ".env.example"), "utf8").trim();
+    const envServed = await text("/.env.example");
+    check("קובץ שמתחיל בנקודה לא מוגש", !envServed.includes(envFile), envServed.slice(0, 40));
   }
   child.kill("SIGKILL");
 
