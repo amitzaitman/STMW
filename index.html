@@ -1667,6 +1667,15 @@ function renderPanel(){
   if(currentSettingsTab === "catalog") renderCatalog();
 }
 
+// החלונית מכסה את המסך, אבל לא את הפוקוס של המקלדת: בלי inert, Tab עובר על
+// הכפתורים שמאחוריה, ו-Enter או רווח מפעילים אותם בלי שרואים, למשל את 🎤.
+// לכן כל עוד היא פתוחה הפוקוס בתוכה, ובסגירה הוא חוזר ל-⚙️. במגע ובעכבר
+// אין הבדל: הכיסוי חוסם ממילא, ו-preventScroll משאיר את החלונית באותה גלילה
+// שבה נסגרה.
+function setBehindInert(on){
+  for(const el of document.body.children) if(el !== $("overlay")) el.inert = on;
+}
+
 function openPanel(){
   setSettingsNotice("settingsNotice", "");
   setSettingsNotice("wordsListNotice", "");
@@ -1674,12 +1683,16 @@ function openPanel(){
   $("search").value = "";
   catalogTheme = catalogLevel = "";
   $("overlay").hidden = false;
+  setBehindInert(true);
   showSettingsView("main");
+  $("closePanel").focus({preventScroll: true});
 }
 
 function closePanel(){
   $("overlay").hidden = true;
+  setBehindInert(false);
   showSettingsView("main");
+  $("openSettings").focus({preventScroll: true});
 }
 
 function playCurrentWord(){
@@ -1762,6 +1775,7 @@ $("wordList").addEventListener("click", e=>{
 });
 
 $("overlay").addEventListener("click", e=>{ if(e.target.id === "overlay") closePanel(); });
+document.addEventListener("keydown", e=>{ if(e.key === "Escape" && !$("overlay").hidden) closePanel(); });
 $("search").addEventListener("input", renderCatalog);
 
 function onChip(row, apply){

@@ -775,6 +775,44 @@ async function main(){
   check("אפשר להגיע לתמונה במקלדת", pic.focused, pic);
   check("לתמונה יש שם נגיש", !!pic.label, pic);
 
+  // ההגדרות מכסות את המסך, ובמקלדת גם הפוקוס צריך להישאר בהן. אחרת Tab עובר
+  // על הכפתורים שמאחוריהן, ו-Enter או רווח מפעילים אותם בלי שרואים: Shift+Tab
+  // מה-× מגיע ל-⏭️, ורווח מחליף את המילה מתחת לחלונית. BODY הוא היציאה מהדף
+  // אל הדפדפן, בדרך חזרה לתחילת החלונית, ולא נחשב יציאה ממנה.
+  await page.focus("#openSettings");
+  await page.keyboard.press("Enter");
+  const opened = await page.evaluate(() => {
+    window.behindClicks = [];
+    window.recordBehind = e => { if(!e.target.closest("#overlay")) behindClicks.push(e.target.id || e.target.tagName); };
+    document.addEventListener("click", recordBehind, true);
+    return { open: !$("overlay").hidden, inPanel: $("panel").contains(document.activeElement),
+             focus: document.activeElement.id || document.activeElement.tagName, word: word() };
+  });
+  const focusAt = () => page.evaluate(() => {
+    const a = document.activeElement;
+    return (a.id || a.tagName) + (a === document.body || a.closest("#overlay") ? "" : " ✗");
+  });
+  const visited = [];
+  for(const key of ["Shift+Tab", "Space", ...Array(12).fill("Tab"), ...Array(3).fill("Shift+Tab")]){
+    await page.keyboard.press(key);
+    visited.push(await focusAt());
+  }
+  await page.keyboard.press("Escape");
+  const closed = await page.evaluate(() => {
+    document.removeEventListener("click", recordBehind, true);
+    const out = { hidden: $("overlay").hidden, focus: document.activeElement.id, behind: behindClicks,
+                  word: word(), active };
+    // שהקבוצות הבאות לא יתחילו מתחת לחלונית פתוחה גם כשהבדיקה נופלת.
+    if(!$("overlay").hidden) closePanel();
+    return out;
+  });
+  check("⚙️ במקלדת פותח את ההגדרות והפוקוס עובר אליהן", opened.open && opened.inPanel, opened);
+  check("Tab ו-Shift+Tab לא מגיעים למה שמאחורי ההגדרות",
+    visited.length > 0 && !visited.some(v => v.endsWith(" ✗")), visited);
+  check("Esc סוגר את ההגדרות ומחזיר את הפוקוס ל-⚙️, ושום דבר מאחוריהן לא הופעל",
+    closed.hidden && closed.focus === "openSettings" && closed.behind.length === 0
+      && closed.word === opened.word && !closed.active, { opened, closed });
+
   // --------------------------------------------------------------
   group("קישורי המשוב");
   // הכתובת היא קבוע אחד לשני הקישורים. אם היא תיכתב שוב ב-HTML, החלפת
