@@ -786,12 +786,15 @@ function load(){
   try{
     const data = JSON.parse(localStorage.getItem("words"));
     if(!Array.isArray(data) || !data.length) return null;
-    return data.map(item => {
+    const list = data.map(item => {
       const emoji = String(item.emoji || "");
       const mapped = WORD_BY_EMOJI[emoji];
       const word = mapped || String(item.word || "").trim().toLowerCase();
       return {emoji, word};
     }).filter(w => w.emoji && w.word);
+    // כשאף פריט לא תקין חוזרים לברירת המחדל. מערך ריק הוא אמת, ו-load() ||
+    // DEFAULT_WORDS היה נשאר איתו: show() קורס על words[0] והמודל לא נטען.
+    return list.length ? list : null;
   }catch(e){ return null; }
 }
 function save(){ try{ localStorage.setItem("words", JSON.stringify(words)); }catch(e){} }

@@ -116,6 +116,26 @@ async function main(){
   check("יש מילים לתרגול", await page.evaluate(() => words.length) > 0);
   check("מוצגת מילה על המסך", (await page.textContent("#word")).length > 0);
 
+  // רשימה שמורה שאף פריט בה לא תקין מסתננת לרשימה ריקה. בלי חזרה לברירת
+  // המחדל show() קורס כבר בעלייה, והמודל לא נטען לעולם: 🎤 נשאר ⏳. בדפדפן
+  // נפרד, כדי שלא יהיה מה לשחזר בדף הראשי ושהקריסה לא תיספר שוב ב"אין
+  // שגיאות בקונסולה".
+  const junkWords = await browser.newContext({ serviceWorkers: "block" });
+  const junkPage = await junkWords.newPage();
+  const crashes = [];
+  junkPage.on("pageerror", e => crashes.push(e.message));
+  await junkPage.goto(base + "/manifest.json");
+  await junkPage.evaluate(() => localStorage.setItem("words", JSON.stringify(["dog", "cat"])));
+  await junkPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  const fallback = await junkPage.evaluate(() => ({
+    defaults: words.length > 0 && JSON.stringify(words) === JSON.stringify(DEFAULT_WORDS),
+    shown: $("word").textContent,
+    listed: words.some(w => w.word === $("word").textContent)
+  }));
+  await junkWords.close();
+  check("רשימה שמורה בלי אף מילה תקינה — עולה רשימת ברירת המחדל",
+    fallback.defaults && fallback.listed && crashes.length === 0, { ...fallback, crashes });
+
   // --------------------------------------------------------------
   group("מילון המודל");
   // KaldiRecognizer מקבל בשקט גם מילה שהמודל לא מכיר, ואז היא לא תזוהה
