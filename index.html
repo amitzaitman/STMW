@@ -838,6 +838,10 @@ if("speechSynthesis" in window){
   // רשימת הקולות מגיעה מאוחר בחלק מהדפדפנים, ולפעמים יותר מפעם אחת.
   speechSynthesis.addEventListener("voiceschanged", refreshVoices);
 }
+// קולות הצעצוע של אפל וקולות Eloquence הרובוטיים. באייפון הרשימה נפתחת בהם,
+// והם מקומיים ובאותו מבטא כמו Samantha, אז בתיקו נבחר Albert. השם לפעמים
+// מתורגם, ולכן בודקים גם את ה-voiceURI.
+const TOY_VOICE = /\b(Albert|Bad ?News|Bahh|Bells|Boing|Bubbles|Cellos|Good ?News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred|Junior|Kathy|Ralph|Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley)\b/;
 function voiceFor(lang){
   // אנדרואיד ישן מדווח עברית כ-iw, הקוד הישן של Java, ובלעדי ההמרה המשוב
   // שותק שם כאילו אין קול עברי במכשיר.
@@ -845,14 +849,16 @@ function voiceFor(lang){
     .replace(/^iw(?=-|$)/, "he");
   const wanted = normalize(lang);
   const pre = wanted.split("-")[0];
-  let best = null, bestScore = -1;
+  let best = null, bestScore = -Infinity;
   for(const voice of voices){
     const language = normalize(voice.lang);
     if(language.split("-")[0] !== pre) continue;
     // קול מקומי קודם, כדי שההקראה תעבוד גם בכיתה בלי אינטרנט. השמות "איכותיים"
     // הם רמז שהמכשיר נותן, לא הבטחה, ולכן הם שוקלים פחות מקול מקומי ומהמבטא.
     const quality = /premium|enhanced|natural|neural/i.test(voice.name + " " + voice.voiceURI);
-    const score = (voice.localService === true ? 100 : 0)
+    // קול צעצוע יורד לסוף ולא נפסל, כדי ששפה שיש לה רק קול כזה לא תשתוק.
+    const toy = TOY_VOICE.test(voice.name + " " + voice.voiceURI);
+    const score = (toy ? -1000 : 0) + (voice.localService === true ? 100 : 0)
       + (language === wanted ? 20 : 0) + (quality ? 10 : 0)
       + (voice.default ? 1 : 0);
     if(score > bestScore){ best = voice; bestScore = score; }

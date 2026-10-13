@@ -193,13 +193,27 @@ async function main(){
       // אנדרואיד ישן מדווח עברית בקוד הישן של Java, iw ולא he.
       voices = [{name: "Hebrew", lang: "iw-IL", localService: true}];
       const legacyHebrew = voiceFor(HE) === voices[0];
-      return {localQuality, missingHebrew, hebrew, legacyHebrew};
+      // באייפון הרשימה נפתחת בקולות הצעצוע של אפל, מקומיים ובאותו מבטא כמו
+      // Samantha. השם של Grandpa כאן מתורגם, ורק ה-voiceURI מסגיר אותו.
+      const albert = {name: "Albert", lang: "en-US", localService: true,
+        voiceURI: "com.apple.speech.synthesis.voice.Albert"};
+      const grandpa = {name: "סבא (אנגלית)", lang: "en-US", localService: true,
+        voiceURI: "com.apple.eloquence.en-US.Grandpa"};
+      const samantha = {name: "Samantha", lang: "en-US", localService: true,
+        voiceURI: "com.apple.voice.compact.en-US.Samantha"};
+      voices = [albert, grandpa, samantha];
+      const notToy = voiceFor(EN) === samantha;
+      voices = [albert];
+      const onlyToy = voiceFor(EN) === albert;
+      return {localQuality, missingHebrew, hebrew, legacyHebrew, notToy, onlyToy};
     } finally { voices = original; }
   });
   check("קול מקומי איכותי במבטא המבוקש מועדף", voiceSelection.localQuality, voiceSelection);
   check("אין קול עברי — לא נבחר קול משפה אחרת", voiceSelection.missingHebrew, voiceSelection);
   check("תג שפה עברי עם קו תחתון נתמך", voiceSelection.hebrew, voiceSelection);
   check("תג השפה הישן iw-IL נחשב עברית", voiceSelection.legacyHebrew, voiceSelection);
+  check("קול צעצוע של אפל לא נבחר כשיש קול רגיל", voiceSelection.notToy, voiceSelection);
+  check("כשיש רק קול צעצוע — הוא נבחר ולא שותקים", voiceSelection.onlyToy, voiceSelection);
 
   // מה ש-speak() עושה בלי קול עברי: לא מקריא כלום, ובכל זאת ממשיך הלאה,
   // אחרת הילד נתקע מול ה-🎉.
