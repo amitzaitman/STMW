@@ -839,7 +839,6 @@ function setHebrew(on){
 }
 
 const EN = "en-US";   // המילה שמתרגלים
-const HE = "he-IL";   // המשוב לילד
 
 let voices = [];
 function refreshVoices(){
@@ -855,10 +854,8 @@ if("speechSynthesis" in window){
 // מתורגם, ולכן בודקים גם את ה-voiceURI.
 const TOY_VOICE = /\b(Albert|Bad ?News|Bahh|Bells|Boing|Bubbles|Cellos|Good ?News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred|Junior|Kathy|Ralph|Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley)\b/;
 function voiceFor(lang){
-  // אנדרואיד ישן מדווח עברית כ-iw, הקוד הישן של Java, ובלעדי ההמרה המשוב
-  // שותק שם כאילו אין קול עברי במכשיר.
-  const normalize = value => String(value || "").toLowerCase().replace(/_/g, "-")
-    .replace(/^iw(?=-|$)/, "he");
+  // חלק מהמכשירים מדווחים את התג עם קו תחתון (en_US).
+  const normalize = value => String(value || "").toLowerCase().replace(/_/g, "-");
   const wanted = normalize(lang);
   const pre = wanted.split("-")[0];
   let best = null, bestScore = -Infinity;
@@ -878,37 +875,16 @@ function voiceFor(lang){
   return best;
 }
 
-// גבול עליון להמתנה לסיום הקראה. "כל הכבוד!" נמשך כשנייה, אז בדרך כלל
-// onend מקדים אותו הרבה והמספר הזה לא בא לידי ביטוי.
-const SPEAK_TIMEOUT = 3000;
-
-function speak(text, lang, onDone){
-  let called = false;
-  const done = ()=>{ if(called) return; called = true; if(onDone) onDone(); };
-  if(!soundEnabled){
-    if(onDone){
-      setTimeout(done, lang === HE ? 600 : 0);
-    }
-    return;
-  }
-  if(!("speechSynthesis" in window)){ done(); return; }
+function speak(text, lang){
+  if(!soundEnabled || !("speechSynthesis" in window)) return;
   if(!voices.length) refreshVoices();
   const v = voiceFor(lang);
-  // אין קול עברי במכשיר? שותקים. הדפדפן היה מקריא עברית בקול אנגלי ויוצא ג'יבריש,
-  // והמשוב החזותי — הצבע, ה-🎉 והכוכבים — ממשיך לעבוד גם בלי קול.
-  if(lang === HE && !v){ setTimeout(done, 500); return; }
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = lang;
   // האטה חזקה מותחת את המילה ונשמעת מכנית.
-  u.rate = lang === HE ? 1 : 0.95;
+  u.rate = 0.95;
   if(v) u.voice = v;
-  u.onend = done;
-  u.onerror = done;
-  // onend הוא הבטחה רופפת: ביטול באמצע, מעבר לרקע, או דפדפן שפשוט שותק
-  // בלי לדווח — ובלי גבול זמן הילד נשאר תקוע מול ה-🎉 ולא עובר למילה הבאה.
-  // done חסין לקריאה כפולה, אז מי שמגיע ראשון קובע.
-  setTimeout(done, SPEAK_TIMEOUT);
   speechSynthesis.speak(u);
 }
 

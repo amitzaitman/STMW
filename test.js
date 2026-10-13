@@ -231,7 +231,7 @@ async function main(){
   // --------------------------------------------------------------
   group("בחירת קול");
   // סדר הקולות משתנה ממכשיר למכשיר. קול מרוחק או בסיסי שמופיע ראשון לא אמור
-  // להסתיר קול מקומי טוב יותר, ובלי קול עברי המשוב שותק ולא מוקרא במבטא זר.
+  // להסתיר קול מקומי טוב יותר, ובלי קול בשפה המבוקשת לא נבחר קול של שפה אחרת.
   const voiceSelection = await page.evaluate(() => {
     const original = voices;
     try {
@@ -241,12 +241,10 @@ async function main(){
       const british = {name: "Premium", lang: "en-GB", localService: true};
       voices = [remote, compact, british, enhanced];
       const localQuality = voiceFor(EN) === enhanced;
-      const missingHebrew = voiceFor(HE) === null;
-      voices = [{name: "Hebrew", lang: "he_IL", localService: true}];
-      const hebrew = voiceFor(HE) === voices[0];
-      // אנדרואיד ישן מדווח עברית בקוד הישן של Java, iw ולא he.
-      voices = [{name: "Hebrew", lang: "iw-IL", localService: true}];
-      const legacyHebrew = voiceFor(HE) === voices[0];
+      voices = [{name: "Hebrew", lang: "he-IL", localService: true}];
+      const noEnglish = voiceFor(EN) === null;
+      voices = [{name: "English", lang: "en_US", localService: true}];
+      const underscore = voiceFor(EN) === voices[0];
       // באייפון הרשימה נפתחת בקולות הצעצוע של אפל, מקומיים ובאותו מבטא כמו
       // Samantha. השם של Grandpa כאן מתורגם, ורק ה-voiceURI מסגיר אותו.
       const albert = {name: "Albert", lang: "en-US", localService: true,
@@ -259,38 +257,14 @@ async function main(){
       const notToy = voiceFor(EN) === samantha;
       voices = [albert];
       const onlyToy = voiceFor(EN) === albert;
-      return {localQuality, missingHebrew, hebrew, legacyHebrew, notToy, onlyToy};
+      return {localQuality, noEnglish, underscore, notToy, onlyToy};
     } finally { voices = original; }
   });
   check("קול מקומי איכותי במבטא המבוקש מועדף", voiceSelection.localQuality, voiceSelection);
-  check("אין קול עברי — לא נבחר קול משפה אחרת", voiceSelection.missingHebrew, voiceSelection);
-  check("תג שפה עברי עם קו תחתון נתמך", voiceSelection.hebrew, voiceSelection);
-  check("תג השפה הישן iw-IL נחשב עברית", voiceSelection.legacyHebrew, voiceSelection);
+  check("אין קול באנגלית — לא נבחר קול משפה אחרת", voiceSelection.noEnglish, voiceSelection);
+  check("תג שפה עם קו תחתון נתמך", voiceSelection.underscore, voiceSelection);
   check("קול צעצוע של אפל לא נבחר כשיש קול רגיל", voiceSelection.notToy, voiceSelection);
   check("כשיש רק קול צעצוע — הוא נבחר ולא שותקים", voiceSelection.onlyToy, voiceSelection);
-
-  // מה ש-speak() עושה בלי קול עברי: לא מקריא כלום, ובכל זאת ממשיך הלאה,
-  // אחרת הילד נתקע מול ה-🎉.
-  const silentHebrew = await page.evaluate(async () => {
-    const original = { voices, soundEnabled };
-    const queued = [];
-    try {
-      voices = [{name: "English", lang: "en-US", localService: true}];
-      soundEnabled = true;
-      speechSynthesis.speak = u => queued.push(u.text);
-      const continued = await new Promise(resolve => {
-        speak("כל הכבוד!", HE, () => resolve(true));
-        setTimeout(() => resolve(false), 2000);
-      });
-      return { queued, continued };
-    } finally {
-      delete speechSynthesis.speak;
-      voices = original.voices;
-      soundEnabled = original.soundEnabled;
-    }
-  });
-  check("אין קול עברי — המשוב שותק וממשיך הלאה",
-        silentHebrew.queued.length === 0 && silentHebrew.continued, silentHebrew);
 
   // --------------------------------------------------------------
   group("מנוע ההתאמה");
@@ -1378,7 +1352,7 @@ async function main(){
   // המשוב הוא הצליל והתמונה. speak() נשאר רק להקראת המילה באנגלית.
   const spokenFeedback = await page.evaluate(() => {
     const calls = [], original = speak;
-    speak = (text, lang, onDone) => { calls.push({ text, lang }); return original(text, lang, onDone); };
+    speak = (text, lang) => { calls.push({ text, lang }); return original(text, lang); };
     try { good(); again(); } finally { speak = original; }
     return calls;
   });
