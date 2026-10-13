@@ -65,7 +65,7 @@
   #playWord{flex:1; background:#EBF8FF}
   #playWord:active:not([disabled]){background:#D8EFFF}
   #playWord.playing{background:#BAE3FF}
-  #say{flex:2; background:#FFD65A; height:80px}
+  #say{flex:2; background:#FFD65A}
   /* אדום תחת האצבע נשאר אדום: ההקשבה ממשיכה, וצהוב היה נראה כמו כפתור שכבה. */
   #say:active:not([disabled]):not(.listening){background:#FAD04C}
   #say.listening{background:#FF6B8A; color:#fff}
@@ -118,7 +118,7 @@
   #loading{width:100%; max-width:520px; display:flex; flex-direction:column; gap:6px}
   #loading[hidden]{display:none}
   #bar{height:16px; border:3px solid #1B2140; border-radius:10px; background:#fff; overflow:hidden}
-  #fill{display:block; height:100%; width:0; background:#FFD65A; transition:width .2s}
+  #fill{display:block; height:100%; background:#FFD65A; transition:width .2s}
   #loadtext{font-size:14px; color:#8B93AD; text-align:center}
   /* בעמודה של הדף הסרגל הוא פריט שמתכווץ, ו-min-height שלו מחליף את הגובה
      המינימלי שלפי התוכן. בלי flex-shrink:0, כשחסר גובה — במצב כתיבה, בטלפון
@@ -158,19 +158,12 @@
   }
   #toggleSound:active{transform:translateY(calc(-50% + 2px))}
   #toggleSound.on{background:#EBF8FF; border-color:#2B6CB0; color:#2B6CB0}
-  #toggleSound.muted{background:#F1F4F9; border-color:#B9C2D8; color:#7A859E}
-  @keyframes soundPulse{
-    0%,100%{transform:translateY(-50%) scale(1)}
-    50%{transform:translateY(-50%) scale(1.15); border-color:#FF6B8A}
-  }
-  #toggleSound.pulse{animation:soundPulse .35s 2}
   #note{font-size:14px; color:#B23A00; text-align:center; min-height:20px}
   #settingsActions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
   #installBtn{
     border-width:2px; border-color:#2B6CB0; border-radius:12px; padding:8px 12px;
     font-size:14px; background:#EBF8FF; color:#2B6CB0; font-weight:600;
   }
-  #installBtn[hidden]{display:none}
   #overlay{
     position:fixed; inset:0; background:rgba(27,33,64,.45);
     display:flex; align-items:flex-end; justify-content:center; z-index:20;
@@ -183,13 +176,9 @@
     display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden;
     padding:16px 16px 12px; gap:10px; overscroll-behavior:contain;
   }
-  #panel h2{margin:0; font-size:22px}
-  #panelHead{display:flex; align-items:flex-start; justify-content:space-between; gap:8px}
+  #panel h2{margin:0; font-size:22px; font-weight:800}
   #panelMeta{font-size:13px; color:#8B93AD; margin:4px 0 0}
-  #closePanel{
-    width:40px; height:40px; border-width:2px; border-radius:12px; font-size:22px; line-height:1;
-    flex:0 0 auto;
-  }
+  #closePanel{width:40px; height:40px}
   .match-section{
     background:#F2F7FF; border:3px solid #1B2140; border-radius:20px;
     padding:12px 14px; display:flex; flex-direction:column; gap:8px;
@@ -232,13 +221,10 @@
   .panel-view{
     display:flex; flex-direction:column; gap:12px; width:100%;
   }
-  .panel-view[hidden]{display:none !important;}
+  .panel-view[hidden]{display:none;}
 
   .panel-nav-head{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
-  }
-  .panel-nav-head h2{
-    margin:0; font-size:20px; font-weight:800; color:#1B2140;
   }
   .panel-title-group{
     display:flex; flex-direction:column; gap:2px;
@@ -364,9 +350,6 @@
   #wordList .ops button:disabled{opacity:.3; cursor:not-allowed;}
 
   /* Catalog View */
-  .catalog-search-box{
-    position:relative; width:100%;
-  }
   #search{
     width:100%; font:inherit; font-size:15px; padding:10px 14px;
     border:2.5px solid #1B2140; border-radius:14px; background:#F8FAFC;
@@ -401,7 +384,6 @@
     box-shadow:0 3px 0 #1B2140; transition:transform .15s, box-shadow .15s;
   }
   #practiceSetBtn{background:#FFD65A;}
-  #addSetBtn{background:#fff;}
   #setActions button:active{transform:translateY(1px); box-shadow:0 1px 0 #1B2140;}
   #setActions button:disabled{opacity:.45; cursor:not-allowed; box-shadow:none;}
   #catalog{
@@ -630,9 +612,7 @@
         <button id="closePanelFromCatalog" class="panel-close-btn" type="button" data-goto="close" aria-label="סגירה">×</button>
       </div>
 
-      <div class="catalog-search-box">
-        <input id="search" type="search" placeholder="חיפוש מילה (למשל dog, lion, apple...)" autocomplete="off">
-      </div>
+      <input id="search" type="search" placeholder="חיפוש מילה (למשל dog, lion, apple...)" autocomplete="off">
 
       <!-- הנושאים נבנים מ-THEMES ב-words.js -->
       <div id="themeChips" class="chip-row" role="group" aria-label="סינון לפי נושא"></div>
