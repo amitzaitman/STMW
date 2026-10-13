@@ -1469,7 +1469,10 @@ function updateMainWordsSummary(){
 
   const availBadge = $("catalogAvailableCount");
   if(availBadge){
-    const unadded = Math.max(0, PAIRS.length - words.length);
+    // סופרים במאגר ולא מחסרים אורכים: ברשימה שמורה יכולה להיות מילה שכבר
+    // יצאה מהמאגר, והיא לא מורידה ממה שזמין בו.
+    const taken = takenSet();
+    const unadded = PAIRS.filter(p => !taken.has(p[1])).length;
     availBadge.textContent = `${PAIRS.length} מילים במאגר (${unadded} זמינות להוספה) ←`;
   }
 }

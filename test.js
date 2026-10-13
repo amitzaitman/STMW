@@ -471,6 +471,19 @@ async function main(){
   await page.waitForTimeout(200);
   check("לחיצה חוזרת לא מוסיפה פעמיים", await page.evaluate(() => words.length) === wordsBefore + 1);
 
+  // רשימה שנשמרה לפני ש-sax יצאה מהמאגר עדיין מחזיקה אותה. היא לא מורידה
+  // ממה שזמין להוספה, ואחרת המונה מראה פחות מילים ממה שהמאגר מציג.
+  const withRemoved = await page.evaluate(() => {
+    const list = words.slice(), at = i;
+    applyWords([{ emoji: "🎷", word: "sax" }, { emoji: "🐶", word: "dog" }], 0);
+    const badge = $("catalogAvailableCount").textContent;
+    applyWords(list, at);
+    return { badge, available: +(badge.match(/\((\d+) /) || [])[1], pairs: PAIRS.length,
+             saxInPairs: PAIRS.some(p => p[1] === "sax"), dogInPairs: PAIRS.some(p => p[1] === "dog") };
+  });
+  check("מילה שיצאה מהמאגר לא נספרת מול מה שזמין להוספה",
+        !withRemoved.saxInPairs && withRemoved.dogInPairs && withRemoved.available === withRemoved.pairs - 1, withRemoved);
+
   // --------------------------------------------------------------
   group("ערכות");
   // מורה בוחרת נושא ורמה, ומחליפה או מוסיפה בלחיצה אחת את כל מה שמוצג.
