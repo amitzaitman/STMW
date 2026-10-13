@@ -160,11 +160,23 @@ async function main(){
   await badPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
   await badPage.waitForFunction(() => $("note").textContent !== "", null, { timeout: 15000 }).catch(() => {});
   const stuck = await badPage.evaluate(() => ({
-    note: $("note").textContent, loading: !$("loading").hidden, model: model !== null
+    note: $("note").textContent, loading: !$("loading").hidden, model: model !== null,
+    icon: $("sayIcon").textContent, disabled: $("say").disabled
+  }));
+  // ההודעה היא הסימן היחיד שמשהו נכשל, ו-⏭️ מנקה אותה. לכן 🎤 מראה ⚠️,
+  // ונגיעה בו מחזירה אותה בלי לנסות להקשיב.
+  await badPage.click("#next");
+  const skipped = await badPage.evaluate(() => $("note").textContent);
+  await badPage.click("#say", { timeout: 3000 }).catch(() => {});
+  const tapped = await badPage.evaluate(() => ({
+    note: $("note").textContent, active, listening: $("say").classList.contains("listening"), mic: micStream !== null
   }));
   await badModel.close();
   check("מודל שלא נטען — הודעה במקום המתנה בלי סוף",
     stuck.note !== "" && !stuck.loading && !stuck.model, stuck);
+  check("מודל שלא נטען — 🎤 מראה ⚠️ ונגיעה בו מחזירה את ההודעה",
+    stuck.icon === "⚠️" && !stuck.disabled && skipped === "" && tapped.note === stuck.note
+      && !tapped.active && !tapped.listening && !tapped.mic, { stuck, skipped, tapped });
 
   // --------------------------------------------------------------
   group("מילון המודל");

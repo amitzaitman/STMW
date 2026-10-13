@@ -949,6 +949,10 @@ function controlled(){
   });
 }
 
+// ההודעה כשהמנוע לא נטען. ⏭️ מנקה את שורת ההודעה, ובלי סימן נוסף לא היה
+// נשאר על המסך שום רמז לכך. לכן 🎤 מראה ⚠️, ונגיעה בו מציגה אותה שוב.
+let modelError = "";
+
 async function loadModel(){
   try{
     if(typeof Vosk === "undefined") throw new Error("vosk-browser did not load");
@@ -971,7 +975,10 @@ async function loadModel(){
     if(sIcon) sIcon.textContent = "🎤";
   }catch(err){
     $("loading").hidden = true;
-    setNote("לא הצלחנו לטעון את מנוע הדיבור. בדקו את model.tar.gz");
+    modelError = "לא הצלחנו לטעון את מנוע הדיבור. בדקו את model.tar.gz";
+    setNote(modelError);
+    $("say").disabled = false;
+    $("sayIcon").textContent = "⚠️";
     console.error(err);
   }
 }
@@ -1183,7 +1190,8 @@ function audioReady(){
 let opening = false;
 
 async function listen(){
-  if(active || opening || !model) return;
+  if(!model){ if(modelError) setNote(modelError); return; }
+  if(active || opening) return;
   if(!audioReady()){
     opening = true;
     try{ await ensureAudio(); }
