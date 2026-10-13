@@ -137,6 +137,27 @@ async function main(){
     fallback.defaults && fallback.listed && crashes.length === 0, { ...fallback, crashes });
 
   // --------------------------------------------------------------
+  group("מנוע שלא נטען");
+  // כשה-worker של Vosk לא מצליח לטעון את המודל הוא שולח error ולא load.
+  // מי שמחכה רק ל-load נשאר על "עוד רגע…" לנצח, בלי ההודעה שאומרת מה קרה.
+  // כאן model.tar.gz אינו ארכיון, גם לדף וגם ל-worker; על שגיאת HTTP הדף
+  // נכשל עוד ב-fetchModel ולא מגיע ל-worker. בדפדפן נפרד ובלי service
+  // worker: הדף לא מחכה לו, וה-route רואה גם את הבקשה של ה-worker.
+  const badModel = await browser.newContext();
+  await badModel.addInitScript(() => { delete Navigator.prototype.serviceWorker; });
+  await badModel.route("**/model.tar.gz", route =>
+    route.fulfill({ status: 200, contentType: "application/gzip", body: Buffer.alloc(4096, 7) }));
+  const badPage = await badModel.newPage();
+  await badPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  await badPage.waitForFunction(() => $("note").textContent !== "", null, { timeout: 15000 }).catch(() => {});
+  const stuck = await badPage.evaluate(() => ({
+    note: $("note").textContent, loading: !$("loading").hidden, model: model !== null
+  }));
+  await badModel.close();
+  check("מודל שלא נטען — הודעה במקום המתנה בלי סוף",
+    stuck.note !== "" && !stuck.loading && !stuck.model, stuck);
+
+  // --------------------------------------------------------------
   group("מילון המודל");
   // KaldiRecognizer מקבל בשקט גם מילה שהמודל לא מכיר, ואז היא לא תזוהה
   // לעולם, גם כשהילד אומר אותה מושלם. מילה חדשה במאגר צריכה להופיע במילון.

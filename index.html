@@ -941,7 +941,15 @@ async function loadModel(){
     await controlled();
     await fetchModel();
     progress(100, "עוד רגע…");
-    model = await Vosk.createModel(MODEL_URL);
+    // לא Vosk.createModel: הוא מחכה רק להודעת load, וכשה-worker נכשל (ארכיון
+    // קטוע, שגיאת HTTP) מגיעה רק error. ההבטחה שלו לא מסתיימת, והמסך נתקע
+    // על "עוד רגע…" בלי ההודעה שב-catch.
+    model = await new Promise((resolve, reject) => {
+      const loading = new Vosk.Model(MODEL_URL);
+      const fail = msg => reject(new Error(msg.error || "model load failed"));
+      loading.on("load", msg => msg.result ? resolve(loading) : fail(msg));
+      loading.on("error", fail);
+    });
     $("loading").hidden = true;
     $("say").disabled = false;
     const sIcon = $("sayIcon");
