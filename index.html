@@ -1493,18 +1493,29 @@ function showSettingsView(tabName, focusSearch = true){
   }
 }
 
-function applyWords(nextWords, nextIndex){
+function applyWords(nextWords, nextIndex, persist = true){
   words = nextWords;
   // המפענח החי צריך את הדקדוק החדש. אין כאן בדיקה שהמודל מכיר את המילה:
   // KaldiRecognizer לא זורק על מילה שאינה במילון (נבדק — מילת ג'יבריש
   // נוספת בשקט), וממילא כל המילים מגיעות מ-PAIRS.
   if(ctx) buildRecognizer();
-  save();
+  if(persist) save();
   if(typeof nextIndex === "number") i = nextIndex;
   if(i >= words.length) i = 0;
   show();
   renderPanel();
 }
+
+// האפליקציה המותקנת ולשונית בדפדפן, או שתי לשוניות, חולקות את localStorage.
+// כל אחת קוראת את הרשימה רק בעלייה ושומרת את כולה, ולכן בלי זה הבאה ששומרת
+// מוחקת את מה שהשנייה הוסיפה. לא שומרים בחזרה: הרשימה כבר שמורה, ושמירה של
+// מה ש-load() ניקה הייתה מעוררת את אותו אירוע בחלון השני.
+window.addEventListener("storage", e=>{
+  if(e.key !== "words") return;
+  const list = load() || DEFAULT_WORDS.slice();
+  const n = list.findIndex(w => w.word === word());
+  applyWords(list, n >= 0 ? n : i, false);
+});
 
 function addEmoji(emoji){
   const w = WORD_BY_EMOJI[emoji];

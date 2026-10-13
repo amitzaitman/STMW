@@ -550,6 +550,42 @@ async function main(){
   check("לחיצה על מילה קופצת אליה וסוגרת",
         jumpFrom !== 0 && jumped.closed && jumped.now === afterDelete.rows[0] && jumped.shown === jumped.now, { jumpFrom, jumped });
 
+  // האפליקציה המותקנת ולשונית בדפדפן, או שתי לשוניות, חולקות את localStorage.
+  // כל אחת קוראת את הרשימה רק בעלייה ושומרת את כולה, ובלי האזנה לשינוי הבאה
+  // ששומרת מוחקת את מה שהשנייה הוסיפה. הדף השני הוא manifest.json, בלי
+  // האפליקציה עצמה. השדות שם בסדר הפוך מזה של save(), כדי ששמירה בחזרה תיראה.
+  const beforeSync = await page.evaluate(() => {
+    openPanel();
+    showSettingsView("words");
+    const taken = takenSet();
+    return { list: words.slice(), at: i, current: words[i],
+             outside: PAIRS.filter(p => !taken.has(p[1])).slice(0, 3).map(([emoji, word]) => ({ emoji, word })) };
+  });
+  const otherTab = await ctx.newPage();
+  await otherTab.goto(base + "/manifest.json");
+  const syncTo = async list => {
+    const raw = JSON.stringify(list.map(w => ({ word: w.word, emoji: w.emoji })));
+    const want = list.map(w => w.word).join();
+    await otherTab.evaluate(raw => localStorage.setItem("words", raw), raw);
+    await page.waitForFunction(want => words.map(w => w.word).join() === want, want, { timeout: 5000 }).catch(() => {});
+    return page.evaluate(([raw, want]) => ({
+      want, words: words.map(w => w.word).join(), shown: $("word").textContent,
+      rows: [...document.querySelectorAll("#wordList li .w")].map(s => s.textContent).join(),
+      notWrittenBack: localStorage.getItem("words") === raw
+    }), [raw, want]);
+  };
+  const keptWord = await syncTo([...beforeSync.outside, beforeSync.current]);
+  const lostWord = await syncTo(beforeSync.outside);
+  await otherTab.close();
+  await page.evaluate(({ list, at }) => { applyWords(list, at); closePanel(); }, beforeSync);
+  check("רשימה שנשמרה בחלון אחר מוצגת, והמילה שעל המסך נשארת",
+    keptWord.words === keptWord.want && keptWord.rows === keptWord.want && keptWord.shown === beforeSync.current.word,
+    keptWord);
+  check("מילה שנמחקה בחלון אחר מתחלפת במילה מהרשימה החדשה",
+    lostWord.words === lostWord.want && lostWord.rows === lostWord.want && lostWord.want.split(",").includes(lostWord.shown),
+    lostWord);
+  check("רשימה מחלון אחר לא נשמרת בחזרה", keptWord.notWrittenBack && lostWord.notWrittenBack, { keptWord, lostWord });
+
   // --------------------------------------------------------------
   group("כוכבים ומדליות");
   // שורת התגמול לא גדלה בלי גבול ולא קופאת: שלוש הצלחות מתחלפות במדליה,
