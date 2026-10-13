@@ -662,6 +662,20 @@ async function main(){
   check("מעבר לכתיבה בזמן שהמיקרופון נפתח לא מתחיל להקשיב",
     spellWhileOpening.opens === 1 && !spellWhileOpening.active && !spellWhileOpening.listening, spellWhileOpening);
 
+  // הרשאה שבוטלה או מיקרופון שנותק עוצרים את המסלול, והזרם נשאר. אילו הוא
+  // נחשב פתוח, כל ניסיון היה מקשיב לשקט עד שהדף יורד מהמסך.
+  const ended = await page.evaluate(async () => {
+    await ensureAudio();
+    const readyBefore = audioReady();
+    micStream.getTracks().forEach(t => t.stop());
+    const ready = audioReady();
+    await ensureAudio();
+    return { readyBefore, ready, after: micStream.getTracks().map(t => t.readyState) };
+  });
+  check("מיקרופון שהמסלול שלו נגמר לא נחשב פתוח", ended.readyBefore && !ended.ready, ended);
+  check("מיקרופון שהמסלול שלו נגמר נפתח מחדש",
+    ended.after.length > 0 && ended.after.every(s => s === "live"), ended);
+
   // --------------------------------------------------------------
   group("החלטה");
   // רק תוצאה סופית מחליטה. תוצאה חלקית היא ניחוש באמצע הדיבור, ומול המודל

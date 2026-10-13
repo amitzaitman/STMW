@@ -1081,6 +1081,12 @@ function processRecognition(msg){
   finish(best >= matchThreshold);
 }
 
+// מסלול שנגמר — הרשאה שבוטלה, מיקרופון שנותק — לא חוזר לחיים, וזרם שאין
+// בו מסלול חי מקליט שקט.
+function micLive(){
+  return !!micStream && micStream.getAudioTracks().some(t => t.readyState === "live");
+}
+
 async function ensureAudio(){
   // גרף השמע נבנה פעם אחת. רק המיקרופון עצמו נפתח מחדש אחרי שחרור,
   // אחרת כל מחזור היה משאיר מאחוריו צומת מחובר ל-destination.
@@ -1097,7 +1103,8 @@ async function ensureAudio(){
     sinkNode.connect(ctx.destination);
   }
   await ctx.resume();
-  if(!micStream){
+  if(!micLive()){
+    releaseMic();
     micStream = await navigator.mediaDevices.getUserMedia({
       audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1}
     });
@@ -1132,7 +1139,7 @@ document.addEventListener("visibilitychange", ()=>{
 
 // המיקרופון פתוח והשמע רץ, כך שההקשבה מתחילה מיד, בלי לבקש דבר מהדפדפן.
 function audioReady(){
-  return !!(ctx && ctx.state === "running" && micStream && rec);
+  return !!(ctx && ctx.state === "running" && micLive() && rec);
 }
 
 // פתיחת המיקרופון לוקחת זמן, ובפעם הראשונה גם מחכה לאישור. נגיעה נוספת
