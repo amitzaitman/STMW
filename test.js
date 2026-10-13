@@ -1105,7 +1105,7 @@ async function main(){
   // נשאר עליה רק לרגע. גם הקריאות ל-again() ול-good() נספרות: עצירה שאומרת
   // "נסו שוב" לפני ש-show() מנקה את התמונה לא משאירה עליה סימן.
   const skipWhileListening = how => page.evaluate(async how => {
-    const real = { listenWindowMs, again, good }, pic = $("picture"), seen = [], calls = [];
+    const real = { listenWindowMs, again, good, words }, pic = $("picture"), seen = [], calls = [];
     listenWindowMs = () => 200;
     again = why => { calls.push("again"); return real.again(why); };
     good = () => { calls.push("good"); return real.good(); };
@@ -1115,6 +1115,9 @@ async function main(){
       if(how === "jump"){
         renderList();
         $("wordList").querySelector(`li[data-index="${(i + 1) % words.length}"] .jump`).click();
+      } else if(how === "list"){
+        // רשימה חדשה, כמו "תרגלו רק אותן", ועל המסך המילה שאחרי זו שהייתה.
+        applyWords(words.slice().reverse(), words.length - 1 - (i + 1) % words.length);
       } else next();
       const out = { was, from, to: word(), active, listening: $("say").classList.contains("listening") };
       const obs = new MutationObserver(ms => { for(const m of ms) seen.push(m.oldValue); });
@@ -1131,12 +1134,15 @@ async function main(){
       again = real.again;
       good = real.good;
       if(active) finish(false);
+      // הסדר המקורי חוזר, כדי שהקבוצות הבאות יראו את אותה רשימה.
+      if(words !== real.words) applyWords(real.words, real.words.indexOf(words[i]));
     }
   }, how);
   const skips = {
     next: "⏭️ באמצע הקשבה עוצר אותה בלי \"נסו שוב\"",
     jump: "קפיצה מהרשימה באמצע הקשבה עוצרת אותה בלי \"נסו שוב\"",
-    late: "תוצאה סופית מאוחרת למילה הקודמת לא נשפטת מול החדשה"
+    late: "תוצאה סופית מאוחרת למילה הקודמת לא נשפטת מול החדשה",
+    list: "החלפת הרשימה באמצע הקשבה עוצרת אותה בלי \"נסו שוב\""
   };
   for(const [how, name] of Object.entries(skips)){
     const s = await skipWhileListening(how);
