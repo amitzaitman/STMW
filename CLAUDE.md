@@ -44,7 +44,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## איך לעבוד כאן
 
-**`npm test` לפני ואחרי.** בערך 15 שניות. דורש
+**`npm test` לפני ואחרי.** בערך חצי דקה. דורש
 `npm install && npx playwright install chromium` פעם אחת.
 
 **ודאו שהבאג קיים לפני שמתקנים אותו**, ושהגנה שאתם מוסיפים באמת רצה —
@@ -73,7 +73,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## פקודות
 
 ```bash
-npm install && npx playwright install chromium   # פעם אחת
+npm install && npx playwright install chromium   # פעם אחת. בענן הכרומיום כבר מותקן: רק npm install
 npm test       # כל הבדיקות
 npm run lint   # רק node --check על server.js, words.js, cache-name.js, test.js
 npm run dev    # server.js על פורט 3000. בלי התקנה: python3 -m http.server 8000
@@ -83,8 +83,10 @@ npm run dev    # server.js על פורט 3000. בלי התקנה: python3 -m htt
   אחד, וקבוצות נשענות על מה שהקודמות השאירו (המאגר מוסיף `lion`, הרשימה
   מוחקת שורה). כדי לבדוק קבוצה אחת מריצים את כולן.
 - `lint` לא נוגע ב-`index.html` וב-`sw.js`. שגיאה שם תתגלה רק ב-`npm test`.
-- הוספת צמד ל-`words.js` משנה את `PAIRS.length`, ו-`test.js` מצפה ל-345
-  בשני מקומות.
+- הוספת צמד ל-`words.js` משנה את `PAIRS.length`, ו-`test.js` משווה אותו
+  למספר קבוע בשני מקומות. מעדכנים את שניהם.
+- שינוי ב-`words.js` מעלה גם את `?v=` בתגית שלו ב-`index.html`. בלי זה
+  מטמון ה-HTTP של הדפדפן יכול להגיש `words.js` ישן לצד דף חדש.
 - פתיחה ב-`file://` חוסמת את המיקרופון. צריך שרת.
 
 ## המבנה
