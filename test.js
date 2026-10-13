@@ -73,6 +73,18 @@ async function main(){
   const errors = [];
   page.on("pageerror", e => errors.push("pageerror: " + e.message));
   page.on("console", m => { if(m.type() === "error") errors.push("console: " + m.text()); });
+  // שגיאה שהבדיקה גורמת לה בכוונה לא נספרת ב"אין שגיאות בקונסולה". מאזינים
+  // לפני הפעולה, ואחריה מוציאים מ-errors את השורה שהגיעה.
+  const expectConsoleError = match => {
+    const line = page.waitForEvent("console", {
+      predicate: m => m.type() === "error" && match(m), timeout: 2000
+    }).catch(() => null);
+    return async () => {
+      const m = await line;
+      const n = m ? errors.lastIndexOf("console: " + m.text()) : -1;
+      if(n >= 0) errors.splice(n, 1);
+    };
+  };
   // כל מה ש-🎤 הראה מאז הטעינה האחרונה של הדף הראשי. ⚠️ שהופיע לרגע ונמחק
   // לא נראה במה שמוצג בסוף.
   await page.addInitScript(() => {
@@ -85,6 +97,8 @@ async function main(){
         .observe(icon, { childList: true, characterData: true, subtree: true });
     });
   });
+  // טעינה מחדש של הדף הראשי, עם זמן לסקריפט שלו לעלות.
+  const reload = () => page.reload({ waitUntil: "domcontentloaded" }).then(() => page.waitForTimeout(800));
 
   // --------------------------------------------------------------
   group("בקלוג");
@@ -289,33 +303,40 @@ async function main(){
   });
   check("מילה שגויה ורחוקה מהיעד לא מתקבלת באף רמה", wrongAccepted.length === 0, wrongAccepted.slice(0, 5));
 
-  // ההחלטה עצמה, דרך processRecognition, בכל רמה בנפרד: ניקוד שמחושב פעם
-  // אחת מחוץ ללולאה לא רואה נוסחה שתלויה ברמה.
+  // ההחלטה עצמה, דרך processRecognition: רשימה, יעד, מה שנשמע ורמה, ומה
+  // ש-finish קיבל (undefined כשלא הוחלט כלום). מצב הדף חוזר אחרי כל קריאה.
+  await page.evaluate(() => {
+    window.decide = (list, target, said, p, conf = 1) => {
+      const saved = { words, i, active, preset, finish };
+      let now;
+      try {
+        words = list.map(w => ({emoji: "", word: w}));
+        i = list.indexOf(target);
+        finish = ok => { now = ok; };
+        preset = p;
+        active = true;
+        processRecognition({ result: { result: [].concat(said).map(word => ({ word, conf })) } });
+      } finally {
+        words = saved.words; i = saved.i; active = saved.active;
+        preset = saved.preset; finish = saved.finish;
+      }
+      return now;
+    };
+  });
+
+  // בכל רמה בנפרד: ניקוד שמחושב פעם אחת מחוץ ללולאה לא רואה נוסחה שתלויה ברמה.
   const nonMonotonic = await page.evaluate(() => {
-    const saved = { words, i, active, preset, finish };
     const bad = [];
-    try {
-      for(const [target, spoken] of [["dog","dog"],["cat","kat"],["butterfly","butterf"],["banana","banan"]])
-        for(const conf of [null, 0.4, 0.7, 1]){
-          words = [{emoji: "", word: target}];
-          i = 0;
-          let prev = true;
-          for(const p of PRESETS){
-            const th = p.threshold;
-            let now;
-            finish = ok => { now = ok; };
-            preset = p;
-            active = true;
-            processRecognition({ result: { result: [{ word: spoken, conf }] } });
-            if(now === undefined) bad.push(`${spoken}/${target} conf=${conf} th=${th}: אין החלטה`);
-            else if(now && !prev) bad.push(`${spoken}/${target} conf=${conf} th=${th}`);
-            prev = now;
-          }
+    for(const [target, spoken] of [["dog","dog"],["cat","kat"],["butterfly","butterf"],["banana","banan"]])
+      for(const conf of [null, 0.4, 0.7, 1]){
+        let prev = true;
+        for(const p of PRESETS){
+          const now = decide([target], target, spoken, p, conf), th = p.threshold;
+          if(now === undefined) bad.push(`${spoken}/${target} conf=${conf} th=${th}: אין החלטה`);
+          else if(now && !prev) bad.push(`${spoken}/${target} conf=${conf} th=${th}`);
+          prev = now;
         }
-    } finally {
-      words = saved.words; i = saved.i; active = saved.active;
-      preset = saved.preset; finish = saved.finish;
-    }
+      }
     return bad;
   });
   check("העלאת האחוז רק מקשה", nonMonotonic.length === 0, nonMonotonic);
@@ -324,35 +345,19 @@ async function main(){
   // אחרת, גם כשהניקוד הפונטי שלה גבוה. ושכנה באותה תוצאה מדלגים עליה: לפני
   // היעד היא לא עוצרת, ואחריו היא לא מבטלת אותו.
   const listNeighbour = await page.evaluate(() => {
-    const saved = { words, i, active, preset, finish };
-    const decide = (list, target, spoken, p) => {
-      words = list.map(w => ({emoji: "", word: w}));
-      i = list.indexOf(target);
-      let now;
-      finish = ok => { now = ok; };
-      preset = p;
-      active = true;
-      processRecognition({ result: { result: [].concat(spoken).map(word => ({ word, conf: 1 })) } });
-      return now;
+    const farm = ["sheep", "ship", "dog"], [lenient, normal, strict] = PRESETS;
+    return {
+      rejected: {
+        shipNormal: decide(farm, "sheep", "ship", normal),
+        shipStrict: decide(farm, "sheep", "ship", strict),
+        ball:       decide(["ball", "balloon"], "balloon", "ball", normal),
+        grandma:    decide(["grandpa", "grandma"], "grandpa", "grandma", normal),
+        grandpa:    decide(["grandpa", "grandma"], "grandma", "grandpa", normal)
+      },
+      target: PRESETS.map(p => decide(farm, "sheep", "sheep", p)),
+      withNeighbour: [["ship", "sheep"], ["sheep", "ship"]].map(said => decide(farm, "sheep", said, normal)),
+      lenient: decide(farm, "sheep", "ship", lenient)
     };
-    try {
-      const farm = ["sheep", "ship", "dog"], [lenient, normal, strict] = PRESETS;
-      return {
-        rejected: {
-          shipNormal: decide(farm, "sheep", "ship", normal),
-          shipStrict: decide(farm, "sheep", "ship", strict),
-          ball:       decide(["ball", "balloon"], "balloon", "ball", normal),
-          grandma:    decide(["grandpa", "grandma"], "grandpa", "grandma", normal),
-          grandpa:    decide(["grandpa", "grandma"], "grandma", "grandpa", normal)
-        },
-        target: PRESETS.map(p => decide(farm, "sheep", "sheep", p)),
-        withNeighbour: [["ship", "sheep"], ["sheep", "ship"]].map(said => decide(farm, "sheep", said, normal)),
-        lenient: decide(farm, "sheep", "ship", lenient)
-      };
-    } finally {
-      words = saved.words; i = saved.i; active = saved.active;
-      preset = saved.preset; finish = saved.finish;
-    }
   });
   check("מילה אחרת מהרשימה לא מתקבלת מעל הרמה הסלחנית",
         Object.values(listNeighbour.rejected).every(ok => ok === false), listNeighbour);
@@ -392,8 +397,7 @@ async function main(){
         windows.every((v, n) => n === 0 || v < windows[n - 1]), windows);
 
   // הטעינה מחדש גם סוגרת את ההגדרות לפני הקבוצה הבאה.
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(800);
+  await reload();
   check("הרמה שנבחרה נטענת בפתיחה הבאה ומסומנת", await page.evaluate(() =>
     preset.id === "strict" && $("btnLevelStrict").classList.contains("active") &&
     $("matchLevelBadge").textContent === "🎯 מדויקת (90%)"));
@@ -408,8 +412,7 @@ async function main(){
   await page.waitForTimeout(250);
   await page.evaluate(() => {
     window.visibleCatalogItems = () =>
-      [...document.querySelectorAll("#catalog .catalog-item")]
-        .filter(b => getComputedStyle(b).display !== "none").length;
+      [...document.querySelectorAll("#catalog .catalog-item")].filter(b => getComputedStyle(b).display !== "none");
   });
   const built = await page.evaluate(() => document.querySelectorAll("#catalog .catalog-item").length);
   check("כל המאגר נבנה", built === pairsInFile, { built, pairsInFile });
@@ -418,7 +421,7 @@ async function main(){
   const firstItem = await page.$("#catalog .catalog-item");
   await page.fill("#search", "lion");
   await page.waitForTimeout(150);
-  check("סינון מסתיר בפועל", await page.evaluate(() => visibleCatalogItems()) === 1);
+  check("סינון מסתיר בפועל", await page.evaluate(() => visibleCatalogItems().length) === 1);
   check("הצמתים לא נבנים מחדש",
         await page.evaluate(() => document.querySelectorAll("#catalog .catalog-item").length) === built &&
         await firstItem.evaluate(b => b.isConnected));
@@ -426,7 +429,7 @@ async function main(){
   await page.fill("#search", "zzzz");
   await page.waitForTimeout(150);
   check("אין תוצאות — מוצגת הודעה",
-        await page.evaluate(() => visibleCatalogItems() === 0 && !$("catalogEmpty").hidden));
+        await page.evaluate(() => visibleCatalogItems().length === 0 && !$("catalogEmpty").hidden));
 
   await page.fill("#search", "lion");
   await page.waitForTimeout(150);
@@ -461,9 +464,7 @@ async function main(){
   check("לכל מילה במאגר יש נושא ורמה", unsorted.length === 0, unsorted);
 
   const listBeforeSets = await page.evaluate(() => words.slice());
-  const shownSet = () => page.evaluate(() =>
-    [...document.querySelectorAll("#catalog .catalog-item")]
-      .filter(b => getComputedStyle(b).display !== "none").map(b => b.dataset.word).sort().join());
+  const shownSet = () => page.evaluate(() => visibleCatalogItems().map(b => b.dataset.word).sort().join());
   const fruit = level => page.evaluate(l => THEMES.find(t => t.id === "fruit").pairs
     .filter(p => !l || p[3] === l).map(p => p[1]).sort().join(), level);
   const actionsShown = () => page.evaluate(() => getComputedStyle($("setActions")).display !== "none");
@@ -509,7 +510,7 @@ async function main(){
   const entry = await page.evaluate(() => ({
     catalog: !$("viewCatalog").hidden,
     focused: document.activeElement === $("search"),
-    all: visibleCatalogItems() === PAIRS.length
+    all: visibleCatalogItems().length === PAIRS.length
   }));
   check("כרטיס הערכות פותח את כל המאגר בלי מקלדת",
         entry.catalog && !entry.focused && entry.all, entry);
@@ -562,13 +563,17 @@ async function main(){
     return { list: words.slice(), at: i, current: words[i],
              outside: PAIRS.filter(p => !taken.has(p[1])).slice(0, 3).map(([emoji, word]) => ({ emoji, word })) };
   });
+  // הדף השני כותב, והדף הראשי אמור להגיע לרשימה שהמילים שלה הן want.
+  const writeFromTab = async (tab, raw, want) => {
+    await tab.evaluate(raw => localStorage.setItem("words", raw), raw);
+    await page.waitForFunction(want => words.map(w => w.word).join() === want, want, { timeout: 5000 }).catch(() => {});
+  };
   const otherTab = await ctx.newPage();
   await otherTab.goto(base + "/manifest.json");
   const syncTo = async list => {
     const raw = JSON.stringify(list.map(w => ({ word: w.word, emoji: w.emoji })));
     const want = list.map(w => w.word).join();
-    await otherTab.evaluate(raw => localStorage.setItem("words", raw), raw);
-    await page.waitForFunction(want => words.map(w => w.word).join() === want, want, { timeout: 5000 }).catch(() => {});
+    await writeFromTab(otherTab, raw, want);
     return page.evaluate(([raw, want]) => ({
       want, words: words.map(w => w.word).join(), shown: $("word").textContent,
       rows: [...document.querySelectorAll("#wordList li .w")].map(s => s.textContent).join(),
@@ -715,8 +720,7 @@ async function main(){
   await page.evaluate(() => { next(); });
   check("נשאר כבוי במילה הבאה", (await heLine()).text === "");
   // השמירה קיימת בשביל הפתיחה הבאה, אז נבדק מה מוצג אחרי טעינה.
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(800);
+  await reload();
   const reloadedHe = await page.evaluate(() => ({ text: $("wordHe").innerText, toggle: $("hebrewToggle").checked }));
   check("נשאר כבוי אחרי טעינה מחדש", reloadedHe.text === "" && !reloadedHe.toggle, reloadedHe);
   await page.evaluate(() => $("hebrewToggle").click());
@@ -877,8 +881,7 @@ async function main(){
   check("לאמירה ולכתיבה ניקוד נפרד",
     apart.sayRow === "⭐" && apart.spellRow === "⭐⭐" && apart.back === "⭐⭐", apart);
 
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(800);
+  await reload();
   check("מצב הכתיבה נשמר בין טעינות",
     await page.evaluate(() => mode) === "spell" && !(await shown("say")) && await shown("spell"));
   await page.click('#modeSwitch [data-mode="say"]');
@@ -954,8 +957,7 @@ async function main(){
   // טופס תשאיר קישור אחד על הטופס הישן בלי שאף אחד ישים לב.
   const feedbackHrefs = await page.evaluate(
     () => [...document.querySelectorAll("a[data-feedback]")].map(a => a.href));
-  check("שני קישורי משוב על הדף", feedbackHrefs.length === 2, feedbackHrefs);
-  check("שניהם מצביעים על אותו טופס",
+  check("שני קישורי משוב על הדף, ושניהם מצביעים על אותו טופס",
     feedbackHrefs.length === 2 && feedbackHrefs[0] === feedbackHrefs[1], feedbackHrefs);
   check("הכתובת היא טופס Google",
     feedbackHrefs.every(h => /^https:\/\/docs\.google\.com\/forms\//.test(h)), feedbackHrefs);
@@ -1080,18 +1082,13 @@ async function main(){
   let recSync;
   try{
     await recTab.goto(base + "/manifest.json");
-    const writeList = async (raw, list) => {
-      await recTab.evaluate(raw => localStorage.setItem("words", raw), raw);
-      await page.waitForFunction(want => words.map(w => w.word).join() === want,
-        list.map(w => w.word).join(), { timeout: 5000 }).catch(() => {});
-    };
     const longer = recBefore.list.concat([recBefore.added]);
-    await writeList(JSON.stringify(longer), longer);
+    await writeFromTab(recTab, JSON.stringify(longer), longer.map(w => w.word).join());
     recSync = await page.evaluate(added => ({
       fresh: !!rec && rec !== recBeforeSync, inGrammar: JSON.parse(grammar()).includes(added),
       sent: recCreated.filter(m => rec && m.recognizerId === rec.id).map(m => JSON.parse(m.grammar).includes(added))
     }), recBefore.added.word);
-    await writeList(recBefore.raw, recBefore.list);
+    await writeFromTab(recTab, recBefore.raw, recBefore.list.map(w => w.word).join());
   } finally {
     await recTab.close();
     await page.evaluate(() => { delete model.postMessage; delete window.recBeforeSync; delete window.recCreated; });
@@ -1313,8 +1310,7 @@ async function main(){
 
   // השמע נשמר בין פתיחות, כמו המילים ורמת ההתאמה
   const soundOn = await page.evaluate(() => soundEnabled);
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(800);
+  await reload();
   check("מצב השמע נשמר בין טעינות", await page.evaluate(() => soundEnabled) === soundOn, { soundOn });
 
   // --------------------------------------------------------------
@@ -1401,20 +1397,13 @@ async function main(){
   // זיהוי דיבור. הענף הכבד מזהה לפי שם הקובץ בלבד, אז no-such-dir/vosk.js
   // עובר בו ומקבל 404 מהשרת.
   const heavyMissing = new URL("no-such-dir/vosk.js", base + "/").href;
-  const missingLine = page.waitForEvent("console", {
-    predicate: m => m.type() === "error" && m.location().url === heavyMissing,
-    timeout: 2000
-  }).catch(() => null);
+  const missingLine = expectConsoleError(m => m.location().url === heavyMissing);
   const notStored = await page.evaluate(async url => {
     const status = (await fetch(url)).status;
     await new Promise(r => setTimeout(r, 500));   // ה-service worker שומר בלי לחכות
     return { status, stored: !!(await caches.match(url)) };
   }, heavyMissing);
-  const missingErr = await missingLine;
-  if(missingErr){
-    const n = errors.lastIndexOf("console: " + missingErr.text());
-    if(n >= 0) errors.splice(n, 1);
-  }
+  await missingLine();
   check("קובץ כבד שחזר עם שגיאה לא נשמר במטמון", notStored.status === 404 && !notStored.stored, notStored);
   // כשהקובץ הכבד חסר במטמון — ההתקנה לא הצליחה להוסיף את vosk.js, או
   // שהדף לא הוריד את המודל בעצמו — הענף הכבד הוא מה ששומר אותו מהרשת,
@@ -1466,17 +1455,10 @@ async function main(){
   check("בלי רשת חוזר העותק של ה-?v= המדויק", exact.start === exactBody, exact);
   // ומה שאין במטמון בכלל נכשל. הדפדפן מדווח על הכישלון בקונסולה, וזו
   // השורה היחידה שלא נחשבת שגיאה.
-  const failLine = page.waitForEvent("console", {
-    predicate: m => m.type() === "error" && m.text().includes("net::ERR_FAILED") &&
-                    m.location().url.endsWith("/not-in-cache.js"),
-    timeout: 2000
-  }).catch(() => null);
+  const failLine = expectConsoleError(m => m.text().includes("net::ERR_FAILED") &&
+                                           m.location().url.endsWith("/not-in-cache.js"));
   const missing = await fetchOffline("./not-in-cache.js");
-  const expectedLine = await failLine;
-  if(expectedLine){
-    const n = errors.lastIndexOf("console: " + expectedLine.text());
-    if(n >= 0) errors.splice(n, 1);
-  }
+  await failLine();
   check("סקריפט שאין במטמון לא חוזר כ-HTML", missing.html !== true, missing);
 
   // ניווט עם מחרוזת שאילתה עולה בלי רשת מהרשומה של ./, זו שמתעדכנת בכל
