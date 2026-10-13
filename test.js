@@ -328,6 +328,7 @@ async function main(){
 
   // בדקדוק סגור המנוע מחזיר רק מילים מהרשימה. ship כשהיעד sheep היא מילה
   // אחרת, גם כשהניקוד הפונטי שלה גבוה. הגבול בין הרמות הוא זה שעל הכפתורים.
+  // ושכנה שקודמת ליעד באותה תוצאה מדלגים עליה, ולא עוצרים בה.
   const listNeighbour = await page.evaluate(() => {
     const saved = { words, i, active, matchThreshold, finish };
     const decide = (list, target, spoken, th) => {
@@ -337,7 +338,7 @@ async function main(){
       finish = ok => { now = ok; };
       matchThreshold = th;
       active = true;
-      processRecognition({ result: { result: [{ word: spoken, conf: 1 }] } });
+      processRecognition({ result: { result: [].concat(spoken).map(word => ({ word, conf: 1 })) } });
       return now;
     };
     try {
@@ -351,6 +352,7 @@ async function main(){
           grandpa:  decide(["grandpa", "grandma"], "grandma", "grandpa", 70)
         },
         target: [45, 70, 90].map(th => decide(farm, "sheep", "sheep", th)),
+        afterNeighbour: decide(farm, "sheep", ["ship", "sheep"], 70),
         lenient: [45, edge].map(th => decide(farm, "sheep", "ship", th))
       };
     } finally {
@@ -362,6 +364,8 @@ async function main(){
         Object.values(listNeighbour.rejected).every(ok => ok === false), listNeighbour);
   check("מילת היעד מתקבלת בכל רמה כששכנותיה ברשימה",
         listNeighbour.target.every(ok => ok === true), listNeighbour);
+  check("מילת היעד מתקבלת גם אחרי שכנה מהרשימה באותה תוצאה",
+        listNeighbour.afterNeighbour === true, listNeighbour);
   check("ברמה הסלחנית שכנה קרובה מהרשימה מתקבלת",
         listNeighbour.lenient.every(ok => ok === true), listNeighbour);
 
