@@ -1060,6 +1060,44 @@ async function main(){
     ended.after.length > 0 && ended.after.every(s => s === "live"), ended);
   check("הזרם המת מנותק מגרף השמע", ended.detached && ended.replaced, ended);
 
+  // רשימה שנשמרה בחלון אחר צריכה להגיע גם ל-recognizer, שמכיר רק את מה שהיה
+  // ברשימה כשנבנה: מילה שלא נכנסה לדקדוק לא תזוהה לעולם. grammar() נבנה
+  // מ-words ומראה את המילה גם בלי בנייה מחדש, ולכן נרשם גם מה שנשלח ל-worker.
+  const recBefore = await page.evaluate(() => {
+    window.recBeforeSync = rec;
+    window.recCreated = [];
+    model.postMessage = function(m, ...rest){
+      if(m && m.action === "create") recCreated.push(m);
+      return Object.getPrototypeOf(this).postMessage.call(this, m, ...rest);
+    };
+    const taken = takenSet(), [emoji, word] = PAIRS.find(p => !taken.has(p[1]));
+    return { had: !!rec, raw: localStorage.getItem("words") ?? JSON.stringify(words), list: words.slice(),
+             added: { emoji, word } };
+  });
+  const recTab = await ctx.newPage();
+  let recSync;
+  try{
+    await recTab.goto(base + "/manifest.json");
+    const writeList = async (raw, list) => {
+      await recTab.evaluate(raw => localStorage.setItem("words", raw), raw);
+      await page.waitForFunction(want => words.map(w => w.word).join() === want,
+        list.map(w => w.word).join(), { timeout: 5000 }).catch(() => {});
+    };
+    const longer = recBefore.list.concat([recBefore.added]);
+    await writeList(JSON.stringify(longer), longer);
+    recSync = await page.evaluate(added => ({
+      fresh: !!rec && rec !== recBeforeSync, inGrammar: JSON.parse(grammar()).includes(added),
+      sent: recCreated.filter(m => rec && m.recognizerId === rec.id).map(m => JSON.parse(m.grammar).includes(added))
+    }), recBefore.added.word);
+    await writeList(recBefore.raw, recBefore.list);
+  } finally {
+    await recTab.close();
+    await page.evaluate(() => { delete model.postMessage; delete window.recBeforeSync; delete window.recCreated; });
+  }
+  check("רשימה שנשמרה בחלון אחר נכנסת גם לדקדוק של המנוע",
+    recBefore.had && recSync.fresh && recSync.inGrammar && recSync.sent.length === 1 && recSync.sent[0],
+    { had: recBefore.had, added: recBefore.added.word, ...recSync });
+
   // --------------------------------------------------------------
   group("החלטה");
   // רק תוצאה סופית מחליטה. תוצאה חלקית היא ניחוש באמצע הדיבור, ומול המודל
