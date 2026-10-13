@@ -1305,10 +1305,7 @@ function startSpelling(){
   const letters = [...word()];
   $("slots").replaceChildren(...letters.map(() => span("slot", "")));
   $("bank").replaceChildren(...shuffled(letters).map(ch => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "tile";
-    b.textContent = ch;
+    const b = el("button", "tile", ch);
     b.dataset.letter = ch;
     return b;
   }));
@@ -1492,12 +1489,13 @@ function removeAt(index){
   setSettingsNotice("wordsListNotice", `המילה ״${removed.word}״ הוסרה מהתרגול.`, false);
 }
 
-function span(cls, text){
-  const el = document.createElement("span");
-  el.className = cls;
-  el.textContent = text;
-  return el;
+function el(tag, cls, text = ""){
+  const node = document.createElement(tag);
+  node.className = cls;
+  node.textContent = text;
+  return node;
 }
+function span(cls, text){ return el("span", cls, text); }
 
 // כפתור לכל מילה במאגר. הם נבנים פעם אחת והחיפוש רק מסתיר ומציג אותם, כדי שהקלדה
 // לא תבנה את כולם מחדש בכל הקשה.
@@ -1506,11 +1504,8 @@ let catalogItems = null;
 let catalogTheme = "", catalogLevel = "";
 
 function buildCatalog(){
-  const frag = document.createDocumentFragment();
   catalogItems = PAIRS.map(([emoji, w, , level]) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "catalog-item";
+    const b = el("button", "catalog-item");
     b.dataset.emoji = emoji;
     b.dataset.word = w;
     b.dataset.theme = THEME_BY_WORD[w] || "";
@@ -1519,21 +1514,16 @@ function buildCatalog(){
     b.append(span("catalog-item-status", "✓ בתרגול"),
              span("catalog-item-emoji", emoji),
              span("catalog-item-name", w));
-    frag.appendChild(b);
     return b;
   });
-  $("catalog").appendChild(frag);
+  $("catalog").append(...catalogItems);
 
-  const chips = document.createDocumentFragment();
-  for(const [id, label] of [["", "כל הנושאים"]].concat(THEMES.map(t => [t.id, t.emoji + " " + t.name]))){
-    const c = document.createElement("button");
-    c.type = "button";
-    c.className = "chip";
+  const themes = [["", "כל הנושאים"]].concat(THEMES.map(t => [t.id, t.emoji + " " + t.name]));
+  $("themeChips").append(...themes.map(([id, label]) => {
+    const c = el("button", "chip", label);
     c.dataset.theme = id;
-    c.textContent = label;
-    chips.appendChild(c);
-  }
-  $("themeChips").appendChild(chips);
+    return c;
+  }));
 }
 
 function renderCatalog(){
@@ -1598,42 +1588,29 @@ function addShown(){
 }
 
 function opButton(cls, icon, title, label){
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = cls;
-  b.textContent = icon;
+  const b = el("button", cls, icon);
   b.title = title;
   b.setAttribute("aria-label", label);
   return b;
 }
 
 function renderList(){
-  const ul = $("wordList");
-  ul.innerHTML = "";
-  const frag = document.createDocumentFragment();
-
-  words.forEach((item, n) => {
-    const li = document.createElement("li");
+  $("wordList").replaceChildren(...words.map((item, n) => {
+    const li = el("li", n === i ? "current" : "");
     li.dataset.index = n;
-    if(n === i) li.className = "current";
 
-    const jump = document.createElement("button");
-    jump.type = "button";
-    jump.className = "jump";
+    const jump = el("button", "jump");
     jump.append(span("pic", item.emoji), span("w", item.word));
     if(n === i) jump.appendChild(span("current-tag", "עכשיו בתרגול ⭐"));
 
-    const ops = document.createElement("div");
-    ops.className = "ops";
+    const ops = el("div", "ops");
     const del = opButton("del-word-btn", "🗑️", "מחיקת המילה " + item.word, "מחיקת " + item.word);
     del.disabled = words.length <= 1;
     ops.append(opButton("speak-word-btn", "🔊", "השמעת המילה " + item.word, "השמעת " + item.word), del);
 
     li.append(jump, ops);
-    frag.appendChild(li);
-  });
-
-  ul.appendChild(frag);
+    return li;
+  }));
 }
 
 function renderPanel(){
