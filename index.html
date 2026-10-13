@@ -800,7 +800,11 @@ function load(){
 function save(){ try{ localStorage.setItem("words", JSON.stringify(words)); }catch(e){} }
 
 function word(){ return words[i].word; }
+// מתקדם בכל הצגה, כדי שהמעבר ש-good() מזמן אחרי ה-🎉 יוותר כשמשהו אחר כבר
+// הציג מילה: ⏭️ של הילד, או מורה שקפצה למילה מהרשימה.
+let shownCount = 0;
 function show(){
+  shownCount++;
   $("picture").textContent = words[i].emoji;
   $("picture").className = "";
   $("word").textContent = word();
@@ -1225,7 +1229,8 @@ function good(){
   renderScore();
   $("picture").className = "good";
   $("picture").textContent = "🎉";
-  speak("כל הכבוד!", HE, ()=>setTimeout(next, 400));
+  const mine = shownCount;
+  speak("כל הכבוד!", HE, ()=>setTimeout(()=>{ if(mine === shownCount) next(); }, 400));
 }
 // why: הסבר מתחת לתמונה, כשיש מה להסביר.
 function again(why = ""){

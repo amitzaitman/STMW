@@ -408,6 +408,24 @@ async function main(){
   // בלי ההמתנה הזאת המעברים של הבדיקה הזאת מוחקים את ההודעה שהבדיקה
   // הבאה מציגה, והיא נופלת בלי קשר למה שהיא באמת בודקת.
   await page.waitForTimeout(1200);
+
+  // אחרי ה-🎉 עוברים למילה הבאה, אבל ילד שלחץ ⏭️ או מורה שקפצה למילה
+  // מהרשימה בזמן ה-🎉 כבר בחרו מילה, והמעבר המאוחר לא מחליף אותה. ההמתנה
+  // היא טיימר בדף שמתחיל אחרי good(), ולכן נגמרת אחרי המעבר שהוא מזמן גם
+  // כשהמכונה עמוסה; השמע כבוי כאן, אז המעבר מגיע אחרי כשנייה.
+  const afterGood = async skip => await page.evaluate(async skip => {
+    const before = i;
+    good();
+    if(skip) next();
+    const chosen = i;
+    await new Promise(r => setTimeout(r, 1500));
+    return { before, chosen, now: i, words: words.length };
+  }, skip);
+  const advanced = await afterGood(false);
+  check("אחרי הצלחה עוברים למילה הבאה", advanced.words > 1 && advanced.now !== advanced.before, advanced);
+  const skipped = await afterGood(true);
+  check("מילה שנבחרה בזמן ה-🎉 לא מוחלפת אחריו",
+    skipped.words > 1 && skipped.chosen !== skipped.before && skipped.now === skipped.chosen, skipped);
   await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
 
   // --------------------------------------------------------------
