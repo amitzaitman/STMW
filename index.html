@@ -1494,32 +1494,15 @@ window.addEventListener("storage", e=>{
   applyWords(list, n >= 0 ? n : i, false);
 });
 
-function addEmoji(emoji){
-  const w = WORD_BY_EMOJI[emoji];
-  if(!w){
-    setSettingsNotice("catalogNotice", "אין מילה באנגלית לתמונה הזו.", true);
-    return;
-  }
-  if(takenSet().has(w)){
-    setSettingsNotice("catalogNotice", `״${w}״ כבר נמצאת ברשימת המילים.`, false);
-    return;
-  }
-  applyWords(words.concat([{emoji, word:w}]), words.length);   // גם מרנדר
-  setSettingsNotice("catalogNotice", `🎉 ״${w}״ נוספה בהצלחה למילות התרגול!`, false);
-}
-
 function removeAt(index){
   if(words.length <= 1){
     setSettingsNotice("wordsListNotice", "חייבת להישאר לפחות מילה אחת לתרגול.", true);
     return;
   }
   const removed = words[index];
-  const nextWords = words.filter((_, n) => n !== index);
-  let nextI = i;
-  if(index < i) nextI = i - 1;
-  if(nextI >= nextWords.length) nextI = 0;
-  applyWords(nextWords, nextI);   // גם מרנדר
-  setSettingsNotice("wordsListNotice", `המילה ״${removed ? removed.word : ""}״ הוסרה מהתרגול.`, false);
+  // applyWords חוזר להתחלה כשהמילה שעל המסך הייתה האחרונה ונמחקה.
+  applyWords(words.filter((_, n) => n !== index), index < i ? i - 1 : i);   // גם מרנדר
+  setSettingsNotice("wordsListNotice", `המילה ״${removed.word}״ הוסרה מהתרגול.`, false);
 }
 
 function span(cls, text){
@@ -1761,11 +1744,13 @@ $("panel").addEventListener("click", e=>{
 $("catalog").addEventListener("click", e=>{
   const b = e.target.closest(".catalog-item");
   if(!b) return;
-  if(b.classList.contains("in-list")){
-    setSettingsNotice("catalogNotice", `״${b.dataset.word}״ כבר נמצאת ברשימת המילים שבתרגול.`, false);
-  }else{
-    addEmoji(b.dataset.emoji);
+  const {emoji, word: w} = b.dataset;
+  if(takenSet().has(w)){
+    setSettingsNotice("catalogNotice", `״${w}״ כבר נמצאת ברשימת המילים שבתרגול.`, false);
+    return;
   }
+  applyWords(words.concat([{emoji, word: w}]), words.length);   // גם מרנדר
+  setSettingsNotice("catalogNotice", `🎉 ״${w}״ נוספה בהצלחה למילות התרגול!`, false);
 });
 
 // ומאזין אחד לרשימת המילים, במקום שלושה לכל שורה.
