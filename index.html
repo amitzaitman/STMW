@@ -912,6 +912,46 @@ function speak(text, lang, onDone){
   speechSynthesis.speak(u);
 }
 
+// צליל קצר עם "כל הכבוד!" ועם "נסו שוב", מסונתז ב-Web Audio: אין קובץ
+// להוריד ולשמור במטמון, והוא נשמע גם במכשיר שאין בו קול עברי. נשמע יחד עם
+// ההקראה ולא לפניה, כדי שהמעבר למילה הבאה לא יתארך.
+// [תדר, השהיה בשניות]. הצלחה: דו-מי-סול עולים. ניסיון נוסף: מי-דו יורדים,
+// שקט יותר, כדי שלא יישמע כמו עונש.
+const CHEER = { notes: [[1046.5, 0], [1318.5, 0.08], [1568, 0.16]], volume: 0.2 };
+const OOPS = { notes: [[659.25, 0], [523.25, 0.15]], volume: 0.12 };
+const CHIME_SECONDS = 0.45;
+
+// הקשר נפרד מזה של המיקרופון, שבכתיבה לא קיים. דפדפן מתיר לשמע להתחיל רק
+// בתוך לחיצה, וההצלחה באמירה מגיעה מהמזהה, אחרי שהאצבע כבר הורמה — לכן
+// הקשר נפתח, או מתעורר אחרי שהמערכת עצרה אותו, בכל לחיצה בדף. בבעבוע ולא
+// בלכידה, כדי שהלחיצה שמדליקה את השמע כבר תמצא אותו דלוק.
+let fxCtx = null;
+document.addEventListener("click", ()=>{
+  if(!soundEnabled) return;
+  try{
+    if(!fxCtx) fxCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if(fxCtx.state !== "running") fxCtx.resume().catch(()=>{});
+  }catch(e){}
+});
+
+function chime(sound){
+  // קשר שלא רץ היה מנגן את הצליל באיחור, בלחיצה הבאה. עדיף לשתוק.
+  if(!soundEnabled || !fxCtx || fxCtx.state !== "running") return;
+  const t0 = fxCtx.currentTime + 0.01;
+  for(const [freq, at] of sound.notes){
+    const osc = fxCtx.createOscillator(), gain = fxCtx.createGain();
+    osc.frequency.value = freq;
+    // התקפה רכה ודעיכה, בלי קצה חד שנשמע כמו נקישה.
+    gain.gain.setValueAtTime(0, t0 + at);
+    gain.gain.linearRampToValueAtTime(sound.volume, t0 + at + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + at + CHIME_SECONDS);
+    osc.connect(gain);
+    gain.connect(fxCtx.destination);
+    osc.start(t0 + at);
+    osc.stop(t0 + at + CHIME_SECONDS);
+  }
+}
+
 function progress(pct, label){
   $("loading").hidden = false;
   $("fill").style.width = pct + "%";
@@ -1283,12 +1323,14 @@ function good(){
   $("picture").className = "good";
   $("picture").textContent = "🎉";
   const mine = shownCount;
+  chime(CHEER);
   speak("כל הכבוד!", HE, ()=>setTimeout(()=>{ if(mine === shownCount) next(); }, 400));
 }
 // why: הסבר מתחת לתמונה, כשיש מה להסביר.
 function again(why = ""){
   $("picture").className = "again";
   const note = setNote(why);
+  chime(OOPS);
   speak("נסו שוב", HE, ()=>setTimeout(()=>{
     $("picture").className = "";
     clearNote(note);

@@ -1350,6 +1350,33 @@ async function main(){
   check("מצב השמע נשמר בין טעינות", await page.evaluate(() => soundEnabled) === soundOn, { soundOn });
 
   // --------------------------------------------------------------
+  group("צלילי משוב");
+  // ההצלחה באמירה מגיעה מהמזהה, מחוץ ללחיצה, ולכן הצליל תלוי בקשר שלחיצה
+  // קודמת כבר הפעילה. 🔊 גם מדליק את השמע, כך שהלחיצה הזו לבדה צריכה להספיק.
+  // good() מקדם את המילה; הקבוצה הבאה טוענת את הדף מחדש בכל מקרה.
+  await page.click("#playWord");
+  await page.waitForTimeout(300);
+  const chimes = await page.evaluate(() => {
+    const state = fxCtx && fxCtx.state;
+    if(state !== "running") return { state };
+    const played = [];
+    const create = fxCtx.createOscillator.bind(fxCtx);
+    fxCtx.createOscillator = () => { const o = create(); played.push(o.frequency); return o; };
+    const heard = run => { run(); return played.splice(0).map(f => f.value); };
+    const cheer = heard(good), oops = heard(again);
+    soundEnabled = false;
+    const muted = heard(() => { good(); again(); });
+    soundEnabled = true;
+    delete fxCtx.createOscillator;
+    return { state, cheer, oops, muted };
+  });
+  const rising = notes => notes.length > 1 && notes.every((f, k) => k === 0 || f > notes[k - 1]);
+  check("לחיצה מפעילה את הצלילים", chimes.state === "running", chimes);
+  check("הצלחה מנגנת צליל עולה", !!chimes.cheer && rising(chimes.cheer), chimes);
+  check("ניסיון נוסף מנגן צליל יורד", !!chimes.oops && rising(chimes.oops.slice().reverse()), chimes);
+  check("שמע מכובה — אין צלילים", !!chimes.muted && chimes.muted.length === 0, chimes);
+
+  // --------------------------------------------------------------
   group("עבודה ללא אינטרנט");
   // סקריפט שחסר במטמון לא יכול לחזור כ-index.html: הוא לא נטען והדף קורס.
   await page.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
