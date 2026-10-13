@@ -375,6 +375,9 @@ async function main(){
   // לכבות, והבחירה נשמרת.
   const noHe = await page.evaluate(() => PAIRS.filter(p => !/^[\u0590-\u05FF'־ ]+$/.test(p[2] || "")).map(p => p[1]));
   check("לכל מילה במאגר יש תעתיק בעברית", noHe.length === 0, noHe);
+  // ניקוד שבא אחרי הגרש מצויר מתחת לגרש או לאות הבאה, לא מתחת לאות שלפניו.
+  const markAfterGeresh = await page.evaluate(() => PAIRS.filter(p => /'[֑-ׇ]/.test(p[2] || "")).map(p => p[1]));
+  check("הניקוד לפני הגרש, לא אחריו", markAfterGeresh.length === 0, markAfterGeresh);
   const heLine = () => page.evaluate(() => ({ text: $("wordHe").innerText, word: word(), he: HE_BY_WORD[word()] }));
   let he = await heLine();
   check("התעתיק מופיע על המסך מתחת למילה", !!he.he && he.text === he.he, he);

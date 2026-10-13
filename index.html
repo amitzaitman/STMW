@@ -18,7 +18,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <script src="./vosk.js"></script>
 <script src="./cache-name.js"></script>
-<script src="./words.js?v=7"></script>
+<script src="./words.js?v=8"></script>
 <style>
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -954,8 +954,7 @@ function grammar(){
   return JSON.stringify(words.map(w=>w.word).concat(["[unk]"]));
 }
 
-// מרחק עריכה. שורה אחת מספיקה — כל תא תלוי רק בשורה הקודמת, ובמילים
-// קצרות זה נקרא הרבה פעמים בשנייה על כל תוצאה חלקית שהמנוע מוציא.
+// מרחק עריכה. שורה אחת מספיקה — כל תא תלוי רק בשורה הקודמת.
 function levenshtein(a, b) {
   if (a === b) return 0;
   if (!a.length) return b.length;
