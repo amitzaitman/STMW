@@ -192,6 +192,29 @@ async function main(){
   check("תג שפה עברי עם קו תחתון נתמך", voiceSelection.hebrew, voiceSelection);
   check("תג השפה הישן iw-IL נחשב עברית", voiceSelection.legacyHebrew, voiceSelection);
 
+  // מה ש-speak() עושה בלי קול עברי: לא מקריא כלום, ובכל זאת ממשיך הלאה,
+  // אחרת הילד נתקע מול ה-🎉.
+  const silentHebrew = await page.evaluate(async () => {
+    const original = { voices, soundEnabled };
+    const queued = [];
+    try {
+      voices = [{name: "English", lang: "en-US", localService: true}];
+      soundEnabled = true;
+      speechSynthesis.speak = u => queued.push(u.text);
+      const continued = await new Promise(resolve => {
+        speak("כל הכבוד!", HE, () => resolve(true));
+        setTimeout(() => resolve(false), 2000);
+      });
+      return { queued, continued };
+    } finally {
+      delete speechSynthesis.speak;
+      voices = original.voices;
+      soundEnabled = original.soundEnabled;
+    }
+  });
+  check("אין קול עברי — המשוב שותק וממשיך הלאה",
+        silentHebrew.queued.length === 0 && silentHebrew.continued, silentHebrew);
+
   // --------------------------------------------------------------
   group("מנוע ההתאמה");
   // הניקוד הוא מספר אחד, וההחלטה היא השוואה אחת מולו. אלה התכונות
@@ -206,18 +229,32 @@ async function main(){
   });
   check("מילה שגויה לא מתקבלת באף אחוז", wrongAccepted.length === 0, wrongAccepted.slice(0, 5));
 
+  // ההחלטה עצמה, דרך processRecognition, בכל אחוז בנפרד: ניקוד שמחושב פעם
+  // אחת מחוץ ללולאה לא רואה נוסחה שתלויה באחוז.
   const nonMonotonic = await page.evaluate(() => {
+    const saved = { words, i, active, matchThreshold, finish };
     const bad = [];
-    for(const [target, spoken] of [["dog","dog"],["cat","kat"],["butterfly","butterf"],["banana","banan"]])
-      for(const conf of [null, 0.4, 0.7, 1]){
-        const score = scoreToken(spoken, conf, target);
-        let prev = true;
-        for(let th = 30; th <= 95; th += 5){
-          const now = score >= th;
-          if(now && !prev) bad.push(`${spoken}/${target} conf=${conf} th=${th}`);
-          prev = now;
+    try {
+      for(const [target, spoken] of [["dog","dog"],["cat","kat"],["butterfly","butterf"],["banana","banan"]])
+        for(const conf of [null, 0.4, 0.7, 1]){
+          words = [{emoji: "", word: target}];
+          i = 0;
+          let prev = true;
+          for(let th = 30; th <= 95; th += 5){
+            let now;
+            finish = ok => { now = ok; };
+            matchThreshold = th;
+            active = true;
+            processRecognition({ result: { result: [{ word: spoken, conf }] } });
+            if(now === undefined) bad.push(`${spoken}/${target} conf=${conf} th=${th}: אין החלטה`);
+            else if(now && !prev) bad.push(`${spoken}/${target} conf=${conf} th=${th}`);
+            prev = now;
+          }
         }
-      }
+    } finally {
+      words = saved.words; i = saved.i; active = saved.active;
+      matchThreshold = saved.matchThreshold; finish = saved.finish;
+    }
     return bad;
   });
   check("העלאת האחוז רק מקשה", nonMonotonic.length === 0, nonMonotonic);
@@ -285,11 +322,14 @@ async function main(){
   const built = await page.evaluate(() => document.querySelectorAll("#catalog .catalog-item").length);
   check("כל המאגר נבנה", built === 345, built);
 
+  // בנייה מחדש מלאה נותנת את אותו מספר פריטים, אז נבדק שהצומת עצמו נשאר.
+  const firstItem = await page.$("#catalog .catalog-item");
   await page.fill("#search", "lion");
   await page.waitForTimeout(150);
   check("סינון מסתיר בפועל", await page.evaluate(() => visibleCatalogItems()) === 1);
   check("הצמתים לא נבנים מחדש",
-        await page.evaluate(() => document.querySelectorAll("#catalog .catalog-item").length) === built);
+        await page.evaluate(() => document.querySelectorAll("#catalog .catalog-item").length) === built &&
+        await firstItem.evaluate(b => b.isConnected));
 
   await page.fill("#search", "zzzz");
   await page.waitForTimeout(150);
@@ -382,14 +422,29 @@ async function main(){
   await page.waitForTimeout(150);
   check("השמעה לא סוגרת את החלונית", await page.evaluate(() => $("overlay").hidden) === false);
 
-  const rowsBefore = await page.locator("#wordList li").count();
+  // נמחקת שורה שלפני המילה שעל המסך, ומה שהילד מתרגל לא מתחלף.
+  const listState = () => page.evaluate(() => ({
+    rows: [...document.querySelectorAll("#wordList li .w")].map(s => s.textContent),
+    shown: $("word").textContent
+  }));
+  await page.evaluate(() => { i = 2; show(); renderPanel(); });
+  const beforeDelete = await listState();
   await page.click("#wordList li .del-word-btn");
   await page.waitForTimeout(250);
-  check("מחיקת מילה", await page.locator("#wordList li").count() === rowsBefore - 1);
+  const afterDelete = await listState();
+  check("מחיקת מילה",
+        afterDelete.rows.length === beforeDelete.rows.length - 1 && !afterDelete.rows.includes(beforeDelete.rows[0]),
+        { beforeDelete, afterDelete });
+  check("מחיקה של שורה קודמת לא מחליפה את המילה שעל המסך",
+        afterDelete.shown === beforeDelete.shown, { beforeDelete, afterDelete });
 
-  await page.click("#wordList li .jump");
+  // לשורה אחרת מזו שעל המסך, אחרת גם קפיצה שלא קרתה נראית נכונה.
+  const jumpFrom = await page.evaluate(() => i);
+  await page.click("#wordList li:first-child .jump");
   await page.waitForTimeout(200);
-  check("לחיצה על מילה קופצת אליה וסוגרת", await page.evaluate(() => $("overlay").hidden) === true);
+  const jumped = await page.evaluate(() => ({ closed: $("overlay").hidden, now: word() }));
+  check("לחיצה על מילה קופצת אליה וסוגרת",
+        jumpFrom !== 0 && jumped.closed && jumped.now === afterDelete.rows[0], { jumpFrom, jumped });
 
   // --------------------------------------------------------------
   group("כוכבים ומדליות");
@@ -446,6 +501,11 @@ async function main(){
         he.text === "" && await page.evaluate(() => localStorage.getItem("hebrew_spelling")) === "0", he);
   await page.evaluate(() => { next(); });
   check("נשאר כבוי במילה הבאה", (await heLine()).text === "");
+  // השמירה קיימת בשביל הפתיחה הבאה, אז נבדק מה מוצג אחרי טעינה.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(800);
+  const reloadedHe = await page.evaluate(() => ({ text: $("wordHe").innerText, toggle: $("hebrewToggle").checked }));
+  check("נשאר כבוי אחרי טעינה מחדש", reloadedHe.text === "" && !reloadedHe.toggle, reloadedHe);
   await page.evaluate(() => $("hebrewToggle").click());
   he = await heLine();
   check("הדלקה מחזירה אותו", he.text === he.he && !!he.he, he);
@@ -908,14 +968,31 @@ async function main(){
   server.closeAllConnections();
   await new Promise(r => server.close(r));
 
-  const offline = await page.evaluate(async () => {
+  const fetchOffline = url => page.evaluate(async url => {
     try {
-      const r = await fetch("./words.js?v=999", { cache: "no-store" });
+      const r = await fetch(url, { cache: "no-store" });
       const t = await r.text();
-      return { type: r.headers.get("content-type") || "", html: t.trim().startsWith("<!DOCTYPE") };
+      return { status: r.status, type: r.headers.get("content-type") || "", html: t.trim().startsWith("<!DOCTYPE") };
     } catch(e) { return { threw: e.name }; }
-  });
-  check("סקריפט חסר לא חוזר כ-HTML", offline.html === false, offline);
+  }, url);
+  // ?v= הוא רק שובר-מטמון, והסקריפט שבמטמון חוזר גם לגרסה שלא נשמרה.
+  const versioned = await fetchOffline("./words.js?v=999");
+  check("סקריפט שבמטמון עם ?v= אחר חוזר כסקריפט",
+        versioned.html === false && versioned.type.includes("javascript"), versioned);
+  // ומה שאין במטמון בכלל נכשל. הדפדפן מדווח על הכישלון בקונסולה, וזו
+  // השורה היחידה שלא נחשבת שגיאה.
+  const failLine = page.waitForEvent("console", {
+    predicate: m => m.type() === "error" && m.text().includes("net::ERR_FAILED") &&
+                    m.location().url.endsWith("/not-in-cache.js"),
+    timeout: 2000
+  }).catch(() => null);
+  const missing = await fetchOffline("./not-in-cache.js");
+  const expectedLine = await failLine;
+  if(expectedLine){
+    const n = errors.lastIndexOf("console: " + expectedLine.text());
+    if(n >= 0) errors.splice(n, 1);
+  }
+  check("סקריפט שאין במטמון לא חוזר כ-HTML", missing.html !== true, missing);
 
   // --------------------------------------------------------------
   group("שגיאות");
