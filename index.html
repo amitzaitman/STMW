@@ -477,7 +477,7 @@
     <a id="openFeedback" data-feedback target="_blank" rel="noopener noreferrer" aria-label="משוב והצעות" title="שליחת משוב ורעיונות (טופס Google)">💬</a>
   </div>
   <div id="stars"></div>
-  <button id="toggleSound" type="button" class="muted" aria-label="הפעלת שמע" title="שמע מכובה - לחצו להפעלה">🔇</button>
+  <button id="toggleSound" type="button" aria-label="הפעלת שמע" title="שמע מכובה - לחצו להפעלה">🔇</button>
 </div>
 <div id="modeSwitch" role="radiogroup" aria-label="סוג התרגול">
   <button type="button" role="radio" data-mode="say" title="אומרים את המילה בקול">🎤 אומרים</button>
@@ -749,17 +749,10 @@ function clearNote(token){
 
 function updateSoundUI(){
   const btn = $("toggleSound");
-  if(soundEnabled){
-    btn.textContent = "🔊";
-    btn.className = "on";
-    btn.setAttribute("aria-label", "כיבוי שמע");
-    btn.title = "שמע פועל - לחצו לכיבוי";
-  }else{
-    btn.textContent = "🔇";
-    btn.className = "muted";
-    btn.setAttribute("aria-label", "הפעלת שמע");
-    btn.title = "שמע מכובה - לחצו להפעלה";
-  }
+  btn.textContent = soundEnabled ? "🔊" : "🔇";
+  btn.classList.toggle("on", soundEnabled);
+  btn.setAttribute("aria-label", soundEnabled ? "כיבוי שמע" : "הפעלת שמע");
+  btn.title = soundEnabled ? "שמע פועל - לחצו לכיבוי" : "שמע מכובה - לחצו להפעלה";
 }
 
 function setSound(on){
@@ -769,16 +762,10 @@ function setSound(on){
 }
 
 function toggleSound(){
-  if(soundEnabled && "speechSynthesis" in window){
-    speechSynthesis.cancel();
-  }
+  if(soundEnabled && "speechSynthesis" in window) speechSynthesis.cancel();
   setSound(!soundEnabled);
-  if(soundEnabled){
-    setNote("השמע הופעל 🔊", 2000);
-    speak(word(), EN);
-  }else{
-    setNote("השמע כובה 🔇", 2000);
-  }
+  setNote(soundEnabled ? "השמע הופעל 🔊" : "השמע כובה 🔇", 2000);
+  speak(word(), EN);   // שותק כשהשמע כבוי
 }
 
 function load(){
