@@ -73,6 +73,18 @@ async function main(){
   const errors = [];
   page.on("pageerror", e => errors.push("pageerror: " + e.message));
   page.on("console", m => { if(m.type() === "error") errors.push("console: " + m.text()); });
+  // כל מה ש-🎤 הראה מאז הטעינה האחרונה של הדף הראשי. ⚠️ שהופיע לרגע ונמחק
+  // לא נראה במה שמוצג בסוף.
+  await page.addInitScript(() => {
+    window.sayIcons = [];
+    document.addEventListener("DOMContentLoaded", () => {
+      const icon = document.getElementById("sayIcon");
+      if(!icon) return;
+      sayIcons.push(icon.textContent);
+      new MutationObserver(() => sayIcons.push(icon.textContent))
+        .observe(icon, { childList: true, characterData: true, subtree: true });
+    });
+  });
 
   // --------------------------------------------------------------
   group("בקלוג");
@@ -961,6 +973,10 @@ async function main(){
   // עובר לכתיבה. כאן listen() נקרא כשהמיקרופון סגור, during קורה בזמן
   // שהדפדפן פותח אותו, ובסוף הדף יורד מהמסך.
   await page.waitForFunction(() => model !== null, null, { timeout: 60000 });
+  // ⚠️ שמור למנוע שלא נטען. בטעינה רגילה הוא לא מופיע, גם לא לרגע.
+  const loadedIcon = await page.evaluate(() => ({ now: $("sayIcon").textContent, seen: sayIcons }));
+  check("המנוע נטען — 🎤 על הכפתור, ו-⚠️ לא הופיע בדרך",
+    loadedIcon.now === "🎤" && !loadedIcon.seen.includes("⚠️"), loadedIcon);
   const whileOpening = ({ taps = 1, during = null }) => page.evaluate(async ({ taps, during }) => {
     const real = navigator.mediaDevices.getUserMedia, tracks = [];
     let opens = 0;
@@ -981,7 +997,8 @@ async function main(){
     try{
       releaseMic();
       await Promise.all(Array.from({ length: taps }, () => listen()));
-      const out = { opens, active, opening, listening: $("say").classList.contains("listening"), live: live() };
+      const out = { opens, active, opening, listening: $("say").classList.contains("listening"), live: live(),
+                    icon: $("sayIcon").textContent };
       stopListening();
       hide(true);
       out.liveAfterHide = live();
@@ -992,10 +1009,11 @@ async function main(){
       setMode("say");
     }
   }, { taps, during });
-  // סירוב שהשאיר את הדגל דולק היה נועל את 🎤 עד טעינה מחדש.
+  // סירוב שהשאיר את הדגל דולק היה נועל את 🎤 עד טעינה מחדש. והמנוע עצמו
+  // נטען, אז אין ⚠️: ההודעה מסבירה, ונגיעה נוספת מבקשת שוב.
   const denied = await whileOpening({ during: "deny" });
-  check("סירוב למיקרופון לא נועל את הכפתור",
-    denied.opens === 1 && !denied.active && !denied.opening, denied);
+  check("סירוב למיקרופון לא נועל את הכפתור ולא מראה ⚠️",
+    denied.opens === 1 && !denied.active && !denied.opening && denied.icon === "🎤", denied);
   const doubleTap = await whileOpening({ taps: 2 });
   check("נגיעה כפולה פותחת את המיקרופון פעם אחת",
     doubleTap.opens === 1 && doubleTap.active && doubleTap.liveAfterHide === 0, doubleTap);
