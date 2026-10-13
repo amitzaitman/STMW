@@ -1017,6 +1017,45 @@ async function main(){
     await lift();
     await page.evaluate(() => stopListening());
 
+    // ניסיון שנגמר בזמן שהאצבע עוד על הכפתור, כאן בהצלחה, לא מתחיל אחר
+    // כשהיא מורמת. אחרת הניסיון שאף אחד לא ביקש רץ על המילה הבאה ונגמר
+    // ב"נסו שוב". האצבע מורמת אחרי שהמילה הבאה כבר על המסך, כמו אצל ילד
+    // שמחזיק עד שה-🎉 מתחלף.
+    const shownBefore = await page.evaluate(() => shownCount);
+    const heldWin = await press();
+    await page.evaluate(() => {
+      const w = word();
+      processRecognition = window.realProcess;
+      try{ rec.dispatchEvent(new CustomEvent("result", { detail: { result: { result: [{ word: w, conf: 1 }], text: w } } })); }
+      finally{ processRecognition = () => {}; }
+    });
+    const wonHeld = await page.evaluate(() => ({ active, card: $("picture").textContent }));
+    await page.waitForFunction(n => shownCount > n, shownBefore, { timeout: 5000 }).catch(() => {});
+    await lift();
+    const afterLift = await page.evaluate(() => ({ active, listening: $("say").classList.contains("listening"), moved: shownCount }));
+    check("ניסיון שנגמר כשהאצבע על הכפתור לא מתחיל אחר בהרמתה",
+      heldWin.active && !wonHeld.active && wonHeld.card === "🎉" && afterLift.moved > shownBefore
+        && !afterLift.active && !afterLift.listening, { heldWin, wonHeld, afterLift });
+    await page.evaluate(() => stopListening());
+
+    // במקלדת אין נגיעה לפני ה-click, ולכן Enter ו-Space תמיד מתחילים להקשיב.
+    // גם אחרי לחיצה שהתחילה להקשיב והאצבע הורמה מחוץ לכפתור, כך שלא הגיע
+    // click שסוגר אותה.
+    await press();
+    const off = await page.locator("#word").boundingBox();
+    await page.mouse.move(off.x + off.width / 2, off.y + off.height / 2);
+    await page.mouse.up();
+    await page.evaluate(() => stopListening());
+    const keys = {};
+    for(const key of ["Enter", "Space"]){
+      await page.focus("#say");
+      await page.keyboard.press(key);
+      keys[key] = await page.evaluate(() => active);
+      await page.evaluate(() => stopListening());
+    }
+    check("Enter ו-Space על 🎤 מתחילים להקשיב", keys.Enter && keys.Space, keys);
+    await page.locator("#say").hover();
+
     // כשהמיקרופון סגור, נגיעה לא מותרת לפתוח אותו במסך מגע, וההקשבה מחכה להרמה.
     await page.evaluate(() => releaseMic());
     const closedHeld = await press();

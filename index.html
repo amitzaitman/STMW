@@ -1691,8 +1691,20 @@ $("toggleSound").addEventListener("click", toggleSound);
 // שמחזיק את האצבע בזמן שהוא מדבר נשמע. אבל נגיעה במסך מגע עוד לא מתירה לדף
 // לפתוח שמע — רק הרמת האצבע — ולכן כשצריך לפתוח את המיקרופון, בפעם
 // הראשונה, אחרי שהדף ירד מהמסך או אחרי שהמיקרופון נותק, מחכים ל-click.
-$("say").addEventListener("pointerdown", e=>{ if(e.button === 0 && audioReady()) listen(); });
-$("say").addEventListener("click", listen);
+// ה-click שמסיים נגיעה שכבר הקשיבה לא מתחיל ניסיון נוסף. אחרת, כשהניסיון
+// נגמר בזמן שהאצבע עוד על הכפתור — בהצלחה, או כי החלון נסגר — ההרמה פותחת
+// ניסיון שאף אחד לא ביקש, והוא נגמר ב"נסו שוב" על המילה הבאה. click ממקלדת
+// (detail 0) לא בא אחרי נגיעה, ותמיד מקשיב.
+let pressListened = false;
+$("say").addEventListener("pointerdown", e=>{
+  pressListened = e.button === 0 && audioReady();
+  if(pressListened) listen();
+});
+$("say").addEventListener("click", e=>{
+  const handled = pressListened && e.detail > 0;
+  pressListened = false;
+  if(!handled) listen();
+});
 $("next").addEventListener("click", next);
 $("hint").addEventListener("click", giveHint);
 $("openSettings").addEventListener("click", openPanel);
