@@ -1191,7 +1191,7 @@ async function main(){
         renderList();
         $("wordList").querySelector(`li[data-index="${(i + 1) % words.length}"] .jump`).click();
       } else if(how === "list"){
-        // רשימה חדשה, כמו "תרגלו רק אותן", ועל המסך המילה שאחרי זו שהייתה.
+        // רשימה חדשה, כמו מ-#practiceSetBtn במאגר, ועל המסך המילה שאחרי זו שהייתה.
         applyWords(words.slice().reverse(), words.length - 1 - (i + 1) % words.length);
       } else next();
       const out = { was, from, to: word(), active, listening: $("say").classList.contains("listening") };
