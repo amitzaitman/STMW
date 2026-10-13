@@ -1435,23 +1435,13 @@ function updateMainWordsSummary(){
 
 const VIEWS = {main: "viewSettingsMain", words: "viewWordsList", catalog: "viewCatalog"};
 
+// הודעה מספרת מה קרה בפעולה האחרונה במסך שלה, ובמעבר מסך היא כבר ישנה.
 function showSettingsView(tabName, focusSearch = true){
   currentSettingsTab = tabName;
   for(const name in VIEWS) $(VIEWS[name]).hidden = (name !== tabName);
-
-  // התוויות והמונים מופיעים בשלושת המסכים, אז הם מתעדכנים בכל מעבר.
-  updateMainWordsSummary();
-
-  if(tabName === "main"){
-    updateMatchUI();
-  } else if(tabName === "words"){
-    setSettingsNotice("wordsListNotice", "");
-    renderList();
-  } else if(tabName === "catalog"){
-    setSettingsNotice("catalogNotice", "");
-    renderCatalog();
-    if(focusSearch) setTimeout(()=>{ try{ $("search").focus(); }catch(e){} }, 50);
-  }
+  for(const id of ["settingsNotice", "wordsListNotice", "catalogNotice"]) setSettingsNotice(id, "");
+  renderPanel();
+  if(tabName === "catalog" && focusSearch) setTimeout(()=>$("search").focus(), 50);
 }
 
 function applyWords(nextWords, nextIndex, persist = true){
@@ -1613,9 +1603,9 @@ function renderList(){
   }));
 }
 
+// התוויות והמונים מופיעים בשלושת המסכים, אז הם מתעדכנים בכל שינוי ובכל מעבר.
 function renderPanel(){
   updateMainWordsSummary();
-  updateMatchUI();
   if(currentSettingsTab === "words") renderList();
   if(currentSettingsTab === "catalog") renderCatalog();
 }
@@ -1630,9 +1620,6 @@ function setBehindInert(on){
 }
 
 function openPanel(){
-  setSettingsNotice("settingsNotice", "");
-  setSettingsNotice("wordsListNotice", "");
-  setSettingsNotice("catalogNotice", "");
   $("search").value = "";
   catalogTheme = catalogLevel = "";
   $("overlay").hidden = false;
