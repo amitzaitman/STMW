@@ -704,7 +704,7 @@ const MIN_THRESHOLD = 30, MAX_THRESHOLD = 95, DEFAULT_THRESHOLD = 70;
 // בביטחון מלא גם על הגייה שגויה, כך שגם הסף הגבוה מסנן רק חלק מהשגיאות.
 const PRESETS = [
   { btn: "btnLevelLenient", badge: "🌱 סלחנית", threshold: 45, upTo: 50,
-    desc: "סלחנית: מתאים לפעוטות ולמתחילים. בודקת שהילד אמר את המילה הנכונה, גם אם ההגייה לא מדויקת." },
+    desc: "סלחנית: מתאים לפעוטות ולמתחילים. מקבלת את המילה גם כשההגייה לא מדויקת, ולפעמים גם מילה דומה מהרשימה." },
   { btn: "btnLevelNormal",  badge: "⭐ רגילה",  threshold: 70, upTo: 84,
     desc: "רגילה (ברירת מחדל): המילה הנכונה, כשהיא נשמעת די ברור. דוחה חלק מההגיות השגויות." },
   { btn: "btnLevelStrict",  badge: "🎯 מדויקת", threshold: 90, upTo: MAX_THRESHOLD,
