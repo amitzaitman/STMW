@@ -1398,9 +1398,9 @@ function takenSet(){
 let currentSettingsTab = "main"; // "main" | "words" | "catalog"
 
 function setSettingsNotice(elementId, msg, isError = false){
-  const el = $(elementId);
-  el.textContent = msg || "";
-  el.className = "panel-notice " + (msg ? (isError ? "error" : "success") : "");
+  const notice = $(elementId);
+  notice.textContent = msg || "";
+  notice.className = "panel-notice " + (msg ? (isError ? "error" : "success") : "");
 }
 
 function updateMainWordsSummary(){
@@ -1598,7 +1598,7 @@ function renderPanel(){
 // אין הבדל: הכיסוי חוסם ממילא, ו-preventScroll משאיר את החלונית באותה גלילה
 // שבה נסגרה.
 function setBehindInert(on){
-  for(const el of document.body.children) if(el !== $("overlay")) el.inert = on;
+  for(const child of document.body.children) if(child !== $("overlay")) child.inert = on;
 }
 
 function openPanel(){

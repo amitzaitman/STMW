@@ -6,8 +6,8 @@ importScripts('./cache-name.js');                // CACHE_NAME, משותף עם 
 const HEAVY = ['vosk.js', 'model.tar.gz'];      // כמעט לא משתנים
 const NET_TIMEOUT = 3000;                        // WiFi "מחובר" בלי אינטרנט: לא מחכים יותר מזה
 
-// ?v=4 בכתובת הוא רק שובר-מטמון של הדפדפן, לא קובץ אחר. בלי ignoreSearch
-// הרשומה שנשמרה בהתקנה (./words.js) לא נמצאת כשהדף מבקש ./words.js?v=4.
+// ?v= בכתובת הוא רק שובר-מטמון של הדפדפן, לא קובץ אחר. בלי ignoreSearch
+// הרשומה שנשמרה בהתקנה (./words.js) לא נמצאת כשהדף מבקש ./words.js?v=N.
 const MATCH = {ignoreSearch: true};
 
 // רשת קודם, אבל עם גבול זמן: אחרי NET_TIMEOUT עוברים למטמון.
