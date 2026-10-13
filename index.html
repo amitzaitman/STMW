@@ -749,7 +749,6 @@ function clearNote(token){
 
 function updateSoundUI(){
   const btn = $("toggleSound");
-  if(!btn) return;
   if(soundEnabled){
     btn.textContent = "🔊";
     btn.className = "on";
@@ -985,8 +984,7 @@ async function loadModel(){
     });
     $("loading").hidden = true;
     $("say").disabled = false;
-    const sIcon = $("sayIcon");
-    if(sIcon) sIcon.textContent = "🎤";
+    $("sayIcon").textContent = "🎤";
   }catch(err){
     $("loading").hidden = true;
     modelError = "לא הצלחנו לטעון את מנוע הדיבור. בדקו את model.tar.gz";
@@ -1087,7 +1085,7 @@ function scoreToken(spokenWord, conf, target){
 
 function buildRecognizer(){
   if(!model || !ctx) return;
-  if(rec){ try{ rec.remove(); }catch(e){} rec = null; }
+  if(rec){ rec.remove(); rec = null; }
   rec = new model.KaldiRecognizer(ctx.sampleRate, grammar());
   rec.setWords(true);
 
@@ -1166,7 +1164,7 @@ function listenWindowMs(){ return preset.listenMs; }
 // מוסיפה השהיה לפני שהילד מתחיל לדבר. אבל כשהדף יורד מהמסך אין סיבה
 // להחזיק אותו, וחיווי ההקלטה של הדפדפן היה נשאר דולק על אפליקציה סגורה.
 function releaseMic(){
-  if(srcNode){ try{ srcNode.disconnect(); }catch(e){} srcNode = null; }
+  if(srcNode){ srcNode.disconnect(); srcNode = null; }
   if(micStream){ micStream.getTracks().forEach(t => t.stop()); micStream = null; }
 }
 
@@ -1215,7 +1213,7 @@ async function listen(){
 const FINAL_GRACE_MS = 500;
 function closeWindow(){
   if(!active) return;
-  if(rec){ try{ rec.retrieveFinalResult(); }catch(err){} }
+  if(rec) rec.retrieveFinalResult();
   timer = setTimeout(()=>{ if(active) finish(false); }, FINAL_GRACE_MS);
 }
 
@@ -1225,7 +1223,7 @@ function stopListening(){
   active = false;
   clearTimeout(timer);
   // מאפס את המפענח כדי שהניסיון הבא יתחיל נקי. התוצאה שחוזרת מכאן נבלעת כי active כבר כבוי.
-  if(rec){ try{ rec.retrieveFinalResult(); }catch(err){} }
+  if(rec) rec.retrieveFinalResult();
   $("say").classList.remove("listening");
   return true;
 }
@@ -1435,35 +1433,20 @@ let currentSettingsTab = "main"; // "main" | "words" | "catalog"
 
 function setSettingsNotice(elementId, msg, isError = false){
   const el = $(elementId);
-  if(!el) return;
   el.textContent = msg || "";
   el.className = "panel-notice " + (msg ? (isError ? "error" : "success") : "");
 }
 
 function updateMainWordsSummary(){
   $("panelMeta").textContent = words.length + " מילים בתרגול. נשמר במכשיר הזה.";
-  const countBadge = $("mainWordsCountBadge");
-  if(countBadge) countBadge.textContent = words.length + " מילים";
-
-  const preview = $("wordsPreviewEmojis");
-  if(preview){
-    const sample = words.slice(0, 10).map(w => w.emoji).join(" ");
-    preview.textContent = sample + (words.length > 10 ? " …" : "");
-  }
-
-  const metaInWords = $("wordsListMeta");
-  if(metaInWords){
-    metaInWords.textContent = words.length + " מילים פעילות. לחצו על מילה כדי לתרגל אותה כעת.";
-  }
-
-  const availBadge = $("catalogAvailableCount");
-  if(availBadge){
-    // סופרים במאגר ולא מחסרים אורכים: ברשימה שמורה יכולה להיות מילה שכבר
-    // יצאה מהמאגר, והיא לא מורידה ממה שזמין בו.
-    const taken = takenSet();
-    const unadded = PAIRS.filter(p => !taken.has(p[1])).length;
-    availBadge.textContent = `${PAIRS.length} מילים במאגר (${unadded} זמינות להוספה) ←`;
-  }
+  $("mainWordsCountBadge").textContent = words.length + " מילים";
+  $("wordsPreviewEmojis").textContent = words.slice(0, 10).map(w => w.emoji).join(" ") + (words.length > 10 ? " …" : "");
+  $("wordsListMeta").textContent = words.length + " מילים פעילות. לחצו על מילה כדי לתרגל אותה כעת.";
+  // סופרים במאגר ולא מחסרים אורכים: ברשימה שמורה יכולה להיות מילה שכבר
+  // יצאה מהמאגר, והיא לא מורידה ממה שזמין בו.
+  const taken = takenSet();
+  const unadded = PAIRS.filter(p => !taken.has(p[1])).length;
+  $("catalogAvailableCount").textContent = `${PAIRS.length} מילים במאגר (${unadded} זמינות להוספה) ←`;
 }
 
 const VIEWS = {main: "viewSettingsMain", words: "viewWordsList", catalog: "viewCatalog"};
@@ -1721,10 +1704,8 @@ function closePanel(){
 function playCurrentWord(){
   if(!soundEnabled) setSound(true);
   const btn = $("playWord");
-  if(btn){
-    btn.classList.add("playing");
-    setTimeout(()=>btn.classList.remove("playing"), 450);
-  }
+  btn.classList.add("playing");
+  setTimeout(()=>btn.classList.remove("playing"), 450);
   speak(word(), EN);
 }
 
@@ -1834,7 +1815,7 @@ if("serviceWorker" in navigator){
 // PWA Install prompt
 let deferredPrompt = null;
 const installBtn = $("installBtn");
-const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator && window.navigator.standalone);
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
 // ספארי באייפד מציג כברירת מחדל user agent של מק. מה שמבדיל אותו ממק הוא מסך
 // המגע: מק מדווח אפס נקודות מגע.
 const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase()) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -1843,33 +1824,27 @@ if (!isStandalone) {
   window.addEventListener("beforeinstallprompt", e => {
     e.preventDefault();
     deferredPrompt = e;
-    if (installBtn) installBtn.hidden = false;
+    installBtn.hidden = false;
   });
 
-  if (isIOS && installBtn) {
-    installBtn.hidden = false;
-  }
+  if (isIOS) installBtn.hidden = false;
 }
 
 window.addEventListener("appinstalled", () => {
-  if (installBtn) installBtn.hidden = true;
+  installBtn.hidden = true;
   deferredPrompt = null;
 });
 
-if (installBtn) {
-  installBtn.addEventListener("click", async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      if (choice && choice.outcome === "accepted") {
-        installBtn.hidden = true;
-      }
-      deferredPrompt = null;
-    } else if (isIOS) {
-      setSettingsNotice("settingsNotice", "להתקנה ב־iPhone/iPad: לחצו על שיתוף ⎋ בספארי ובחרו 'הוספה למסך הבית'.");
-    }
-  });
-}
+installBtn.addEventListener("click", async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    if (choice.outcome === "accepted") installBtn.hidden = true;
+    deferredPrompt = null;
+  } else if (isIOS) {
+    setSettingsNotice("settingsNotice", "להתקנה ב־iPhone/iPad: לחצו על שיתוף ⎋ בספארי ובחרו 'הוספה למסך הבית'.");
+  }
+});
 
 // מבקש מהדפדפן לא למחוק את המטמון (המודל, 29MB) כשנגמר מקום. בלי חלון אישור;
 // אם הדפדפן מסרב, פשוט ממשיכים.
