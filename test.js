@@ -596,12 +596,16 @@ async function main(){
   await page.evaluate(() => ensureAudio());
   await page.waitForTimeout(300);
   check("המיקרופון נפתח", await page.evaluate(() => !!micStream));
-  await page.evaluate(() => {
+  // micStream === null לבדו לא אומר כלום: מסלול שלא נעצר ממשיך להקליט גם
+  // בלי משתנה שמחזיק אותו.
+  const released = await page.evaluate(() => {
+    const tracks = micStream.getTracks();
     Object.defineProperty(document, "hidden", { value: true, configurable: true });
     document.dispatchEvent(new Event("visibilitychange"));
+    return { gone: micStream === null, tracks: tracks.map(t => t.readyState) };
   });
-  await page.waitForTimeout(200);
-  check("המיקרופון משוחרר כשהדף יורד מהמסך", await page.evaluate(() => micStream === null));
+  check("המיקרופון משוחרר כשהדף יורד מהמסך",
+    released.gone && released.tracks.length > 0 && released.tracks.every(s => s === "ended"), released);
   await page.evaluate(() => {
     Object.defineProperty(document, "hidden", { value: false, configurable: true });
     return ensureAudio();
