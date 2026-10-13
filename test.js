@@ -1366,6 +1366,33 @@ async function main(){
   }
   check("סקריפט שאין במטמון לא חוזר כ-HTML", missing.html !== true, missing);
 
+  // ניווט עם מחרוזת שאילתה עולה בלי רשת מהרשומה של ./, זו שמתעדכנת בכל
+  // פתיחה עם רשת מהמסך הבית. ./index.html הוא רק חלופה אחרונה לניווט ויכול
+  // להיות ישן, ולכן כאן הוא מוחלף בדף שאינו האפליקציה: אם הוא זה שחוזר, זה נראה.
+  // בדף נפרד באותו דפדפן, כדי שהדף הראשי לא יעזוב את מה שהבדיקות כאן בנו.
+  const indexEntry = (cmd, body) => page.evaluate(async ([cmd, body]) => {
+    const c = await caches.open(CACHE_NAME), url = new URL("index.html", location.href).href;
+    if(cmd === "plant"){
+      window.realIndexEntry = await c.match(url);
+      await c.put(url, new Response(body, { headers: { "Content-Type": "text/html" } }));
+    } else if(window.realIndexEntry) await c.put(url, window.realIndexEntry);
+    else await c.delete(url);
+  }, [cmd, body]);
+  await indexEntry("plant", "<!DOCTYPE html><title>not the app</title>");
+  const queryPage = await ctx.newPage();
+  let queryNav;
+  try{
+    await queryPage.goto(base + "/?q=1", { waitUntil: "domcontentloaded" });
+    queryNav = await queryPage.evaluate(() => ({
+      title: document.title, pairs: typeof PAIRS === "undefined" ? null : PAIRS.length
+    }));
+  } catch(e){ queryNav = { threw: e.message }; }
+  finally{
+    await queryPage.close();
+    await indexEntry("restore");
+  }
+  check("ניווט עם ?q= בלי רשת עולה מהרשומה של ./", queryNav.pairs > 0, queryNav);
+
   // --------------------------------------------------------------
   group("שגיאות");
   check("אין שגיאות בקונסולה", errors.length === 0, errors);
