@@ -1830,7 +1830,9 @@ if("serviceWorker" in navigator){
 let deferredPrompt = null;
 const installBtn = $("installBtn");
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator && window.navigator.standalone);
-const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+// ספארי באייפד מציג כברירת מחדל user agent של מק. מה שמבדיל אותו ממק הוא מסך
+// המגע: מק מדווח אפס נקודות מגע.
+const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase()) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
 if (!isStandalone) {
   window.addEventListener("beforeinstallprompt", e => {

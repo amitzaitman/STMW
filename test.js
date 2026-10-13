@@ -179,6 +179,33 @@ async function main(){
       && !tapped.active && !tapped.listening && !tapped.mic, { stuck, skipped, tapped });
 
   // --------------------------------------------------------------
+  group("התקנה");
+  // ספארי באייפד מציג כברירת מחדל user agent של מק, בלי ipad בתוכו, ו-iOS לא
+  // מציע להתקין מעצמו: בלי הכפתור אין מי שיגיד למורה על "הוספה למסך הבית".
+  // מק מדווח אותו user agent ואפס נקודות מגע. כרומיום מדווח את הפלטפורמה
+  // האמיתית ונקודת מגע אחת גם עם hasTouch, ואייפד מדווח חמש.
+  const safariMac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15";
+  const installOffer = async touchPoints => {
+    const c = await browser.newContext({ serviceWorkers: "block", userAgent: safariMac, hasTouch: touchPoints > 0 });
+    await c.addInitScript(n => {
+      Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel" });
+      Object.defineProperty(Navigator.prototype, "maxTouchPoints", { get: () => n });
+    }, touchPoints);
+    const p = await c.newPage();
+    await p.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+    await p.click("#openSettings");
+    const shown = await p.isVisible("#installBtn");
+    if(shown) await p.click("#installBtn");
+    const hint = await p.textContent("#settingsNotice");
+    await c.close();
+    return { shown, hint };
+  };
+  const ipad = await installOffer(5);
+  check("באייפד מוצעת הוספה למסך הבית", ipad.shown && ipad.hint.includes("הוספה למסך הבית"), ipad);
+  const mac = await installOffer(0);
+  check("במק בלי מסך מגע אין כפתור התקנה", !mac.shown && mac.hint === "", mac);
+
+  // --------------------------------------------------------------
   group("מילון המודל");
   // KaldiRecognizer מקבל בשקט גם מילה שהמודל לא מכיר, ואז היא לא תזוהה
   // לעולם, גם כשהילד אומר אותה מושלם. מילה חדשה במאגר צריכה להופיע במילון.
