@@ -163,7 +163,7 @@ async function main(){
   await badPage.waitForFunction(() => $("note").textContent !== "", null, { timeout: 15000 }).catch(() => {});
   const stuck = await badPage.evaluate(() => ({
     note: $("note").textContent, loading: !$("loading").hidden, model: model !== null,
-    icon: $("sayIcon").textContent, disabled: $("say").disabled
+    icon: $("sayIcon").textContent, disabled: $("say").disabled, label: $("say").getAttribute("aria-label")
   }));
   // ההודעה היא הסימן היחיד שמשהו נכשל, ו-⏭️ מנקה אותה. לכן 🎤 מראה ⚠️,
   // ונגיעה בו מחזירה אותה בלי לנסות להקשיב.
@@ -179,6 +179,7 @@ async function main(){
   check("מודל שלא נטען — 🎤 מראה ⚠️ ונגיעה בו מחזירה את ההודעה",
     stuck.icon === "⚠️" && !stuck.disabled && skipped === "" && tapped.note === stuck.note
       && !tapped.active && !tapped.listening && !tapped.mic, { stuck, skipped, tapped });
+  check("מודל שלא נטען — קורא מסך שומע את ההודעה ולא \"הקלטת קול\"", stuck.label === stuck.note, stuck);
 
   // --------------------------------------------------------------
   group("התקנה");

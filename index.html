@@ -987,6 +987,8 @@ async function loadModel(){
     setNote(modelError);
     $("say").disabled = false;
     $("sayIcon").textContent = "⚠️";
+    // קורא מסך לא רואה את ⚠️, ובלי זה היה מכריז על כפתור הקלטה רגיל.
+    $("say").setAttribute("aria-label", modelError);
     console.error(err);
   }
 }
