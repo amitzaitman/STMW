@@ -109,14 +109,15 @@ async function main(){
   group("מניפסט");
   // נתיב מוחלט עובד רק כשהאפליקציה יושבת בשורש. ב-GitHub Pages היא יושבת
   // תחת /REPO/, שם כל אייקון מחזיר 404 — ואז כרום לא מציע להתקין בכלל.
-  // זה נכון לכל מה שנפתר מול כתובת המניפסט. id נפתר מול ה-origin, ושם ./
-  // ו-/ הם אותו שורש של האתר, לא /REPO/ (ראו BACKLOG.md).
   const manifest = JSON.parse(fs.readFileSync(path.join(DIR, "manifest.json"), "utf8"));
   const absolute = [
-    ...["id", "start_url", "scope"].filter(k => String(manifest[k]).startsWith("/")).map(k => `${k}=${manifest[k]}`),
+    ...["start_url", "scope"].filter(k => String(manifest[k]).startsWith("/")).map(k => `${k}=${manifest[k]}`),
     ...manifest.icons.filter(ic => ic.src.startsWith("/")).map(ic => ic.src)
   ];
   check("כל הנתיבים במניפסט יחסיים", absolute.length === 0, absolute);
+  // אין id בכוונה: id נפתר מול ה-origin, ו-./ היה נותן את שורש האתר ולא את
+  // /REPO/. בלעדיו הזהות של האפליקציה היא start_url.
+  check("אין id במניפסט", !("id" in manifest), manifest.id);
   const missingIcons = manifest.icons.map(ic => ic.src).filter(src => !fs.existsSync(path.join(DIR, src)));
   check("כל האייקונים במניפסט קיימים", missingIcons.length === 0, missingIcons);
 
