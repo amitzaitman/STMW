@@ -1454,7 +1454,10 @@ async function main(){
     else await c.delete(url);
   }, [cmd, body]);
   await indexEntry("plant", "<!DOCTYPE html><title>not the app</title>");
+  // PAIRS מגיע מ-words.js, אז הוא לבדו לא אומר שהסקריפט של הדף רץ בלי לקרוס.
   const queryPage = await ctx.newPage();
+  const queryErrors = [];
+  queryPage.on("pageerror", e => queryErrors.push(e.message));
   let queryNav;
   try{
     await queryPage.goto(base + "/?q=1", { waitUntil: "domcontentloaded" });
@@ -1466,7 +1469,8 @@ async function main(){
     await queryPage.close();
     await indexEntry("restore");
   }
-  check("ניווט עם ?q= בלי רשת עולה מהרשומה של ./", queryNav.pairs > 0, queryNav);
+  check("ניווט עם ?q= בלי רשת עולה מהרשומה של ./",
+    queryNav.pairs > 0 && queryErrors.length === 0, { ...queryNav, queryErrors });
 
   // --------------------------------------------------------------
   group("שגיאות");
