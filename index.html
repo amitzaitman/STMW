@@ -1089,7 +1089,7 @@ function buildRecognizer(){
   if(!model || !ctx) return;
   if(rec){ try{ rec.remove(); }catch(e){} rec = null; }
   rec = new model.KaldiRecognizer(ctx.sampleRate, grammar());
-  try{ rec.setWords(true); }catch(e){}
+  rec.setWords(true);
 
   // רק תוצאה סופית מחליטה. תוצאה חלקית היא ניחוש באמצע הדיבור, ועם דקדוק
   // סגור היא כמעט תמיד מילה מהרשימה: "elephant" נשמע בדרך כ-apple ונגמר
@@ -1101,38 +1101,24 @@ function buildRecognizer(){
   });
 }
 
-// מחרוזת של מילים מופרדות ברווח, בלי סימון "לא ידוע".
-function textTokens(text, conf){
-  return (text || "").trim().toLowerCase().split(/\s+/)
-    .filter(t => t && t !== "[unk]")
-    .map(w => ({word: w, conf: conf}));
-}
-
-function tokensOf(res){
-  const details = Array.isArray(res.result) ? res.result : [];
-  if(!details.length) return textTokens(res.text, null);
-  return details.map(w => ({
-    word: (w.word || "").toLowerCase().trim(),
-    conf: typeof w.conf === "number" ? w.conf : null
-  })).filter(t => t.word && t.word !== "[unk]");
-}
-
 function processRecognition(msg){
   if(!active) return;
   const res = msg && msg.result;
   if(!res) return;
 
-  const tokens = tokensOf(res);
+  // עם setWords(true) לכל מילה בטקסט יש ב-result רשומה עם הביטחון שלה, ושקט
+  // מגיע בלי result בכלל. המילים חוזרות כמו שהן בדקדוק, כלומר כמו ברשימה.
+  const tokens = (res.result || []).filter(t => t.word && t.word !== "[unk]");
   if(!tokens.length) return;   // שקט: ממשיכים להקשיב עד סוף החלון
 
-  const target = word().toLowerCase().trim();
+  const target = word();
   // בדקדוק סגור, מה שאינו היעד הוא מילה אחרת מהרשימה, ו-scoreToken נותן לשכנה
   // קרובה ניקוד שעובר את הרף הרגיל: ship מול sheep, ball מול balloon. מעל הרמה
-  // הסלחנית מילה אחרת מהרשימה לא נחשבת; בסלחנית שכנה קרובה עוברת כהגייה לא מדויקת.
-  const others = preset === PRESETS[0] ? null : takenSet();
+  // הסלחנית רק היעד נחשב; בסלחנית שכנה קרובה עוברת כהגייה לא מדויקת.
+  const lenient = preset === PRESETS[0];
   let best = 0;
   for(const tok of tokens){
-    if(others && tok.word !== target && others.has(tok.word)) continue;
+    if(!lenient && tok.word !== target) continue;
     best = Math.max(best, scoreToken(tok.word, tok.conf, target));
   }
 
