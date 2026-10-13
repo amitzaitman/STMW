@@ -126,8 +126,13 @@ async function main(){
 
   // --------------------------------------------------------------
   group("טעינה");
-  // words.js נטען מכתובת עם ?v=. אם הוא חוזר כ-HTML, PAIRS ריק.
-  check("מאגר המילים נטען", await page.evaluate(() => PAIRS.length) === 344);
+  // words.js נטען מכתובת עם ?v=. אם הוא חוזר כ-HTML, PAIRS ריק. הדף צריך
+  // לקבל בדיוק את הצמדים שבקובץ, שנספרים כאן בלי דפדפן.
+  const wordsFile = {};
+  new Function("window", fs.readFileSync(path.join(DIR, "words.js"), "utf8"))(wordsFile);
+  const pairsInFile = wordsFile.PAIRS.length;
+  const pairsInPage = await page.evaluate(() => PAIRS.length);
+  check("מאגר המילים נטען", pairsInFile > 0 && pairsInPage === pairsInFile, { pairsInPage, pairsInFile });
   check("יש מילים לתרגול", await page.evaluate(() => words.length) > 0);
   check("מוצגת מילה על המסך", (await page.textContent("#word")).length > 0);
 
@@ -407,7 +412,7 @@ async function main(){
         .filter(b => getComputedStyle(b).display !== "none").length;
   });
   const built = await page.evaluate(() => document.querySelectorAll("#catalog .catalog-item").length);
-  check("כל המאגר נבנה", built === 344, built);
+  check("כל המאגר נבנה", built === pairsInFile, { built, pairsInFile });
 
   // בנייה מחדש מלאה נותנת את אותו מספר פריטים, אז נבדק שהצומת עצמו נשאר.
   const firstItem = await page.$("#catalog .catalog-item");
