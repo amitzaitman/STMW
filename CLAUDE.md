@@ -31,9 +31,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   ב-`fetchModel`. תקלה שם לא מתגלה עד שמישהו במצב טיסה, בכיתה. שינוי
   `CACHE_NAME` כותב בכל מכשיר עותק חדש של 29MB, מהמטמון הישן או, אם הוא
   כבר נמחק, מהרשת.
-- **מפתחות ה-localStorage:** `words`, `speech_match_config`,
-  `sound_enabled`, `hebrew_spelling`, `practice_mode`. שינוי שם או מבנה מוחק לילד את
-  רשימת המילים ואת ההגדרות, בלי אזהרה ובלי דרך לשחזר.
+- **מפתחות ה-localStorage ומבנה מה שנשמר בהם** (כל `localStorage`
+  ב-`index.html`). שינוי שם או מבנה מוחק לילד את רשימת המילים ואת
+  ההגדרות, בלי אזהרה ובלי דרך לשחזר.
 - **שדות הזהות ב-`manifest.json`:** `id`, `start_url`, `scope`. שינוי
   שלהם הופך התקנה קיימת לאפליקציה אחרת.
 - **תלות חדשה, קובץ חדש, או שלב build.** הריפו מגיש את עצמו כקבצים
@@ -45,8 +45,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## איך לעבוד כאן
 
-**`npm test` לפני ואחרי.** בערך חצי דקה. דורש
-`npm install && npx playwright install chromium` פעם אחת.
+**`npm test` לפני ואחרי.** בערך חצי דקה.
 
 **ודאו שהבאג קיים לפני שמתקנים אותו**, ושהגנה שאתם מוסיפים באמת רצה —
 מול המודל הטעון, לא לפי התיעוד. `KaldiRecognizer`, למשל, לא זורק על
@@ -81,14 +80,13 @@ GitHub מסרב למחיקה, אומרים למשתמש איזה ענף נשאר
 ```bash
 npm install && npx playwright install chromium   # פעם אחת. בענן הכרומיום כבר מותקן: רק npm install
 npm test       # כל הבדיקות
-npm run lint   # רק node --check על server.js, words.js, cache-name.js, test.js
+npm run lint   # node --check בלבד; לא נוגע ב-index.html וב-sw.js
 npm run dev    # server.js על פורט 3000. בלי התקנה: python3 -m http.server 8000
 ```
 
 - **אין הרצה של בדיקה בודדת.** `test.js` הוא סקריפט אחד שרץ ברצף על דף
   אחד, וקבוצות נשענות על מה שהקודמות השאירו (המאגר מוסיף `lion`, הרשימה
   מוחקת שורה). כדי לבדוק קבוצה אחת מריצים את כולן.
-- `lint` לא נוגע ב-`index.html` וב-`sw.js`. שגיאה שם תתגלה רק ב-`npm test`.
 - הוספת צמד ל-`words.js` משנה את `PAIRS.length`, ו-`test.js` משווה אותו
   למספר קבוע בשני מקומות. מעדכנים את שניהם.
 - שינוי ב-`words.js` מעלה גם את `?v=` בתגית שלו ב-`index.html`. בלי זה
