@@ -1416,6 +1416,27 @@ async function main(){
     if(n >= 0) errors.splice(n, 1);
   }
   check("קובץ כבד שחזר עם שגיאה לא נשמר במטמון", notStored.status === 404 && !notStored.stored, notStored);
+  // כשהקובץ הכבד חסר במטמון — ההתקנה לא הצליחה להוסיף את vosk.js, או
+  // שהדף לא הוריד את המודל בעצמו — הענף הכבד הוא מה ששומר אותו מהרשת,
+  // ובלעדיו המכשיר עובד ברשת ונתקע במצב טיסה.
+  const restored = await page.evaluate(async names => {
+    const url = new URL("vosk.js", location.href).href;
+    const c = await caches.open(names.ours);
+    const real = await c.match(url);
+    await c.delete(url);
+    const r = await fetch(url);
+    const bytes = (await r.arrayBuffer()).byteLength;
+    let stored = null;
+    for(let n = 0; n < 20 && !stored; n++){
+      await new Promise(res => setTimeout(res, 100));   // ה-service worker שומר בלי לחכות
+      stored = await c.match(url);
+    }
+    if(!stored && real) await c.put(url, real);
+    return { status: r.status, bytes, storedOk: !!stored && stored.ok,
+             storedBytes: stored ? (await stored.clone().arrayBuffer()).byteLength : 0 };
+  }, { ours });
+  check("קובץ כבד שאין במטמון נשמר מהרשת",
+        restored.status === 200 && restored.bytes > 0 && restored.storedOk && restored.storedBytes === restored.bytes, restored);
 
   server.closeAllConnections();
   await new Promise(r => server.close(r));
