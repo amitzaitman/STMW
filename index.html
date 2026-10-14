@@ -701,6 +701,114 @@ let childId = (()=>{
 })();
 function childKey(base){ return childId ? base + "@" + childId : base; }
 
+// --- מה כל ילד כבר יודע ---
+// לכל ילד שני מפתחות משלו, דרך childKey: ההתקדמות בכל מילה, ויומן של
+// הניסיונות האחרונים, בלי הקלטות. הם נכתבים רק בניסיון, אף פעם בטעינה, ובכל
+// ניסיון נקראים מחדש ונכתבים מיד, בלי עותק בזיכרון: האפליקציה המותקנת
+// ולשונית בדפדפן חולקות אותם, ועותק היה מוחק את מה שהשנייה כתבה. הקידומת
+// היא כי sifra ו-AlefBet יושבים על אותו מקור וחולקים את localStorage. ➕ לא
+// מעתיק אותם לילד חדש, ו-🗑️ מוחק אותם עם השם.
+const PROGRESS_KEY = "say-the-word-progress", LOG_KEY = "say-the-word-log", STORE_VERSION = 1;
+const CHILD_DATA = [PROGRESS_KEY, LOG_KEY];
+// ניחושים, לכוונון מתוך היומן. LADDER_DAYS[box]: כמה ימים עד שמילה בתיבה
+// הזו חוזרת. LOG_MAX: בערך 30KB לילד.
+const LADDER_DAYS = [0, 1, 2, 4, 8, 16], LOG_MAX = 500;
+
+// מספר היום לפי השעון המקומי, כך שהיום מתחלף בחצות של הילד ולא ב-UTC.
+function dayNumber(d = new Date()){
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5);
+}
+// כמו readChildren: ערך שאי אפשר לקרוא, או מגרסה חדשה יותר של הדף, לא נדרס,
+// כדי שערך פגום אחד לא ימחק לילד את כל מה שכבר נאסף. מפתח שאין מתחיל ריק.
+function readStore(key){
+  const log = key === LOG_KEY;
+  const empty = log ? { v: STORE_VERSION, a: [] } : { v: STORE_VERSION, w: {} };
+  try{
+    const raw = localStorage.getItem(childKey(key));
+    if(raw === null) return { data: empty, writable: true };
+    const data = JSON.parse(raw);
+    const fits = !!data && data.v === STORE_VERSION &&
+      (log ? Array.isArray(data.a) : !!data.w && typeof data.w === "object" && !Array.isArray(data.w));
+    return fits ? { data, writable: true } : { data: empty, writable: false };
+  }catch(e){ return { data: empty, writable: false }; }
+}
+
+// הסולם של מילה אחת. clean היא אמירה שהתקבלה בניסיון הראשון, בלי ששמעו את
+// המילה קודם. היא מעלה תיבה רק ביום אחרי ההצלחה הנקייה הקודמת: הצלחה חוזרת
+// באותו יום מראה שהמילה עוד בזיכרון הקצר, לא שנלמדה. ok שומר את שני הימים
+// האחרונים כאלה, ושני ימים הם "אמר". helped (אחרי 🔊 או בניסיון השני) ו-miss
+// רק נספרים. failed, שתי אמירות שלא התקבלו, מוריד תיבה אחת, ו-got נשאר: מה
+// שהילד כבר הצליח בו לא נלקח ממנו. write היא כתיבה נקייה, והיא לא נוגעת
+// בסולם של האמירה. שעון שחזר אחורה נחשב לאותו יום.
+function ladderStep(rec, step, day){
+  const r = rec ? Object.assign({}, rec, { ok: (rec.ok || []).slice() })
+                : { met: day, seen: day, box: 0, due: day, ok: [], n: 0, k: 0 };
+  if(day < r.seen) day = r.seen;
+  r.seen = day;
+  if(step === "write"){
+    if(r.wrote === undefined) r.wrote = day;
+    return r;
+  }
+  r.n++;
+  if(step === "clean"){
+    r.k++;
+    if(r.got === undefined) r.got = day;
+    if(!r.ok.length || day > r.ok[r.ok.length - 1]){
+      r.ok = r.ok.concat(day).slice(-2);
+      r.box = Math.min(r.box + 1, LADDER_DAYS.length - 1);
+      r.due = day + LADDER_DAYS[r.box];
+    }
+  } else if(step === "failed"){
+    r.box = Math.max(r.box - 1, 0);
+    r.due = day + 1;
+  }
+  return r;
+}
+
+// אותיות ביומן: h שמעו את המילה לפני הניסיון, t המילה באנגלית על המסך, e
+// התעתיק על המסך, m השמע כבוי, x נעזרו ב-💡, w כבר נבדקה מילה שגויה בכתיבה.
+function attemptFlags(){
+  return (turn.heard ? "h" : "") + ($("word").hidden ? "" : "t") + ($("wordHe").textContent ? "e" : "") +
+         (soundEnabled ? "" : "m") + (turn.hinted ? "x" : "") + (turn.wrong ? "w" : "");
+}
+
+// outcome ביומן: ok, no, quiet (חלון שנגמר בלי מילה) או skip (⏭️). step הוא
+// מה שקורה לסולם (ladderStep), או null כשאין מה לשנות בו. כל תקלה כאן נבלעת:
+// שמירה שנכשלה לא משאירה את 🎤 תקוע.
+function recordAttempt(w, outcome, step, extra = {}){
+  try{
+    // ילד שנמחק בחלון אחר, לפני שהאירוע הגיע לכאן.
+    if(childId && !(readChildren() || []).some(c => c.id === childId)) return;
+    const now = new Date(), day = dayNumber(now);
+    if(step){
+      const p = readStore(PROGRESS_KEY);
+      if(p.writable){
+        p.data.w[w] = ladderStep(p.data.w[w], step, day);
+        const json = JSON.stringify(p.data);
+        try{ localStorage.setItem(childKey(PROGRESS_KEY), json); }
+        catch(e){
+          const old = readStore(LOG_KEY);
+          if(old.writable) halveLog(old.data);
+          localStorage.setItem(childKey(PROGRESS_KEY), json);
+        }
+      }
+    }
+    const l = readStore(LOG_KEY);
+    if(!l.writable) return;
+    l.data.a.push([day, now.getHours() * 60 + now.getMinutes(), w, mode, outcome, extra.tryNo || 0,
+                   attemptFlags(), typeof extra.score === "number" ? extra.score : null,
+                   extra.heard || "", preset.id, words.length]);
+    l.data.a = l.data.a.slice(-LOG_MAX);
+    try{ localStorage.setItem(childKey(LOG_KEY), JSON.stringify(l.data)); }
+    catch(e){ halveLog(l.data); }
+  }catch(e){}
+}
+// המקום נגמר: חצי מהיומן, החדש שבו, מפנה מקום. ההתקדמות קודמת ליומן.
+function halveLog(data){
+  data.a = data.a.slice(-Math.floor(data.a.length / 2));
+  localStorage.setItem(childKey(LOG_KEY), JSON.stringify(data));
+}
+
 let words = load() || DEFAULT_WORDS.slice();
 // לכל תרגול ניקוד משלו, והשורה מראה את של התרגול הפתוח. הניקוד לא נשמר
 // בין פתיחות: הכוכבים מודדים את מה שהילד עושה עכשיו, ושמירה הייתה מחייבת
@@ -797,6 +905,7 @@ function toggleSound(){
   setSound(!soundEnabled);
   setNote(soundEnabled ? "השמע הופעל 🔊" : "השמע כובה 🔇", 2000);
   speak(word(), EN);   // שותק כשהשמע כבוי
+  if(soundEnabled) turn.heard = true;
 }
 
 function load(){
@@ -822,6 +931,17 @@ function word(){ return words[i].word; }
 let shownCount = 0;
 // כמה אמירות של המילה שעל המסך לא התקבלו. מתאפס בכל הצגה (ראו notYet).
 let sayMisses = 0;
+// מה קרה עם המילה שעל המסך מאז שהוצגה, בשביל היומן וההתקדמות: שמעו אותה
+// (🔊, נגיעה בתמונה, הדלקת השמע, המילה אחרי "עוד לא"), נעזרו ב-💡, כמה
+// אמירות וכמה כתיבות נבדקו, אם כבר נבדקה מילה שגויה בכתיבה, ואם המילה כבר
+// הוכרעה (הצליחה, או שתי אמירות שלא התקבלו). מעבר לכתיבה וחזרה, הדלקת
+// התעתיק או שינוי ברשימה מציגים מחדש את אותה מילה, ואז זה אותו תור: אחרת ילד
+// ששמע את המילה רגע לפני היה נרשם כמי שאמר אותה לבד. next() מתחיל תור חדש
+// גם כשהמילה חוזרת.
+function newTurn(){
+  return { word: word(), child: childId, heard: false, hinted: false, says: 0, spells: 0, wrong: false, done: false };
+}
+let turn = { word: null };
 function show(){
   // הקשבה שהתחילה על המילה הקודמת נעצרת בשקט, כמו במעבר לכתיבה. אחרת שאר
   // החלון, ותוצאה סופית שמגיעה באיחור, נשפטים מול המילה החדשה, והילד שומע
@@ -829,6 +949,7 @@ function show(){
   stopListening();
   shownCount++;
   sayMisses = 0;
+  if(turn.word !== word() || turn.child !== childId) turn = newTurn();
   $("picture").textContent = words[i].emoji;
   $("picture").className = "";
   $("word").textContent = word();
@@ -1142,7 +1263,7 @@ function processRecognition(msg){
   }
 
   // ההחלטה כולה, במקום אחד.
-  finish(best >= preset.threshold);
+  finish(best >= preset.threshold, { score: best, heard: tokens.map(t => t.word).join(" ") });
 }
 
 // מסלול שנגמר — הרשאה שבוטלה, מיקרופון שנותק — לא חוזר לחיים, וזרם שאין
@@ -1243,7 +1364,11 @@ const FINAL_GRACE_MS = 500;
 function closeWindow(){
   if(!active) return;
   if(rec) rec.retrieveFinalResult();
-  timer = setTimeout(()=>{ if(stopListening()) nudgeSay(); }, FINAL_GRACE_MS);
+  timer = setTimeout(()=>{
+    if(!stopListening()) return;
+    recordAttempt(word(), "quiet", null, { tryNo: turn.says + 1 });
+    nudgeSay();
+  }, FINAL_GRACE_MS);
 }
 function nudgeSay(){
   const say = $("say");
@@ -1263,8 +1388,15 @@ function stopListening(){
   return true;
 }
 
-function finish(ok){
+// info: הניקוד ומה שהמנוע שמע, ליומן. אמירה אחרי שהמילה כבר הוכרעה — בזמן
+// ה-🎉, או אחרי מעבר לכתיבה וחזרה — נרשמת ביומן ולא מזיזה שוב את הסולם.
+function finish(ok, info = {}){
   if(!stopListening()) return;
+  const tryNo = ++turn.says;
+  const step = turn.done ? null
+    : ok ? (tryNo === 1 && !turn.heard ? "clean" : "helped") : (tryNo >= SAY_TRIES ? "failed" : "miss");
+  recordAttempt(word(), ok ? "ok" : "no", step, { tryNo, score: info.score, heard: info.heard });
+  if(ok || step === "failed") turn.done = true;
   ok ? good() : notYet();
 }
 
@@ -1314,7 +1446,11 @@ function notYet(){
   const mine = shownCount;
   if(sayMisses < SAY_TRIES){
     again(preset.why);
-    setTimeout(()=>{ if(mine === shownCount && !active) speak(word(), EN); }, CHIME_SECONDS * 1000);
+    setTimeout(()=>{
+      if(mine !== shownCount || active) return;
+      speak(word(), EN);
+      if(soundEnabled) turn.heard = true;
+    }, CHIME_SECONDS * 1000);
     return;
   }
   setTimeout(()=>{ if(mine === shownCount) next(); }, AGAIN_MS);
@@ -1333,7 +1469,15 @@ function pick(){
   return Math.floor(Math.random() * words.length);
 }
 
+// ⏭️ של הילד נרשם ביומן, כדי לדעת על אילו מילים מוותרים. מילה שכבר
+// הוכרעה, כמו ⏭️ בזמן ה-🎉, אינה ויתור.
+function skipWord(){
+  if(!turn.done) recordAttempt(word(), "skip", null, { tryNo: (mode === "say" ? turn.says : turn.spells) + 1 });
+  next();
+}
+
 function next(){
+  turn.word = null;
   // הגרלה בלי סדר קבוע. נמנעת רק אותה מילה פעמיים ברצף, כי זה נראה כמו
   // תקלה; מילה שחוזרת פעמיים בתוך עשר היא עדיין הגרלה תקינה.
   // התנאי הוא מה שמונע לולאה אינסופית כשיש מילה אחת ברשימה.
@@ -1418,6 +1562,13 @@ function checkWord(){
   if(slots.some(s => !s.tile)) return;
   const wrong = slots.filter((s, k) => s.textContent !== target[k]);
   busy = true;
+  turn.spells++;
+  // כתיבה נקייה, בלי 💡 ובלי מילה שגויה לפניה, מסמנת שהילד כותב את המילה.
+  // היא לא מקדמת את האמירה.
+  const clean = !wrong.length && !turn.hinted && !turn.wrong && !turn.done;
+  recordAttempt(target, wrong.length ? "no" : "ok", clean ? "write" : null, { tryNo: turn.spells });
+  if(wrong.length) turn.wrong = true;
+  else turn.done = true;
   if(!wrong.length){
     $("hint").disabled = true;
     good();
@@ -1447,6 +1598,7 @@ function giveHint(){
   if(!inBank()) takeOut(slots.find((s, n) => s.textContent === target[k] && target[n] !== target[k]));
   const tile = inBank();
   put(tile, slots[k], "hinted");
+  turn.hinted = true;
   checkWord();
 }
 
@@ -1691,7 +1843,8 @@ function childName(){
 }
 
 // מה שעובר לילד חדש, באותו פורמט שכל פונקציית שמירה כותבת. גם המחיקה
-// לוקחת מכאן את רשימת המפתחות.
+// לוקחת מכאן את רשימת המפתחות, ועוד את CHILD_DATA, שלא עובר: ילד חדש לא
+// מתחיל עם המילים שאחר כבר יודע.
 function profileValues(){
   return { words: JSON.stringify(words), [MATCH_KEY]: preset.id,
            [HEBREW_KEY]: hebrewEnabled ? "1" : "0", [MODE_KEY]: mode };
@@ -1751,14 +1904,14 @@ function deleteChild(){
   const id = childId, name = childName();
   // "בלי שם" הוא מה שנשמר לפני שהיו שמות, ואותו לא מוחקים.
   if(!id) return;
-  if(!confirm(`למחוק את ${name}? רשימת המילים וההגדרות יימחקו מהמכשיר, ואי אפשר לשחזר אותן.`)) return;
+  if(!confirm(`למחוק את ${name}? רשימת המילים, ההגדרות וההתקדמות יימחקו מהמכשיר, ואי אפשר לשחזר אותן.`)) return;
   const list = readChildren();
   if(!list) return childrenNotSaved();
   try{ localStorage.setItem(CHILDREN_KEY, JSON.stringify(list.filter(c => c.id !== id))); }
   catch(e){ return childrenNotSaved(); }
   switchChild("");
   // מה-id ולא דרך childKey, שכבר מצביע על "בלי שם".
-  for(const base in profileValues()) try{ localStorage.removeItem(base + "@" + id); }catch(e){}
+  for(const base of Object.keys(profileValues()).concat(CHILD_DATA)) try{ localStorage.removeItem(base + "@" + id); }catch(e){}
   setSettingsNotice("childNotice", `השם ״${name}״ נמחק מהמכשיר.`, false);
 }
 
@@ -1808,6 +1961,7 @@ function closePanel(){
 
 function playCurrentWord(){
   if(!soundEnabled) setSound(true);
+  turn.heard = true;
   const btn = $("playWord");
   btn.classList.add("playing");
   setTimeout(()=>btn.classList.remove("playing"), 450);
@@ -1836,7 +1990,7 @@ $("say").addEventListener("click", e=>{
   pressListened = false;
   if(!handled) listen();
 });
-$("next").addEventListener("click", next);
+$("next").addEventListener("click", skipWord);
 $("hint").addEventListener("click", giveHint);
 $("openSettings").addEventListener("click", openPanel);
 
@@ -1882,7 +2036,10 @@ $("wordList").addEventListener("click", e=>{
   if(!li) return;
   const n = Number(li.dataset.index);
   if(e.target.closest(".del-word-btn")) removeAt(n);
-  else if(e.target.closest(".speak-word-btn")) speak(words[n].word, EN);
+  else if(e.target.closest(".speak-word-btn")){
+    speak(words[n].word, EN);
+    if(n === i && soundEnabled) turn.heard = true;
+  }
   else if(e.target.closest(".jump")){ i = n; show(); closePanel(); }
 });
 

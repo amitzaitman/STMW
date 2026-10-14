@@ -1388,6 +1388,271 @@ async function main(){
   await page.waitForTimeout(500);
 
   // --------------------------------------------------------------
+  group("התקדמות");
+  // כל ניסיון נרשם לילד שעל המסך: ההתקדמות בכל מילה, ויומן בלי הקלטות.
+  // היום מוחלף ב-dayNumber, כמו listenWindowMs, כדי לבדוק ימים שונים בלי שעון.
+  const P = "say-the-word-progress", L = "say-the-word-log";
+  await page.evaluate(([P, L]) => { localStorage.removeItem(P); localStorage.removeItem(L); }, [P, L]);
+
+  const ladder = await page.evaluate(() => {
+    const a = ladderStep(undefined, "clean", 100);
+    const b = ladderStep(a, "clean", 100);
+    const c = ladderStep(b, "clean", 101);
+    const d = ladderStep(c, "failed", 105);
+    const back = ladderStep(a, "clean", 99);
+    const helped = ladderStep(c, "helped", 103);
+    const wrote = ladderStep(c, "write", 104);
+    return { a, b, c, d, back, helped, wrote };
+  });
+  const L1 = ladder;
+  check("הצלחה נקייה ראשונה מעלה לתיבה 1 ומסמנת שהילד הצליח",
+    L1.a.met === 100 && L1.a.box === 1 && L1.a.got === 100 && L1.a.due === 101 && L1.a.n === 1 && L1.a.k === 1
+      && JSON.stringify(L1.a.ok) === "[100]", L1.a);
+  check("הצלחה חוזרת באותו יום נספרת ולא מעלה תיבה",
+    L1.b.box === 1 && L1.b.n === 2 && L1.b.k === 2 && JSON.stringify(L1.b.ok) === "[100]", L1.b);
+  check("הצלחה נקייה ביום אחר — שני ימים של \"אמר\"",
+    L1.c.box === 2 && L1.c.due === 103 && JSON.stringify(L1.c.ok) === "[100,101]", L1.c);
+  check("שתי אמירות שלא התקבלו מורידות תיבה, ומה שהילד כבר הצליח נשאר",
+    L1.d.box === 1 && L1.d.due === 106 && L1.d.got === 100 && L1.d.ok.length === 2, L1.d);
+  check("שעון שחזר אחורה נחשב לאותו יום ולא מקדם",
+    L1.back.seen === 100 && L1.back.box === 1 && JSON.stringify(L1.back.ok) === "[100]", L1.back);
+  check("הצלחה אחרי עזרה נספרת ולא מקדמת",
+    L1.helped.box === L1.c.box && L1.helped.k === L1.c.k && L1.helped.n === L1.c.n + 1, L1.helped);
+  check("כתיבה נקייה מסמנת שהילד כותב את המילה, ולא נוגעת בסולם של האמירה",
+    L1.wrote.wrote === 104 && L1.wrote.box === L1.c.box && L1.wrote.n === L1.c.n
+      && JSON.stringify(L1.wrote.ok) === JSON.stringify(L1.c.ok), L1.wrote);
+
+  // ניסיונות אמיתיים, דרך ה-recognizer, כמו בקבוצת ההחלטה.
+  const probe = how => page.evaluate(async ([how, P, L]) => {
+    const realDay = dayNumber, realWindow = listenWindowMs, realRetrieve = rec.retrieveFinalResult;
+    const realSound = soundEnabled, synth = speechSynthesis;
+    synth.speak = () => {};
+    dayNumber = () => 200;
+    const store = k => JSON.parse(localStorage.getItem(k) || "null");
+    const say = async w => {
+      await listen();
+      rec.dispatchEvent(new CustomEvent("result", { detail: { result: { result: [{ word: w, conf: 1 }], text: w } } }));
+    };
+    try{
+      localStorage.removeItem(P); localStorage.removeItem(L);
+      next();
+      const target = word();
+      const settle = () => new Promise(r => setTimeout(r, Math.max(GOOD_MS, AGAIN_MS) + 200));
+      if(how === "accept"){ await say(target); await settle(); }
+      else if(how === "heard"){ playCurrentWord(); await say(target); await settle(); }
+      else if(how === "toggle"){ setSound(false); toggleSound(); await say(target); await settle(); }
+      else if(how === "rerender"){
+        playCurrentWord(); setMode("spell"); setMode("say");
+        await say(target); await settle();
+      } else if(how === "missThenHit"){
+        setSound(false);
+        await say("zzz");
+        await new Promise(r => setTimeout(r, AGAIN_MS + 100));
+        await say(target); await settle();
+      } else if(how === "skip") skipWord();
+      else if(how === "skipDuringCheer"){ await say(target); skipWord(); await settle(); }
+      else if(how === "sayDuringCheer"){ await say(target); await say(target); await settle(); }
+      else if(how === "listSpeak"){
+        setSound(true);
+        renderList();
+        $("wordList").querySelector(`li[data-index="${i}"] .speak-word-btn`).click();
+        await say(target); await settle();
+      }
+      else if(how === "twoMisses"){
+        localStorage.setItem(P, JSON.stringify({ v: 1, w: { [target]: { met: 90, seen: 190, box: 2, due: 199, ok: [180, 190], got: 90, n: 5, k: 3 } } }));
+        await say("zzz");
+        await new Promise(r => setTimeout(r, AGAIN_MS + 100));
+        await say("zzz");
+        await new Promise(r => setTimeout(r, AGAIN_MS + 300));
+      } else if(how === "quiet"){
+        listenWindowMs = () => 100;
+        rec.retrieveFinalResult = () => {};
+        await listen();
+        await new Promise(r => setTimeout(r, 100 + FINAL_GRACE_MS + 300));
+      }
+      const log = store(L), prog = store(P);
+      return { target, threshold: preset.threshold, presetId: preset.id, size: words.length,
+               log: log && log.a, rec: prog && prog.w[target] };
+    } finally {
+      stopListening();
+      dayNumber = realDay; listenWindowMs = realWindow; rec.retrieveFinalResult = realRetrieve;
+      if(soundEnabled !== realSound) setSound(realSound);
+      delete synth.speak;
+    }
+  }, [how, P, L]);
+  const accepted = await probe("accept");
+  const lastOf = r => (r.log || []).slice(-1)[0] || [];
+  const acc = lastOf(accepted);
+  check("אמירה שהתקבלה נרשמת ביומן: המילה, ניסיון ראשון, הניקוד ומה שהמנוע שמע",
+    acc[0] === 200 && acc[2] === accepted.target && acc[3] === "say" && acc[4] === "ok" && acc[5] === 1
+      && String(acc[6]).includes("t") && !String(acc[6]).includes("h") && acc[7] >= accepted.threshold && acc[8] === accepted.target
+      && acc[9] === accepted.presetId && acc[10] === accepted.size, accepted);
+  check("ובהתקדמות של המילה: הצלחה נקייה ראשונה",
+    !!accepted.rec && accepted.rec.got === 200 && accepted.rec.box === 1 && accepted.rec.k === 1, accepted.rec);
+  const heardFirst = await probe("heard");
+  check("מי ששמע את המילה לפני שאמר אותה — נרשם, ולא נחשב להצלחה נקייה",
+    String(lastOf(heardFirst)[6]).includes("h") && !!heardFirst.rec && heardFirst.rec.k === 0
+      && heardFirst.rec.got === undefined && heardFirst.rec.box === 0, heardFirst);
+  const twoMisses = await probe("twoMisses");
+  const missLog = (twoMisses.log || []).slice(-2);
+  check("שתי אמירות שלא התקבלו — שני ניסיונות ביומן, תיבה אחת למטה, והצלחה ישנה נשארת",
+    missLog.length === 2 && missLog.every(e => e[4] === "no") && missLog[0][5] === 1 && missLog[1][5] === 2
+      && !!twoMisses.rec && twoMisses.rec.box === 1 && twoMisses.rec.got === 90 && twoMisses.rec.n === 7, twoMisses);
+  check("והמילה תחזור מחר", !!twoMisses.rec && twoMisses.rec.due === 201, twoMisses.rec);
+  const toggled = await probe("toggle");
+  check("הדלקת השמע, שאומרת את המילה, נחשבת לשמיעה לפני הניסיון",
+    !!toggled.rec && toggled.rec.k === 0 && String(lastOf(toggled)[6]).includes("h"), toggled);
+  const rerendered = await probe("rerender");
+  check("מעבר לכתיבה וחזרה לא מוחק את מה שכבר קרה עם המילה",
+    !!rerendered.rec && rerendered.rec.k === 0 && rerendered.rec.box === 0 && String(lastOf(rerendered)[6]).includes("h"), rerendered);
+  const missThenHit = await probe("missThenHit");
+  check("הצלחה בניסיון השני נרשמת כניסיון 2, ולא כהצלחה נקייה",
+    lastOf(missThenHit)[4] === "ok" && lastOf(missThenHit)[5] === 2 && !!missThenHit.rec
+      && missThenHit.rec.k === 0 && missThenHit.rec.box === 0, missThenHit);
+  const skipRun = await probe("skip");
+  check("⏭️ נרשם ביומן כוויתור על המילה שהייתה על המסך, בלי התקדמות",
+    lastOf(skipRun)[4] === "skip" && lastOf(skipRun)[2] === skipRun.target && lastOf(skipRun)[5] === 1
+      && skipRun.rec == null, skipRun);
+  const cheerSkip = await probe("skipDuringCheer");
+  check("⏭️ בזמן ה-🎉 אינו ויתור",
+    (cheerSkip.log || []).filter(e => e[2] === cheerSkip.target).map(e => e[4]).join() === "ok", cheerSkip);
+  const twiceInCheer = await probe("sayDuringCheer");
+  check("אמירה נוספת בזמן ה-🎉 נרשמת ביומן ולא מזיזה שוב את הסולם",
+    !!twiceInCheer.rec && twiceInCheer.rec.n === 1 && twiceInCheer.rec.k === 1
+      && (twiceInCheer.log || []).filter(e => e[2] === twiceInCheer.target && e[4] === "ok").length === 2, twiceInCheer);
+  const fromList = await probe("listSpeak");
+  check("🔊 של המילה שעל המסך מתוך הרשימה נחשב לשמיעה לפני הניסיון",
+    !!fromList.rec && fromList.rec.k === 0 && String(lastOf(fromList)[6]).includes("h"), fromList);
+  const quietRun = await probe("quiet");
+  check("חלון שנגמר בלי מילה נרשם ביומן כשקט, ולא נוגע בהתקדמות",
+    lastOf(quietRun)[4] === "quiet" && lastOf(quietRun)[5] === 1 && quietRun.rec == null, quietRun);
+
+  // כתיבה: בלי 💡 מסמנת, עם 💡 לא.
+  const spelled = await page.evaluate(async ([P, L]) => {
+    const realDay = dayNumber;
+    dayNumber = () => 201;
+    // next() נמנע רק מהמילה הקודמת, ולכן מדלגים גם על מה שכבר נכתב כאן.
+    const used = [];
+    const spellNow = (hint) => {
+      do next(); while(used.includes(word()));
+      used.push(word());
+      if(hint) giveHint();
+      for(const ch of word().slice(hint ? 1 : 0)){
+        const tile = [...$("bank").children].find(t => !t.disabled && t.dataset.letter === ch);
+        tapTile(tile);
+      }
+      return word();
+    };
+    try{
+      localStorage.removeItem(P); localStorage.removeItem(L);
+      setMode("spell");
+      const plain = spellNow(false);
+      await new Promise(r => setTimeout(r, GOOD_MS + 200));
+      const helped = spellNow(true);
+      await new Promise(r => setTimeout(r, GOOD_MS + 200));
+      // מילה שגויה מלאה ואחריה הנכונה: המילה הפוכה, ולכן מילה עם לפחות שתי
+      // אותיות שונות שאינה פלינדרום, ושלא נכתבה כבר בבדיקה הזו.
+      let wrongFirst = null;
+      for(let k = 0; k < 20 && !wrongFirst; k++){
+        next();
+        const w = word();
+        if(w === plain || w === helped || new Set(w).size < 2 || [...w].reverse().join("") === w) continue;
+        for(const ch of [...w].reverse()) tapTile([...$("bank").children].find(t => !t.disabled && t.dataset.letter === ch));
+        await new Promise(r => setTimeout(r, WRONG_MS + 200));
+        // האותיות שנבדקו ונמצאו במקומן ננעלות, לא דווקא בתחילת המילה.
+        for(const [k, slot] of slotList().entries())
+          if(!slot.tile) tapTile([...$("bank").children].find(t => !t.disabled && t.dataset.letter === w[k]));
+        wrongFirst = w;
+      }
+      await new Promise(r => setTimeout(r, GOOD_MS + 200));
+      const prog = JSON.parse(localStorage.getItem(P) || "null"), log = JSON.parse(localStorage.getItem(L) || "null");
+      return { plain, helped, wrongFirst, plainRec: prog && prog.w[plain], helpedRec: prog && prog.w[helped],
+               wrongRec: prog && prog.w[wrongFirst], log: log && log.a.slice(-4, -2),
+               wrongLog: log && log.a.filter(e => e[2] === wrongFirst) };
+    } finally {
+      dayNumber = realDay;
+      setMode("say");
+    }
+  }, [P, L]);
+  check("כתיבה בלי 💡 מסמנת שהילד כותב את המילה, בלי לקדם את האמירה",
+    !!spelled.plainRec && spelled.plainRec.wrote === 201 && spelled.plainRec.box === 0 && spelled.plainRec.n === 0, spelled);
+  check("כתיבה עם 💡 נרשמת ביומן ולא מסמנת",
+    spelled.plain !== spelled.helped && spelled.helpedRec === undefined
+      && !!spelled.log && spelled.log[1][2] === spelled.helped && spelled.log[1][4] === "ok" && String(spelled.log[1][6]).includes("x"), spelled);
+  check("כתיבה נכונה אחרי מילה שגויה נרשמת ביומן ולא מסמנת",
+    !!spelled.wrongFirst && spelled.wrongRec == null && !!spelled.wrongLog
+      && spelled.wrongLog.map(e => e[4]).join() === "no,ok" && String(spelled.wrongLog[1][6]).includes("w"), spelled);
+
+  // שמירה: יומן חסום באורכו, ערך שאי אפשר לקרוא לא נדרס, מילה שחלון אחר כתב
+  // נשארת, ומקום שנגמר לא שובר את הניסיון.
+  const storage = await page.evaluate(([P, L]) => {
+    const w = word(), out = {};
+    localStorage.removeItem(P); localStorage.removeItem(L);
+    for(let k = 0; k < LOG_MAX + 50; k++) recordAttempt(w, "no", null, { tryNo: k + 1 });
+    const kept = (JSON.parse(localStorage.getItem(L) || "null") || { a: [] }).a;
+    out.logLength = kept.length;
+    out.oldestKept = kept.length && kept[0][5];
+    out.newestKept = kept.length && kept[kept.length - 1][5];
+    localStorage.setItem(P, "{bad");
+    localStorage.setItem(L, JSON.stringify({ v: 99, a: [] }));
+    recordAttempt(w, "ok", "clean", { tryNo: 1 });
+    out.keptBad = localStorage.getItem(P) === "{bad";
+    out.keptNewer = localStorage.getItem(L) === JSON.stringify({ v: 99, a: [] });
+    localStorage.setItem(P, JSON.stringify({ v: 1, w: { fromOtherTab: { met: 1, seen: 1, box: 0, due: 1, ok: [], n: 1, k: 0 } } }));
+    localStorage.removeItem(L);
+    recordAttempt(w, "ok", "clean", { tryNo: 1 });
+    const merged = JSON.parse(localStorage.getItem(P)).w;
+    out.otherTabKept = !!merged.fromOtherTab && !!merged[w];
+    const realSet = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(k, v){ if(k === L) throw new DOMException("full", "QuotaExceededError"); return realSet.call(this, k, v); };
+    try{
+      localStorage.removeItem(P);
+      try{ recordAttempt(w, "ok", "clean", { tryNo: 1 }); }catch(e){ out.threw = true; }
+      out.progressWhenLogFull = !!JSON.parse(localStorage.getItem(P) || "{\"w\":{}}").w[w];
+      Storage.prototype.setItem = function(){ throw new DOMException("full", "QuotaExceededError"); };
+      try{ recordAttempt(w, "ok", "clean", { tryNo: 1 }); }catch(e){ out.threw = true; }
+    } finally { Storage.prototype.setItem = realSet; }
+    const seedLog = () => localStorage.setItem(L, JSON.stringify({ v: 1, a: Array.from({ length: 10 }, (_, k) => [1, 0, "old", "say", "no", k + 1, "", null, "", "normal", 1]) }));
+    const tooLong = v => { try{ return JSON.parse(v).a.length > 6; }catch(e){ return false; } };
+    localStorage.removeItem(P);
+    seedLog();
+    Storage.prototype.setItem = function(k, v){ if(k === L && tooLong(v)) throw new DOMException("full", "QuotaExceededError"); return realSet.call(this, k, v); };
+    try{ recordAttempt(w, "no", null, { tryNo: 1 }); } finally { Storage.prototype.setItem = realSet; }
+    const halved = JSON.parse(localStorage.getItem(L)).a;
+    out.halvedLength = halved.length;
+    out.halvedNewest = halved[halved.length - 1][2];
+    localStorage.removeItem(P);
+    seedLog();
+    Storage.prototype.setItem = function(k, v){
+      if(k === P && tooLong(localStorage.getItem(L))) throw new DOMException("full", "QuotaExceededError");
+      return realSet.call(this, k, v);
+    };
+    try{ recordAttempt(w, "ok", "clean", { tryNo: 1 }); } finally { Storage.prototype.setItem = realSet; }
+    out.progressAfterHalving = !!(JSON.parse(localStorage.getItem(P) || "null") || { w: {} }).w[w];
+    out.logAfterHalving = JSON.parse(localStorage.getItem(L)).a.length;
+    localStorage.removeItem(P); localStorage.removeItem(L);
+    const realChild = childId;
+    childId = "ghostchild";
+    try{ recordAttempt(w, "ok", "clean", { tryNo: 1 }); } finally { childId = realChild; }
+    out.ghostKeys = Object.keys(localStorage).filter(k => k.endsWith("@ghostchild"));
+    localStorage.removeItem(P); localStorage.removeItem(L);
+    return out;
+  }, [P, L]);
+  const logMax = await page.evaluate(() => LOG_MAX);
+  check("היומן שומר רק את הניסיונות האחרונים",
+    storage.logLength === logMax && storage.oldestKept === 51 && storage.newestKept === logMax + 50, storage);
+  check("ערך שאי אפשר לקרוא, או מגרסה חדשה יותר, לא נדרס", storage.keptBad && storage.keptNewer, storage);
+  check("מילה שחלון אחר כתב נשארת אחרי ניסיון כאן", storage.otherTabKept, storage);
+  check("כשאין מקום ליומן ההתקדמות עדיין נשמרת, וכשאין מקום בכלל שום דבר לא נזרק",
+    storage.progressWhenLogFull && !storage.threw, storage);
+  check("יומן שאין לו מקום מתקצר לחצי, והניסיון החדש נשמר בו",
+    storage.halvedLength === 5 && storage.halvedNewest !== "old", storage);
+  check("כשאין מקום להתקדמות, היומן מתקצר והיא נשמרת",
+    storage.progressAfterHalving && storage.logAfterHalving === 6, storage);
+  check("ילד שנמחק בחלון אחר לא מקבל שום מפתח", storage.ghostKeys.length === 0, storage);
+  await page.waitForTimeout(500);
+
+  // --------------------------------------------------------------
   group("כפתור ההקשבה");
   // ילדים מחזיקים את הכפתור בזמן שהם מדברים, ונוגעים בו שוב כדי "לסיים". לכן
   // לחוץ ומקשיב הם אותו מצב, ואדום נשאר אדום תחת האצבע. הצבע נקרא אחרי
@@ -1552,6 +1817,8 @@ async function main(){
   }));
   const noaId = added.reg && added.reg[0] && added.reg[0].id;
   const onNoa = await childState();
+  check("➕ לא מעתיק לילד החדש את ההתקדמות ואת היומן",
+    await page.evaluate(id => !["say-the-word-progress@", "say-the-word-log@"].some(k => localStorage.getItem(k + id) !== null), noaId));
   check("➕ מוסיף שם ועובר אליו בלי לטעון את הדף מחדש",
     added.sameDocument && Array.isArray(added.reg) && added.reg.length === 1 && added.reg[0].name === "נועה" && /^[a-z0-9]+$/.test(noaId)
       && onNoa.childId === noaId && added.pointer === noaId, { added, onNoa });
@@ -1683,6 +1950,10 @@ async function main(){
     fullAdd.childId === "" && fullAdd.notice.cls.includes("error") && await registry() === regFull, fullAdd);
 
   // מחיקה: ביטול לא משנה כלום, ואישור מוחק את השם ואת כל מה שנשמר לו.
+  await page.evaluate(id => {
+    localStorage.setItem("say-the-word-progress@" + id, JSON.stringify({ v: 1, w: {} }));
+    localStorage.setItem("say-the-word-log@" + id, JSON.stringify({ v: 1, a: [] }));
+  }, marked.id);
   await tapChild(marked.id);
   page.once("dialog", d => d.dismiss());
   await page.click("#deleteChildBtn");
@@ -1697,6 +1968,8 @@ async function main(){
   }
   const deleted = await childState();
   const leftover = await page.evaluate(id => Object.keys(localStorage).filter(k => k.endsWith("@" + id)), marked.id);
+  check("מחיקה מוחקת גם את ההתקדמות ואת היומן של הילד",
+    await page.evaluate(id => ["say-the-word-progress@", "say-the-word-log@"].every(k => localStorage.getItem(k + id) === null), marked.id));
   check("מחיקה מוחקת את השם ואת ההגדרות שלו, ורק אותם",
     await registry() === regBefore && leftover.length === 0 && deleted.childId === "" && deleted.del === null
       && await legacyRaw() === legacyBefore && JSON.stringify(await childKeys(noaId)) === JSON.stringify(afterReset),
