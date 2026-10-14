@@ -557,20 +557,20 @@
         <p id="matchLevelDesc" class="match-desc"></p>
 
         <div class="match-preset-group" role="radiogroup" aria-label="רמת התאמה לקול הילד">
-          <button type="button" class="match-btn" id="btnLevelLenient" aria-label="רמת התאמה סלחנית לפעוטות">
+          <button type="button" class="match-btn" id="btnLevelLenient" aria-label="רמת התאמה סלחנית: למתחילים, לחדר רועש או לילד שמתוסכל">
             <span class="match-btn-icon">🌱</span>
             <span class="match-btn-name">סלחנית</span>
-            <span class="match-btn-sub">לפעוטות ומתחילים</span>
+            <span class="match-btn-sub">מתחילים, חדר רועש</span>
           </button>
           <button type="button" class="match-btn" id="btnLevelNormal" aria-label="רמת התאמה רגילה ומאוזנת">
             <span class="match-btn-icon">⭐</span>
             <span class="match-btn-name">רגילה</span>
             <span class="match-btn-sub">מאוזן (מומלץ)</span>
           </button>
-          <button type="button" class="match-btn" id="btnLevelStrict" aria-label="רמת התאמה מדויקת וקפדנית">
+          <button type="button" class="match-btn" id="btnLevelStrict" aria-label="רמת התאמה מדויקת: לחדר שקט ולילד בטוח בעצמו">
             <span class="match-btn-icon">🎯</span>
             <span class="match-btn-name">מדויקת</span>
-            <span class="match-btn-sub">למתקדמים</span>
+            <span class="match-btn-sub">חדר שקט</span>
           </button>
         </div>
       </div>
@@ -730,17 +730,17 @@ const MATCH_KEY = "speech_match_config";
 
 // התיאורים לא מבטיחים בדיקת הגייה: בדקדוק סגור המנוע מחזיר את מילת היעד
 // בביטחון מלא גם על הגייה שגויה, כך שגם הסף הגבוה מסנן רק חלק מהשגיאות.
-// listenMs: מי שדורש דיוק גבוה גם מדבר בבירור ומהר יותר, ולילד קטן מגיע יותר
+// listenMs: מי שדורש דיוק גבוה גם מדבר בבירור ומהר יותר, ולמתחיל מגיע יותר
 // זמן. why: ברמה המדויקת מסבירים לילד למה זה לא התקבל, אחרת "נסו שוב" נשמע
 // שרירותי.
 const PRESETS = [
   { id: "lenient", btn: "btnLevelLenient", badge: "🌱 סלחנית", threshold: 45, listenMs: 4650,
-    desc: "סלחנית: מתאים לפעוטות ולמתחילים. מקבלת את המילה גם כשההגייה לא מדויקת, ולפעמים גם מילה דומה מהרשימה." },
+    desc: "סלחנית: למתחילים, לחדר רועש, או לילד שמתוסכל מהר. מקבלת את המילה גם כשההגייה לא מדויקת, ולפעמים גם מילה דומה מהרשימה." },
   { id: "normal",  btn: "btnLevelNormal",  badge: "⭐ רגילה",  threshold: 70, listenMs: 4100,
     desc: "רגילה (ברירת מחדל): המילה הנכונה, כשהיא נשמעת די ברור. דוחה חלק מההגיות השגויות." },
   { id: "strict",  btn: "btnLevelStrict",  badge: "🎯 מדויקת", threshold: 90, listenMs: 3600,
     why: "בדיוק גבוה נדרשת הגייה ברורה. נסו שוב!",
-    desc: "מדויקת: מתאים לילדים מתקדמים. המילה צריכה להישמע ברור מאוד. תופסת חלק משגיאות ההגייה, לא את כולן, ולפעמים דוחה גם הגייה נכונה." }
+    desc: "מדויקת: לחדר שקט ולילד שכבר בטוח בעצמו. המילה צריכה להישמע ברור מאוד. תופסת חלק משגיאות ההגייה, לא את כולן, ולפעמים דוחה גם הגייה נכונה." }
 ];
 const DEFAULT_PRESET = PRESETS[1];
 
