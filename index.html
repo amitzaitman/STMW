@@ -113,6 +113,9 @@
   @keyframes shake{25%{transform:translateX(-6px)} 75%{transform:translateX(6px)}}
   .btn-icon{font-size:34px; line-height:1; display:inline-block}
   #say .btn-icon{font-size:42px}
+  /* פעימה אחת אחרי חלון הקשבה שנגמר בלי מילה. לפני .listening, כדי
+     שהקשבה שמתחילה באמצע הפעימה תיראה כהקשבה. */
+  #say.nudge .btn-icon{animation:micPulse .3s 2 alternate ease-in-out}
   #say.listening .btn-icon{animation:micPulse .7s infinite alternate ease-in-out}
   @keyframes micPulse{0%{transform:scale(1)} 100%{transform:scale(1.25)}}
   #loading{width:100%; max-width:520px; display:flex; flex-direction:column; gap:6px}
@@ -817,12 +820,15 @@ function word(){ return words[i].word; }
 // מתקדם בכל הצגה, כדי שהמעבר ש-good() מזמן אחרי ה-🎉 יוותר כשמשהו אחר כבר
 // הציג מילה: ⏭️ של הילד, או מורה שקפצה למילה מהרשימה.
 let shownCount = 0;
+// כמה אמירות של המילה שעל המסך לא התקבלו. מתאפס בכל הצגה (ראו notYet).
+let sayMisses = 0;
 function show(){
   // הקשבה שהתחילה על המילה הקודמת נעצרת בשקט, כמו במעבר לכתיבה. אחרת שאר
   // החלון, ותוצאה סופית שמגיעה באיחור, נשפטים מול המילה החדשה, והילד שומע
   // "נסו שוב" על מילה שלא ניסה.
   stopListening();
   shownCount++;
+  sayMisses = 0;
   $("picture").textContent = words[i].emoji;
   $("picture").className = "";
   $("word").textContent = word();
@@ -1183,9 +1189,10 @@ function releaseMic(){
   if(micStream){ micStream.getTracks().forEach(t => t.stop()); micStream = null; }
 }
 
+// הקשבה שנקטעה כי הדף ירד מהמסך אינה ניסיון של הילד.
 document.addEventListener("visibilitychange", ()=>{
   if(document.hidden){
-    if(active) finish(false);
+    stopListening();
     releaseMic();
   }
 });
@@ -1216,20 +1223,33 @@ async function listen(){
   }
 
   setNote("");
+  // הקראה שעוד נשמעת — המילה אחרי אמירה שלא התקבלה, או 🔊 שהילד לחץ רגע
+  // לפני — נעצרת, אחרת המיקרופון שומע את הדף אומר את המילה ומזכה בה.
+  // echoCancellation לא מבטל את speechSynthesis בכל דפדפן.
+  if("speechSynthesis" in window) speechSynthesis.cancel();
   active = true;
+  $("say").classList.remove("nudge");
   $("say").classList.add("listening");
   timer = setTimeout(closeWindow, listenWindowMs());
 }
 
 // מילה שנאמרה ממש בסוף החלון עוד לא קיבלה תוצאה סופית: המנוע שולח אותה
 // מעצמו רק אחרי שהוא שומע שקט. לכן בסוף החלון מבקשים ממנו את מה שנשמע עד
-// עכשיו, והניסיון עדיין פעיל כשהתשובה מגיעה. אין תשובה תוך FINAL_GRACE_MS,
-// או שהיא לא עוברת את הרף — כישלון.
+// עכשיו, והניסיון עדיין פעיל כשהתשובה מגיעה. תשובה שלא עוברת את הרף היא
+// אמירה שלא התקבלה. אין תשובה תוך FINAL_GRACE_MS — ההקשבה נעצרת בשקט ולא
+// נחשבת ניסיון: ילד שעוד מחפש את המילה, או שדיבר חלש מדי, לא טעה. 🎤 פועם
+// פעם אחת, כדי שיידע שאפשר לנסות שוב.
 const FINAL_GRACE_MS = 500;
 function closeWindow(){
   if(!active) return;
   if(rec) rec.retrieveFinalResult();
-  timer = setTimeout(()=>{ if(active) finish(false); }, FINAL_GRACE_MS);
+  timer = setTimeout(()=>{ if(stopListening()) nudgeSay(); }, FINAL_GRACE_MS);
+}
+function nudgeSay(){
+  const say = $("say");
+  say.classList.remove("nudge");
+  void say.offsetWidth;   // בלי זה פעימה שנייה ברצף לא מתחילה מחדש
+  say.classList.add("nudge");
 }
 
 // מחזיר false אם לא הייתה הקשבה לעצור.
@@ -1245,7 +1265,7 @@ function stopListening(){
 
 function finish(ok){
   if(!stopListening()) return;
-  ok ? good() : again(preset.why);
+  ok ? good() : notYet();
 }
 
 // שלושה כוכבים מתחלפים במדליה, וחמישה מכל סמל אחר בסמל שמעליו — מדליות
@@ -1270,8 +1290,9 @@ function renderScore(){
 }
 
 // כל הצלחה שווה כוכב אחד, באמירה ובכתיבה, עם רמז או בלי.
-// המשוב הוא הצבע, ה-🎉 והצליל, בלי הקראה. ה-🎉 נשאר כשנייה ואז עוברים למילה
-// הבאה; האדום של ניסיון נוסף נשאר מעט יותר, כדי שיספיקו לראות אותו.
+// המשוב הוא הצבע, ה-🎉 והצליל. ההקראה היחידה היא המילה עצמה, באנגלית, אחרי
+// אמירה שלא התקבלה (notYet). ה-🎉 נשאר כשנייה ואז עוברים למילה הבאה; האדום
+// של ניסיון נוסף נשאר מעט יותר, כדי שיספיקו לראות אותו.
 const GOOD_MS = 1000, AGAIN_MS = 1300;
 function good(){
   scores[mode]++;
@@ -1281,6 +1302,22 @@ function good(){
   const mine = shownCount;
   chime(CHEER);
   setTimeout(()=>{ if(mine === shownCount) next(); }, GOOD_MS);
+}
+// אמירה שלא התקבלה. בפעם הראשונה "נסו שוב" כמו בכתיבה, ואחרי הצליל המילה
+// נאמרת באנגלית (speak שותקת כשהשמע כבוי), כדי שהילד ישמע אותה לפני הניסיון
+// הבא. ילד שכבר לחץ שוב על 🎤 לא שומע אותה באמצע. בפעם השנייה עוברים למילה
+// אחרת בלי סימן: הרבה מהאמירות שלא מתקבלות הן של המנוע ולא של הילד, ושלישית
+// רק מתסכלת. המילה חוזרת בהגרלה.
+const SAY_TRIES = 2;
+function notYet(){
+  sayMisses++;
+  const mine = shownCount;
+  if(sayMisses < SAY_TRIES){
+    again(preset.why);
+    setTimeout(()=>{ if(mine === shownCount && !active) speak(word(), EN); }, CHIME_SECONDS * 1000);
+    return;
+  }
+  setTimeout(()=>{ if(mine === shownCount) next(); }, AGAIN_MS);
 }
 // why: הסבר מתחת לתמונה, כשיש מה להסביר.
 function again(why = ""){
@@ -1777,6 +1814,7 @@ function playCurrentWord(){
   speak(word(), EN);
 }
 
+$("say").addEventListener("animationend", ()=> $("say").classList.remove("nudge"));
 $("playWord").addEventListener("click", playCurrentWord);
 $("picture").addEventListener("click", playCurrentWord);
 $("toggleSound").addEventListener("click", toggleSound);

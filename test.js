@@ -1139,7 +1139,7 @@ async function main(){
     for(const [type, detail] of evs)
       rec.dispatchEvent(new CustomEvent(type, { detail: JSON.parse(JSON.stringify(detail).replaceAll("TARGET", target)) }));
     const out = { active, won: scores.say > before };
-    if(active) finish(false);
+    stopListening();
     return out;
   }, events);
   const said = (w, conf = 1) => ["result", { result: { result: [{ word: w, conf }], text: w } }];
@@ -1158,27 +1158,39 @@ async function main(){
   // אותה רק דרך retrieveFinalResult. כאן ה-recognizer מדומה בדיוק כך: עונה
   // רק כשמבקשים, ובאיחור קטן, כמו ה-worker.
   const atWindowEnd = async answer => await page.evaluate(async answer => {
-    const realWindow = listenWindowMs, realRetrieve = rec.retrieveFinalResult;
+    const realWindow = listenWindowMs, realRetrieve = rec.retrieveFinalResult, realAgain = again;
+    const say = $("say"), sayClasses = [];
+    let agains = 0;
     listenWindowMs = () => 100;
+    again = why => { agains++; return realAgain(why); };
     rec.retrieveFinalResult = function(){
       if(answer) setTimeout(() => this.dispatchEvent(new CustomEvent("result",
         { detail: { result: { result: [{ word: answer === "TARGET" ? word() : answer, conf: 1 }] } } })), 50);
     };
+    const obs = new MutationObserver(() => sayClasses.push(say.className));
+    obs.observe(say, { attributes: true, attributeFilter: ["class"] });
     try{
-      const before = scores.say;
+      const before = scores.say, misses = sayMisses;
       await listen();
       await new Promise(r => setTimeout(r, 1500));
-      return { active, won: scores.say > before };
+      return { active, won: scores.say > before, agains, missed: sayMisses - misses,
+               nudged: sayClasses.some(c => c.split(" ").includes("nudge")) };
     } finally {
+      obs.disconnect();
       listenWindowMs = realWindow;
       rec.retrieveFinalResult = realRetrieve;
-      if(active) finish(false);
+      again = realAgain;
+      stopListening();
     }
   }, answer);
   const lateRight = await atWindowEnd("TARGET");
   check("מילה נכונה בסוף החלון מזכה", lateRight.won && !lateRight.active, lateRight);
+  // ילד שעוד מחפש את המילה, או שדיבר חלש מדי, לא טעה. החלון נסגר בלי
+  // "נסו שוב", ו-🎤 פועם פעם אחת כדי שיידע שאפשר לנסות שוב.
   const lateNothing = await atWindowEnd(null);
-  check("בלי תשובה מהמנוע החלון נסגר בכישלון", !lateNothing.won && !lateNothing.active, lateNothing);
+  check("בלי תשובה מהמנוע החלון נסגר בלי \"נסו שוב\" ולא נחשב ניסיון",
+    !lateNothing.won && !lateNothing.active && lateNothing.agains === 0 && lateNothing.missed === 0, lateNothing);
+  check("חלון שנגמר בלי מילה — 🎤 פועם פעם אחת", lateNothing.nudged && !lateRight.nudged, { lateNothing, lateRight });
 
   // מעבר לכתיבה באמצע הקשבה עוצר אותה בשקט: זה לא ניסיון שנכשל, ו"נסו שוב"
   // היה נשמע כאילו הילד טעה.
@@ -1234,7 +1246,7 @@ async function main(){
       listenWindowMs = real.listenWindowMs;
       again = real.again;
       good = real.good;
-      if(active) finish(false);
+      stopListening();
       // הסדר המקורי חוזר, כדי שהקבוצות הבאות יראו את אותה רשימה.
       if(words !== real.words) applyWords(real.words, real.words.indexOf(words[i]));
     }
@@ -1253,6 +1265,127 @@ async function main(){
   // good() ו-again() מזמנים מעברים והודעות; שלא ידרסו את הקבוצה הבאה.
   await page.waitForTimeout(1500);
   await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
+
+  // אמירה שלא התקבלה: בפעם הראשונה "נסו שוב" כמו היום, ואחרי הצליל, עם שמע,
+  // המילה נאמרת פעם אחת באנגלית. בפעם השנייה עוברים למילה אחרת בלי סימן.
+  // הדיבור נספר ב-speechSynthesis עצמו: speak() נקראת גם כשהשמע כבוי, ופשוט
+  // חוזרת. כל מקרה מתחיל ממילה חדשה ומחכה עד שהטיימרים שלו נגמרים.
+  const notYetRun = scenario => page.evaluate(async scenario => {
+    const real = { again, chime, soundEnabled }, synth = speechSynthesis, pic = $("picture");
+    const log = { again: 0, chime: 0, spoken: [], cancels: 0, classes: [] };
+    again = why => { log.again++; return real.again(why); };
+    chime = sound => { log.chime++; return real.chime(sound); };
+    synth.speak = u => { log.spoken.push([u.text, u.lang]); };
+    synth.cancel = () => { log.cancels++; };
+    const obs = new MutationObserver(() => log.classes.push(pic.className));
+    obs.observe(pic, { attributes: true, attributeFilter: ["class"] });
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const miss = async () => {
+      await listen();
+      rec.dispatchEvent(new CustomEvent("result", { detail: { result: { result: [{ word: "zzz", conf: 1 }], text: "zzz" } } }));
+    };
+    const mark = () => ({ again: log.again, chime: log.chime, spoken: log.spoken.length, classes: log.classes.length });
+    try{
+      soundEnabled = scenario !== "muted";
+      show();
+      const out = { start: shownCount, target: word() };
+      if(scenario === "first" || scenario === "muted"){
+        await miss();
+        out.misses = sayMisses;
+        await wait(AGAIN_MS + 300);
+        out.shown = shownCount;
+      } else if(scenario === "second"){
+        await miss();
+        await wait(AGAIN_MS + 100);
+        out.before = mark();
+        await miss();
+        await wait(AGAIN_MS + 300);
+        out.after = mark();
+        out.shown = shownCount;
+      } else if(scenario === "retry"){
+        await miss();
+        await listen();
+        await wait(CHIME_SECONDS * 1000 + 200);
+        out.listening = active;
+      } else if(scenario === "reset"){
+        await miss();
+        next();
+        out.next = shownCount;
+        await miss();
+        await wait(AGAIN_MS + 300);
+        out.shown = shownCount;
+        out.misses = sayMisses;
+      } else if(scenario === "skip"){
+        await miss();
+        await wait(AGAIN_MS + 100);
+        await miss();
+        next();
+        out.next = shownCount;
+        await wait(AGAIN_MS + 300);
+        out.shown = shownCount;
+      } else if(scenario === "cancel"){
+        const before = log.cancels;
+        await listen();
+        out.cancelled = log.cancels - before;
+      }
+      return { ...out, log };
+    } finally {
+      obs.disconnect();
+      stopListening();
+      again = real.again;
+      chime = real.chime;
+      soundEnabled = real.soundEnabled;
+      delete synth.speak;
+      delete synth.cancel;
+    }
+  }, scenario);
+  const firstMiss = await notYetRun("first");
+  check("אמירה ראשונה שלא התקבלה — \"נסו שוב\" כמו היום, ונשארים על המילה",
+    firstMiss.misses === 1 && firstMiss.shown === firstMiss.start && firstMiss.log.again === 1
+      && firstMiss.log.classes.includes("again"), firstMiss);
+  check("עם שמע, אחרי אמירה ראשונה שלא התקבלה המילה נאמרת פעם אחת באנגלית",
+    JSON.stringify(firstMiss.log.spoken) === JSON.stringify([[firstMiss.target, "en-US"]]), firstMiss.log);
+  const mutedMiss = await notYetRun("muted");
+  check("בלי שמע אין הקראה אחרי אמירה שלא התקבלה",
+    mutedMiss.misses === 1 && mutedMiss.log.spoken.length === 0, mutedMiss.log);
+  const secondMiss = await notYetRun("second");
+  check("אמירה שנייה שלא התקבלה — עוברים למילה אחרת בלי אדום, בלי צליל ובלי הקראה",
+    secondMiss.shown === secondMiss.start + 1 && secondMiss.after.again === secondMiss.before.again
+      && secondMiss.after.chime === secondMiss.before.chime && secondMiss.after.spoken === secondMiss.before.spoken
+      && !secondMiss.log.classes.slice(secondMiss.before.classes).includes("again"), secondMiss);
+  const retried = await notYetRun("retry");
+  check("מי שכבר לוחץ שוב על 🎤 לא שומע את ההקראה באמצע",
+    retried.listening && retried.log.spoken.length === 0, retried);
+  const perWord = await notYetRun("reset");
+  check("ספירת האמירות שלא התקבלו מתחילה מחדש בכל מילה",
+    perWord.shown === perWord.next && perWord.misses === 1, perWord);
+  const skippedAfter = await notYetRun("skip");
+  check("מילה שנבחרה ב-⏭️ אחרי אמירה שנייה שלא התקבלה לא מוחלפת",
+    skippedAfter.shown === skippedAfter.next, skippedAfter);
+  const cancelledSpeech = await notYetRun("cancel");
+  check("נגיעה ב-🎤 עוצרת הקראה שעוד נשמעת", cancelledSpeech.cancelled === 1, cancelledSpeech);
+  // ירידה מהמסך משחררת את המיקרופון, ולכן היא אחרונה ומחזירה אותו בסוף.
+  const hiddenMid = await page.evaluate(async () => {
+    const realAgain = again;
+    let agains = 0;
+    again = why => { agains++; return realAgain(why); };
+    try{
+      show();
+      const misses = sayMisses;
+      await listen();
+      const was = active;
+      Object.defineProperty(document, "hidden", { value: true, configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+      return { was, active, agains, missed: sayMisses - misses };
+    } finally {
+      again = realAgain;
+      Object.defineProperty(document, "hidden", { value: false, configurable: true });
+      await ensureAudio();
+    }
+  });
+  check("ירידה מהמסך באמצע הקשבה לא נחשבת ניסיון",
+    hiddenMid.was && !hiddenMid.active && hiddenMid.agains === 0 && hiddenMid.missed === 0, hiddenMid);
+  await page.waitForTimeout(500);
 
   // --------------------------------------------------------------
   group("כפתור ההקשבה");
