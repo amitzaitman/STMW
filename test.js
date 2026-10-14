@@ -97,6 +97,16 @@ async function main(){
         .observe(icon, { childList: true, characterData: true, subtree: true });
     });
   });
+  // סבב שנגמר מציג מסך סיום ומסתיר את 🎤. רוב הקבוצות קוראות ל-next() שוב
+  // ושוב בלי קשר לסבבים, ולכן בהן הילד לוחץ ▶ מיד, בכל טעינה של הדף.
+  // קבוצת הסבב מחזירה את מסך הסיום האמיתי, realShowRoundEnd, בזמן שהיא רצה.
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      if(typeof showRoundEnd !== "function") return;
+      window.realShowRoundEnd = showRoundEnd;
+      showRoundEnd = () => newRound();
+    });
+  });
   // טעינה מחדש של הדף הראשי, עם זמן לסקריפט שלו לעלות.
   const reload = () => page.reload({ waitUntil: "domcontentloaded" }).then(() => page.waitForTimeout(800));
 
@@ -593,38 +603,54 @@ async function main(){
   check("רשימה מחלון אחר לא נשמרת בחזרה", keptWord.notWrittenBack && lostWord.notWrittenBack, { keptWord, lostWord });
 
   // --------------------------------------------------------------
-  group("כוכבים ומדליות");
-  // שורת התגמול לא גדלה בלי גבול ולא קופאת: שלוש הצלחות מתחלפות במדליה,
-  // וחמישה מכל סמל אחר בסמל שמעליו — גביע, כתר, יהלום.
-  const row = async n => await page.evaluate(count => {
-    scores[mode] = 0;
-    for(let k = 0; k < count; k++) good();
-    return $("stars").textContent;
-  }, n);
-  check("כל הצלחה מוסיפה כוכב", await row(1) === "⭐" && await row(2) === "⭐⭐");
-  check("שלושה כוכבים מתחלפים במדליה", await row(3) === "🏅" && await row(4) === "🏅⭐");
-  check("חמש מדליות מתחלפות בגביע", await row(15) === "🏆" && await row(16) === "🏆⭐");
-  check("ארבע מדליות ושני כוכבים לפני הגביע", await row(14) === "🏅🏅🏅🏅⭐⭐");
-  const crown = [await row(75), await row(76)];
-  check("חמישה גביעים מתחלפים בכתר", crown[0] === "👑" && crown[1] === "👑⭐", crown);
-  const diamond = await row(375);
-  check("חמישה כתרים מתחלפים ביהלום", diamond === "💎", diamond);
-  const beforeDiamond = await row(374);
-  check("ארבעה מכל סמל ושני כוכבים לפני היהלום", beforeDiamond === "👑👑👑👑🏆🏆🏆🏆🏅🏅🏅🏅⭐⭐", beforeDiamond);
-  // כל good() מזמן גם מעבר למילה הבאה, ו-show() מנקה את שורת ההודעה.
-  // בלי ההמתנה הזאת המעברים של הבדיקה הזאת מוחקים את ההודעה שהבדיקה
-  // הבאה מציגה, והיא נופלת בלי קשר למה שהיא באמת בודקת.
-  await page.waitForTimeout(1200);
+  group("שורת התמונות");
+  // השורה למעלה מראה את המילים שהילד אמר או כתב בסבב הזה בניסיון הראשון,
+  // בלי עזרה: התמונות של המילים עצמן, ולא כוכבים שנספרים. הצלחה עם עזרה
+  // מקבלת 🎉 וצליל, בלי תמונה. ההחלטה עוברת דרך finish(), כמו מהמזהה, כבר
+  // לפני שהמודל נטען. כל מקרה מתחיל סבב חדש ומחכה למעבר ש-good() מזמן.
+  const rowAfter = how => page.evaluate(async how => {
+    const synth = speechSynthesis, realSound = soundEnabled;
+    synth.speak = () => {};
+    const accept = () => { active = true; finish(true, { score: 100 }); };
+    try{
+      newRound();
+      const out = { target: word(), emoji: words[i].emoji };
+      if(how === "clean" || how === "fresh") accept();
+      if(how === "heard"){ playCurrentWord(); accept(); }
+      if(how === "second"){ active = true; finish(false, { score: 0 }); accept(); }
+      if(how === "twice"){ accept(); turn.word = null; show(); accept(); }
+      out.card = $("picture").textContent;
+      out.row = $("roundRow").textContent;
+      if(how === "fresh"){ newRound(); out.fresh = $("roundRow").textContent; }
+      await new Promise(r => setTimeout(r, Math.max(GOOD_MS, AGAIN_MS) + 300));
+      return out;
+    } finally {
+      if(soundEnabled !== realSound) setSound(realSound);
+      delete synth.speak;
+    }
+  }, how);
+  const cleanRow = await rowAfter("clean");
+  check("מילה שנאמרה בניסיון הראשון בלי עזרה — 🎉, והתמונה שלה בשורה",
+    cleanRow.card === "🎉" && cleanRow.row === cleanRow.emoji, cleanRow);
+  const heardRow = await rowAfter("heard");
+  check("הצלחה אחרי ששמעו את המילה — 🎉 בלי תמונה בשורה", heardRow.card === "🎉" && heardRow.row === "", heardRow);
+  const secondRow = await rowAfter("second");
+  check("הצלחה בניסיון השני — 🎉 בלי תמונה בשורה", secondRow.card === "🎉" && secondRow.row === "", secondRow);
+  const twiceRow = await rowAfter("twice");
+  check("מילה שחוזרת בסבב נכנסת לשורה פעם אחת", twiceRow.row === twiceRow.emoji, twiceRow);
+  const freshRow = await rowAfter("fresh");
+  check("סבב חדש מתחיל בשורה ריקה", freshRow.row === freshRow.emoji && freshRow.fresh === "", freshRow);
 
   // הכפתורים שבצדי הסרגל מונחים מעליו, ושורה שנכנסת מתחתם מסתירה דווקא
-  // את הכוכב שהילד הרגע הרוויח. בודקים כל סמל בנפרד, ברוחב של טלפון צר:
-  // המלבן של השורה כולה רחב מהסמלים שבה, והשאלה היא איפה הם.
-  const starsLayout = (n, avoid) => page.evaluate(([n, avoid]) => {
-    scores[mode] = n;
-    renderScore();
+  // את התמונה שהילד הרגע הרוויח. בודקים כל תמונה בנפרד, ברוחב של טלפון צר:
+  // המלבן של השורה כולה רחב מהתמונות שבה, והשאלה היא איפה הן. הרחבות במאגר
+  // הן אלה שבנויות מכמה אימוג'ים, כמו 👩‍⚕️.
+  const rowLayout = (n, avoid) => page.evaluate(([n, avoid]) => {
+    round.row = PAIRS.slice().sort((a, b) => b[0].length - a[0].length).slice(0, n).map(p => p[1]);
+    renderRow();
     const box = r => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
     const others = avoid.map(id => box($(id).getBoundingClientRect()));
-    const text = $("stars").firstChild;
+    const text = $("roundRow").firstChild;
     const glyphs = [...new Intl.Segmenter().segment(text.data)].map(({ index, segment }) => {
       const range = document.createRange();
       range.setStart(text, index);
@@ -634,43 +660,47 @@ async function main(){
     const hits = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
     const bad = glyphs.filter(g => g.left < 0 || g.top < 0 || g.right > innerWidth || g.bottom > innerHeight
                                    || others.some(b => hits(g, b)));
-    return { word: word(), glyphs: glyphs.length, bad, others };
+    const lines = new Set(glyphs.map(g => Math.round(g.top))).size;
+    return { word: word(), glyphs: glyphs.length, lines, bad, others };
   }, [n, avoid]);
+  const roundSize = await page.evaluate(() => ROUND_SIZE);
   const viewport = page.viewportSize();
   await page.setViewportSize({ width: 360, height: 640 });
-  for(const n of [14, 374]){
-    const layout = await starsLayout(n, ["openSettings", "openFeedback", "toggleSound"]);
-    check(`בטלפון צר כל סמל בשורה על המסך ולא מתחת לכפתורים (${n})`,
-          layout.glyphs > 0 && layout.bad.length === 0, layout);
-  }
+  const fullRow = await rowLayout(roundSize, ["openSettings", "openFeedback", "toggleSound"]);
+  check("בטלפון צר סבב שלם נכנס בשורה אחת, על המסך ולא מתחת לכפתורים",
+        fullRow.glyphs === roundSize && fullRow.lines === 1 && fullRow.bad.length === 0, fullRow);
+  // מילים שמורה קפצה אליהן מתווספות לסבב, ואז השורה נשברת.
+  const longRow = await rowLayout(2 * roundSize, ["openSettings", "openFeedback", "toggleSound"]);
+  check("שורה ארוכה מסבב נשברת, וכל תמונה על המסך ולא מתחת לכפתורים",
+        longRow.glyphs === 2 * roundSize && longRow.bad.length === 0, longRow);
   // והמרווח ליד ⚙️💬 רחב מזה שליד 🔇, אבל שורה קצרה לא זזה בגללו הצידה:
   // היא ממורכזת כמו המתג שמתחתיה, כמו שההערה ב-#topBar מבטיחה.
   const centred = await page.evaluate(() => {
-    scores[mode] = 2;
-    renderScore();
+    round.row = ["dog", "cat"];
+    renderRow();
     const range = document.createRange();
-    range.selectNodeContents($("stars"));
+    range.selectNodeContents($("roundRow"));
     const r = range.getBoundingClientRect(), m = $("modeSwitch").getBoundingClientRect();
-    return { row: $("stars").textContent, at: (r.left + r.right) / 2, modeSwitch: (m.left + m.right) / 2 };
+    return { row: $("roundRow").textContent, at: (r.left + r.right) / 2, modeSwitch: (m.left + m.right) / 2 };
   });
   check("בטלפון צר שורה קצרה ממורכזת מעל המתג",
-        centred.row === "⭐⭐" && Math.abs(centred.at - centred.modeSwitch) <= 1, centred);
+        centred.row === "🐶🐱" && Math.abs(centred.at - centred.modeSwitch) <= 1, centred);
   // במצב כתיבה, עם מילה שהבנק שלה נשבר לשתי שורות, לא נשאר גובה פנוי. אילו
-  // הסרגל היה מתכווץ, שורה של שלוש שורות הייתה נדחסת בו וגולשת מעל קצה המסך
+  // הסרגל היה מתכווץ, שורה של שתי שורות הייתה נדחסת בו וגולשת מעל קצה המסך
   // ועל המתג שמתחתיו; ובטלפון בגובה 640 גם הכפתורים בתחתית נשארים על המסך.
   const beforeSpell = await page.evaluate(() => {
-    const before = { mode, at: i, score: scores.spell };
+    const before = { mode, at: i };
     setMode("spell");
     i = Math.max(0, words.findIndex(w => w.word === "banana"));
     show();
     return before;
   });
-  const spellRow = await starsLayout(149, ["modeSwitch", "openSettings", "openFeedback", "toggleSound"]);
+  const spellRow = await rowLayout(2 * roundSize, ["modeSwitch", "openSettings", "openFeedback", "toggleSound"]);
   const spellButtons = await page.evaluate(() => ["playWord", "hint", "next"]
     .filter(id => $(id) && $(id).offsetParent !== null)
     .map(id => ({ id, bottom: $(id).getBoundingClientRect().bottom, max: innerHeight })));
-  await page.evaluate(b => { scores.spell = b.score; i = b.at; setMode(b.mode); show(); }, beforeSpell);
-  check("במצב כתיבה בטלפון נמוך כל סמל בשורה על המסך ולא על המתג",
+  await page.evaluate(b => { setMode(b.mode); i = b.at; show(); }, beforeSpell);
+  check("במצב כתיבה בטלפון נמוך כל תמונה בשורה על המסך ולא על המתג",
         spellRow.word === "banana" && spellRow.glyphs > 0 && spellRow.bad.length === 0, spellRow);
   check("במצב כתיבה בטלפון בגובה 640 הכפתורים בתחתית על המסך",
         spellButtons.length > 0 && spellButtons.every(b => b.bottom <= b.max), spellButtons);
@@ -699,7 +729,12 @@ async function main(){
     check(`מילה שנבחרה בזמן ה-🎉 לא מוחלפת אחריו (${skip})`,
       skipped.words > 1 && skipped.chosen !== skipped.before && skipped.now === skipped.chosen, skipped);
   }
-  await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
+  // ההצלחות כאן נרשמו בהתקדמות, ומילה שהילד כבר אמר מוצגת בלי כתב. הקבוצות
+  // הבאות בודקות את הכתב, אז הן מתחילות בלי היסטוריה.
+  await page.evaluate(() => {
+    for(const k of ["say-the-word-progress", "say-the-word-log"]) localStorage.removeItem(k);
+    newRound();
+  });
 
   // --------------------------------------------------------------
   group("תעתיק לעברית");
@@ -729,11 +764,10 @@ async function main(){
 
   // --------------------------------------------------------------
   group("כתיבה");
-  // הילד בונה את המילה מבנק של האותיות שלה. מילה שלמה שווה כוכב אחד, עם
-  // רמז או בלי, וטעות לא עולה כלום. ההחלפה בין 🎤 ל-💡 נמדדת במה שמוצג
-  // בפועל, כי display של כפתורי השורה גובר על התכונה hidden.
+  // הילד בונה את המילה מבנק של האותיות שלה. מילה שלמה מקבלת 🎉, ותמונה
+  // בשורה רק בלי 💡 ובלי מילה שגויה לפניה. ההחלפה בין 🎤 ל-💡 נמדדת במה
+  // שמוצג בפועל, כי display של כפתורי השורה גובר על התכונה hidden.
   const shown = id => page.evaluate(id => getComputedStyle($(id)).display !== "none", id);
-  await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
   await page.click('#modeSwitch [data-mode="spell"]');
   check("במצב כתיבה 🎤 מוסתר ו-💡 מוצג", !(await shown("say")) && await shown("hint"));
   check("במצב כתיבה המילה באנגלית לא מוצגת", !(await shown("word")) && await shown("spell"));
@@ -756,14 +790,14 @@ async function main(){
   // נכנסה, היה מספיק ללחוץ על כל הבנק עד שמשהו נתפס.
   const newBoard = () => page.waitForFunction(() => !busy && slotList().every(s => !s.tile));
   const wrongTap = await page.evaluate(() => {
-    const before = scores.spell;
+    const before = round.row.length;
     const tile = [...$("bank").children].find(t => t.dataset.letter !== word()[0]);
     tile.click();
     const slot = $("slots").children[0];
-    return { letter: tile.dataset.letter, slot: slot.textContent, stars: scores.spell - before, inBank: !tile.disabled };
+    return { letter: tile.dataset.letter, slot: slot.textContent, row: round.row.length - before, inBank: !tile.disabled };
   });
-  check("אות לא נכונה נכנסת למשבצת ולא עולה כוכב",
-    wrongTap.slot === wrongTap.letter && wrongTap.stars === 0 && !wrongTap.inBank, wrongTap);
+  check("אות לא נכונה נכנסת למשבצת, בלי תמונה בשורה",
+    wrongTap.slot === wrongTap.letter && wrongTap.row === 0 && !wrongTap.inBank, wrongTap);
   const takeBack = await page.evaluate(() => {
     const slot = $("slots").children[0], tile = slot.tile;
     slot.click();
@@ -778,18 +812,18 @@ async function main(){
     show();
     const target = word(), rest = target.slice(1);
     const order = target[0] + rest.slice(1) + rest[0];
-    const before = scores.spell;
+    const before = round.row.length;
     for(const ch of order)
       [...$("bank").children].find(t => !t.disabled && t.dataset.letter === ch).click();
     const slots = slotList();
     return {
-      target, order, stars: scores.spell - before, again: $("picture").className,
+      target, order, row: round.row.length - before, again: $("picture").className,
       right: slots.map((s, k) => s.classList.contains("right") === (order[k] === target[k])),
       red: slots.map((s, k) => s.classList.contains("wrong") === (order[k] !== target[k]))
     };
   });
-  check("מילה מלאה ושגויה — נסו שוב, בלי כוכבים",
-    filled.stars === 0 && filled.again === "again", filled);
+  check("מילה מלאה ושגויה — נסו שוב, בלי תמונה בשורה",
+    filled.row === 0 && filled.again === "again", filled);
   check("הנכונות בירוק והשגויות באדום",
     filled.right.every(Boolean) && filled.red.every(Boolean), filled);
   await page.waitForTimeout(1200);
@@ -816,31 +850,31 @@ async function main(){
     };
   });
   const fixed = await page.evaluate(() => {
-    const before = scores.spell;
+    const before = round.row.length;
     completeWord();
-    return { stars: scores.spell - before, card: $("picture").textContent };
+    return { row: round.row.length - before, card: $("picture").textContent };
   });
-  check("טעות בדרך לא מורידה כוכב", fixed.stars === 1 && fixed.card === "🎉", fixed);
+  check("כתיבה נכונה אחרי מילה שגויה — 🎉, בלי תמונה בשורה", fixed.row === 0 && fixed.card === "🎉", fixed);
   await newBoard();
 
   // good() עובר למילה הבאה אחרי המשוב, ושם הלוח מתחיל מחדש.
   const spellAll = async withHint => {
     await newBoard();
     return page.evaluate(withHint => {
-      const before = scores.spell;
+      const before = round.row.length, emoji = words[i].emoji;
       if(withHint) $("hint").click();
       completeWord();
-      return { stars: scores.spell - before, card: $("picture").textContent, row: $("stars").textContent,
+      return { added: round.row.length - before, card: $("picture").textContent, emoji,
+               last: [...new Intl.Segmenter().segment($("roundRow").textContent)].map(s => s.segment).pop(),
                hinted: $("slots").querySelectorAll(".hinted").length, hintOff: $("hint").disabled };
     }, withHint);
   };
-  await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
   const clean = await spellAll(false);
-  check("מילה שנכתבה — כוכב אחד, כמו באמירה",
-    clean.stars === 1 && clean.card === "🎉" && clean.row === "⭐", clean);
+  check("מילה שנכתבה בלי עזרה — 🎉, והתמונה שלה בשורה, כמו באמירה",
+    clean.added === 1 && clean.card === "🎉" && clean.last === clean.emoji, clean);
   const helped = await spellAll(true);
-  check("רמז ממלא אות אחת ולא מוריד כוכב",
-    helped.stars === 1 && helped.hinted === 1 && helped.card === "🎉", helped);
+  check("רמז ממלא אות אחת, והמילה מקבלת 🎉 בלי תמונה בשורה",
+    helped.added === 0 && helped.hinted === 1 && helped.card === "🎉", helped);
   check("אחרי שהמילה הושלמה אין רמז", helped.hintOff, helped);
   await newBoard();
 
@@ -866,20 +900,18 @@ async function main(){
       && swapped.inBank === swapped.target.length - 1, swapped);
   await page.evaluate(() => show());
 
-  // לכל תרגול שורה משלו: כוכב של מילה כתובה לא נכנס לשורה של האמירה.
+  // לכל תרגול סבב משלו: מעבר בין אומרים לכותבים מתחיל סבב, והשורה ריקה.
   // רגע לפני הטעינה מחדש, שמבטלת את המעברים ש-good() מזמן.
   const apart = await page.evaluate(() => {
-    scores = { say: 0, spell: 0 };
-    setMode("say"); good();
-    setMode("spell"); good(); good();
-    const spellRow = $("stars").textContent;
+    round.row = ["dog"];
+    renderRow();
+    const word = $("word").textContent;
     setMode("say");
-    const sayRow = $("stars").textContent;
-    setMode("spell");
-    return { sayRow, spellRow, back: $("stars").textContent };
+    return { row: $("roundRow").textContent, kept: $("word").textContent === word, mode };
   });
-  check("לאמירה ולכתיבה ניקוד נפרד",
-    apart.sayRow === "⭐" && apart.spellRow === "⭐⭐" && apart.back === "⭐⭐", apart);
+  check("מעבר בין אומרים לכותבים מתחיל סבב חדש, והמילה שעל המסך נשארת",
+    apart.row === "" && apart.kept && apart.mode === "say", apart);
+  await page.evaluate(() => setMode("spell"));
 
   await reload();
   check("מצב הכתיבה נשמר בין טעינות",
@@ -1100,7 +1132,7 @@ async function main(){
   // אותו דבר במעבר לילד אחר: המילים שלו צריכות להגיע ל-recognizer, אחרת אף
   // אחת מהן לא תזוהה. הילד נכתב ישר ל-localStorage, והמצב משוחזר בסוף.
   const childGrammar = await page.evaluate(() => {
-    const saved = { i, scores: { ...scores } };
+    const saved = { i };
     const taken = takenSet(), [emoji, word] = PAIRS.find(p => !taken.has(p[1]));
     localStorage.setItem("words@grammartest", JSON.stringify([{ emoji, word }]));
     localStorage.setItem("say-the-word-children", JSON.stringify([{ id: "grammartest", name: "בדיקה" }]));
@@ -1117,8 +1149,8 @@ async function main(){
       delete model.postMessage;
       for(const k of ["words@grammartest", "say-the-word-children", "say-the-word-child"]) localStorage.removeItem(k);
       switchChild("", false);
-      i = saved.i; scores = saved.scores;
-      show(); renderScore();
+      i = saved.i;
+      show();
     }
   });
   check("מעבר לילד אחר בונה את הדקדוק של המנוע מהמילים שלו",
@@ -1133,14 +1165,20 @@ async function main(){
   // נבדק ולא רק הפונקציה.
   await page.waitForFunction(() => model !== null, null, { timeout: 60000 });
   await page.evaluate(() => { setPreset(DEFAULT_PRESET); return ensureAudio(); });
+  // won: good() נקרא, כלומר הילד קיבל 🎉.
   const attempt = async events => await page.evaluate(async evs => {
     await listen();
-    const target = word(), before = scores.say;
-    for(const [type, detail] of evs)
-      rec.dispatchEvent(new CustomEvent(type, { detail: JSON.parse(JSON.stringify(detail).replaceAll("TARGET", target)) }));
-    const out = { active, won: scores.say > before };
-    stopListening();
-    return out;
+    const target = word(), realGood = good;
+    let won = false;
+    good = () => { won = true; return realGood(); };
+    try{
+      for(const [type, detail] of evs)
+        rec.dispatchEvent(new CustomEvent(type, { detail: JSON.parse(JSON.stringify(detail).replaceAll("TARGET", target)) }));
+      return { active, won };
+    } finally {
+      good = realGood;
+      stopListening();
+    }
   }, events);
   const said = (w, conf = 1) => ["result", { result: { result: [{ word: w, conf }], text: w } }];
 
@@ -1158,11 +1196,12 @@ async function main(){
   // אותה רק דרך retrieveFinalResult. כאן ה-recognizer מדומה בדיוק כך: עונה
   // רק כשמבקשים, ובאיחור קטן, כמו ה-worker.
   const atWindowEnd = async answer => await page.evaluate(async answer => {
-    const realWindow = listenWindowMs, realRetrieve = rec.retrieveFinalResult, realAgain = again;
+    const realWindow = listenWindowMs, realRetrieve = rec.retrieveFinalResult, realAgain = again, realGood = good;
     const say = $("say"), sayClasses = [];
-    let agains = 0;
+    let agains = 0, won = false;
     listenWindowMs = () => 100;
     again = why => { agains++; return realAgain(why); };
+    good = () => { won = true; return realGood(); };
     rec.retrieveFinalResult = function(){
       if(answer) setTimeout(() => this.dispatchEvent(new CustomEvent("result",
         { detail: { result: { result: [{ word: answer === "TARGET" ? word() : answer, conf: 1 }] } } })), 50);
@@ -1170,16 +1209,17 @@ async function main(){
     const obs = new MutationObserver(() => sayClasses.push(say.className));
     obs.observe(say, { attributes: true, attributeFilter: ["class"] });
     try{
-      const before = scores.say, misses = sayMisses;
+      const misses = sayMisses;
       await listen();
       await new Promise(r => setTimeout(r, 1500));
-      return { active, won: scores.say > before, agains, missed: sayMisses - misses,
+      return { active, won, agains, missed: sayMisses - misses,
                nudged: sayClasses.some(c => c.split(" ").includes("nudge")) };
     } finally {
       obs.disconnect();
       listenWindowMs = realWindow;
       rec.retrieveFinalResult = realRetrieve;
       again = realAgain;
+      good = realGood;
       stopListening();
     }
   }, answer);
@@ -1264,7 +1304,6 @@ async function main(){
   }
   // good() ו-again() מזמנים מעברים והודעות; שלא ידרסו את הקבוצה הבאה.
   await page.waitForTimeout(1500);
-  await page.evaluate(() => { scores = { say: 0, spell: 0 }; renderScore(); });
 
   // אמירה שלא התקבלה: בפעם הראשונה "נסו שוב" כמו היום, ואחרי הצליל, עם שמע,
   // המילה נאמרת פעם אחת באנגלית. בפעם השנייה עוברים למילה אחרת בלי סימן.
@@ -1402,7 +1441,14 @@ async function main(){
     const back = ladderStep(a, "clean", 99);
     const helped = ladderStep(c, "helped", 103);
     const wrote = ladderStep(c, "write", 104);
-    return { a, b, c, d, back, helped, wrote };
+    const text = ladderStep(undefined, "cleanText", 100);
+    const textThenPicture = ladderStep(text, "clean", 100);
+    const nextDay = ladderStep(textThenPicture, "clean", 101);
+    // מילה שכבר הצליחה, ירדה לתיבה 0, ואז באותו יום הצלחה אחרי הצצה בכתיבה ועוד אחת מהתמונה.
+    const dropped = ladderStep(ladderStep(undefined, "cleanText", 98), "failed", 99);
+    const peekedAgain = ladderStep(dropped, "cleanText", 100);
+    const thenClean = ladderStep(peekedAgain, "clean", 100);
+    return { a, b, c, d, back, helped, wrote, text, textThenPicture, nextDay, peekedAgain, thenClean };
   });
   const L1 = ladder;
   check("הצלחה נקייה ראשונה מעלה לתיבה 1 ומסמנת שהילד הצליח",
@@ -1418,6 +1464,15 @@ async function main(){
     L1.back.seen === 100 && L1.back.box === 1 && JSON.stringify(L1.back.ok) === "[100]", L1.back);
   check("הצלחה אחרי עזרה נספרת ולא מקדמת",
     L1.helped.box === L1.c.box && L1.helped.k === L1.c.k && L1.helped.n === L1.c.n + 1, L1.helped);
+  check("הצלחה כשהמילה כתובה על המסך מסמנת שהצליח ומחזירה את המילה מחר, בלי יום של \"אמר\"",
+    L1.text.got === 100 && L1.text.box === 1 && L1.text.due === 101 && L1.text.ok.length === 0 && L1.text.k === 1, L1.text);
+  check("ובאותו יום מהתמונה — יום של \"אמר\", בלי לעלות שוב תיבה",
+    JSON.stringify(L1.textThenPicture.ok) === "[100]" && L1.textThenPicture.box === 1 && L1.textThenPicture.due === 101,
+    L1.textThenPicture);
+  check("ולמחרת מהתמונה — היום השני, ותיבה למעלה",
+    JSON.stringify(L1.nextDay.ok) === "[100,101]" && L1.nextDay.box === 2 && L1.nextDay.due === 103, L1.nextDay);
+  check("הצלחה עם כתב במילה שכבר הצליחה לא מעלה תיבה, וגם אחריה התיבה עולה פעם אחת ביום",
+    L1.peekedAgain.box === 0 && L1.thenClean.box === 1 && JSON.stringify(L1.thenClean.ok) === "[100]", L1);
   check("כתיבה נקייה מסמנת שהילד כותב את המילה, ולא נוגעת בסולם של האמירה",
     L1.wrote.wrote === 104 && L1.wrote.box === L1.c.box && L1.wrote.n === L1.c.n
       && JSON.stringify(L1.wrote.ok) === JSON.stringify(L1.c.ok), L1.wrote);
@@ -1653,6 +1708,714 @@ async function main(){
   await page.waitForTimeout(500);
 
   // --------------------------------------------------------------
+  group("סבב");
+  // במקום הגרלה בלי סוף: סבבים קצרים מהרשימה, לפי מה שהילד כבר יודע, ומסך
+  // סיום. הסדר נבדק על sayRound עצמה, עם התקדמות שנבנית כאן ויום קבוע. כאן
+  // מסך הסיום אמיתי, ובסוף הקבוצה ▶ שוב נלחץ מיד, כמו בשאר הקבוצות.
+  await page.evaluate(() => {
+    showRoundEnd = realShowRoundEnd;
+    // סבב שהבדיקה קובעת, אמירה דרך ה-recognizer, וסבב שנגמר מיד ב-⏭️.
+    window.roundTest = {
+      wait: ms => new Promise(r => setTimeout(r, ms)),
+      say: async w => {
+        await listen();
+        rec.dispatchEvent(new CustomEvent("result", { detail: { result: { result: [{ word: w, conf: 1 }], text: w } } }));
+      },
+      plan: (queue, tried = []) => {
+        round = { queue: queue.slice(), at: -1, row: [], tried: tried.slice(), fresh: [], requeued: [] };
+        shownWord = null;
+        next();
+      },
+      end: (last = "fish") => { roundTest.plan([last]); skipWord(); }
+    };
+  });
+  const roundList = await page.evaluate(() => {
+    const before = words.slice();
+    const names = ["dog", "cat", "hat", "fish", "apple", "banana", "sun", "moon", "car", "book", "lion",
+                   "ship", "sheep", "tea", "tie", "ball", "bowl", "ten", "tent", "bird", "water", "flower"];
+    applyWords(PAIRS.filter(p => names.includes(p[1])).map(([emoji, word]) => ({ emoji, word })), 0, false);
+    return before;
+  });
+
+  const confused = await page.evaluate(() => ({
+    yes: [["ship", "sheep"], ["tea", "tie"], ["ball", "bowl"], ["ten", "tent"], ["cat", "hat"]].filter(([a, b]) => !confusable(a, b)),
+    no: [["dog", "cat"], ["sun", "moon"], ["apple", "lion"]].filter(([a, b]) => confusable(a, b))
+  }));
+  check("מילים שקל לבלבל ביניהן מזוהות, ומילים שונות לא",
+    confused.yes.length === 0 && confused.no.length === 0, confused);
+
+  // dog ו-fish הילד אמר לבד בימים קודמים, ו-fish הגיע יומה לחזור. את cat אמר
+  // לבד רק היום. ב-apple ניסה ועוד לא הצליח. כל השאר חדשות.
+  const planned = await page.evaluate(() => {
+    const day = 300;
+    const w = {
+      dog: { met: 290, seen: 299, box: 3, due: 305, ok: [295, 299], n: 4, k: 3, got: 290 },
+      fish: { met: 295, seen: 298, box: 2, due: 299, ok: [298], n: 3, k: 2, got: 296 },
+      cat: { met: 300, seen: 300, box: 1, due: 301, ok: [], n: 1, k: 1, got: 300 },
+      apple: { met: 299, seen: 299, box: 0, due: 300, ok: [], n: 2, k: 0 }
+    };
+    const { queue, fresh } = sayRound(w, day, 2);
+    const at = x => queue.map((q, k) => q === x ? k : -1).filter(k => k >= 0);
+    return { queue, fresh, size: ROUND_SIZE, gap: RECHECK_GAP,
+             levels: fresh.map(levelOf), themes: fresh.map(x => THEME_BY_WORD[x]), places: fresh.map(at) };
+  });
+  check("הסבב באורך הקבוע לכל היותר, ומתחיל במילה שהילד כבר אמר לבד ביום קודם",
+    planned.queue.length > 0 && planned.queue.length <= planned.size && planned.queue[0] === "dog", planned);
+  check("מילה שהגיע יומה לחזור, ומילה שניסו ועוד לא הצליחו בה, בסבב",
+    planned.queue.includes("fish") && planned.queue.includes("apple"), planned);
+  check("עד שתי מילים חדשות, הקלות קודם, מנושאים שונים",
+    planned.fresh.length === 2 && planned.levels.every(l => l === 1) && new Set(planned.themes).size === 2
+      && planned.fresh.every(x => !["dog", "fish", "cat", "apple"].includes(x)), planned);
+  check("כל מילה חדשה חוזרת עוד פעם בסבב, כמה מילים אחריה",
+    planned.places.every(p => p.length === 2 && p[1] - p[0] >= planned.gap), planned);
+
+  // מאתיים סבבים ממצבים אקראיים של התקדמות וקצב.
+  // הזוגות כתובים כאן, ולא דרך confusable(), כדי שהבדיקה לא תסמוך על מה שהיא בודקת.
+  const random = await page.evaluate(() => {
+    const day = 500, list = words.map(x => x.word), bad = [];
+    const keepApart = [["ship", "sheep"], ["tea", "tie"], ["ball", "bowl"], ["ten", "tent"], ["cat", "hat"]];
+    for(let t = 0; t < 200; t++){
+      const w = {};
+      for(const x of list){
+        const r = Math.random();
+        if(r < 0.3) continue;
+        const got = r < 0.7 ? day - Math.floor(Math.random() * 10) : undefined;
+        w[x] = { met: day - 20, seen: day - 1, box: Math.floor(Math.random() * 5), due: day - 3 + Math.floor(Math.random() * 6),
+                 ok: [], n: 1 + Math.floor(Math.random() * 4), k: 0, ...(got === undefined ? {} : { got }) };
+      }
+      const pace = 1 + Math.floor(Math.random() * 3);
+      const { queue, fresh } = sayRound(w, day, pace);
+      const distinct = [...new Set(queue)];
+      const problems = [];
+      if(!queue.length || queue.length > ROUND_SIZE) problems.push("length");
+      if(queue.some((x, k) => k && queue[k - 1] === x)) problems.push("twice in a row");
+      for(const [a, b] of keepApart) if(distinct.includes(a) && distinct.includes(b)) problems.push(a + "/" + b);
+      if(fresh.length > pace || fresh.some(x => w[x])) problems.push("fresh");
+      if(distinct.some(x => queue.filter(q => q === x).length > (fresh.includes(x) ? 2 : 1))) problems.push("repeats");
+      if(problems.length) bad.push({ queue, fresh, pace, problems });
+    }
+    return bad.slice(0, 3);
+  });
+  check("במאתיים סבבים אקראיים: לא ארוך מדי, אף מילה לא פעמיים ברצף, ואין שתי מילים שקל לבלבל",
+    random.length === 0, random);
+
+  // ברשימה של שתי מילים, apple והמילה החדשה dog: כשמילת הפתיחה היא apple,
+  // dog באה אחריה ואין מקום לחזרה; כש-apple רק בלמידה, dog באה לפניה וחוזרת.
+  const edges = await page.evaluate(() => {
+    const day = 300, list = words.map(x => x.word), saved = words;
+    const first = sayRound({}, day, PACE_START);
+    const allKnown = Object.fromEntries(list.map(x => [x, { met: 1, seen: 299, box: 4, due: 400, ok: [1, 2], n: 5, k: 5, got: 1 }]));
+    const full = sayRound(allKnown, day, 3);
+    try{
+      words = [saved[0]];
+      const single = sayRound({}, day, 3).queue;
+      words = saved.filter(x => x.word === "apple" || x.word === "dog");
+      const learning = { apple: { met: 299, seen: 299, box: 0, due: 300, ok: [], n: 2, k: 0 } };
+      const opening = { apple: { met: 290, seen: 299, box: 2, due: 305, ok: [298], n: 3, k: 2, got: 295 } };
+      return { first, firstThemes: first.fresh.map(x => THEME_BY_WORD[x]), full, single, pace: PACE_START,
+               learningPair: sayRound(learning, day, 1).queue.join(), openerPair: sayRound(opening, day, 1).queue.join() };
+    } finally { words = saved; }
+  });
+  check("בפעם הראשונה: מילים חדשות לפי הקצב ההתחלתי, מנושאים שונים, וכל אחת חוזרת",
+    edges.first.fresh.length === edges.pace && edges.first.queue.length === 2 * edges.pace
+      && new Set(edges.firstThemes).size === edges.pace, edges);
+  check("מילה חדשה שהייתה יוצאת אחרונה באה לפני המילה שלפניה, כדי לחזור — אבל לא לפני מילת הפתיחה",
+    edges.learningPair === "dog,apple,dog" && edges.openerPair === "apple,dog", edges);
+  check("כשאין מה לחזור עליו ואין מילים חדשות, הסבב מתמלא במילים שהילד כבר אומר",
+    edges.full.fresh.length === 0 && edges.full.queue.length === planned.size, edges.full);
+  check("ברשימה של מילה אחת יש סבב, והוא נגמר", edges.single.length === 1, edges.single);
+
+  // הקצב: יותר מילים חדשות כשהילד מצליח ברוב הניסיונות הראשונים, פחות כשהוא
+  // מתקשה. ניסיון שני וכתיבה לא נספרים, ורמת ההתאמה לא זזה.
+  const paced = await page.evaluate(([P, L]) => {
+    const entry = (outcome, mode = "say", tryNo = 1, flags = "") => [1, 0, "dog", mode, outcome, tryNo, flags, null, "", "normal", 1];
+    const run = (pace, oks, total, extra = []) => {
+      localStorage.setItem(P, JSON.stringify({ v: 1, w: {}, ...(pace ? { pace } : {}) }));
+      localStorage.setItem(L, JSON.stringify({ v: 1, a: extra.concat(Array.from({ length: total }, (_, k) => entry(k < oks ? "ok" : "no"))) }));
+      adaptPace();
+      return JSON.parse(localStorage.getItem(P)).pace;
+    };
+    const presetBefore = preset.id;
+    const out = {
+      up: run(2, 29, 30), down: run(2, 20, 30), keep: run(2, 24, 30), few: run(2, 9, 9),
+      top: run(3, 30, 30), bottom: run(1, 0, 30), start: run(undefined, 30, 30),
+      // עשרים ניסיונות שניים וכתיבות שלא הצליחו, ואחריהם עשרים ראשונים שהצליחו.
+      onlyFirst: run(2, 20, 20, Array.from({ length: 20 }, (_, k) => k % 2 ? entry("no", "say", 2) : entry("no", "spell"))),
+      // שמונה שקטים ו-⏭️ בניסיון הראשון, ושתים עשרה הצלחות.
+      quiet: run(2, 12, 12, Array.from({ length: 8 }, (_, k) => entry(k % 2 ? "quiet" : "skip"))),
+      // עשרים הצלחות אחרי ששמעו את המילה, ובלעדיהן שמונה מעשר.
+      heard: run(2, 8, 10, Array.from({ length: 20 }, () => entry("ok", "say", 1, "hte")))
+    };
+    out.presetKept = preset.id === presetBefore;
+    // והסבב הבא בונה לפי הקצב החדש.
+    localStorage.setItem(P, JSON.stringify({ v: 1, w: {}, pace: 1 }));
+    startRound();
+    out.nextRound = round.fresh.length;
+    localStorage.removeItem(P); localStorage.removeItem(L);
+    return out;
+  }, [P, L]);
+  check("רוב הניסיונות הראשונים הצליחו — יותר מילים חדשות בסבב",
+    paced.up === 3 && paced.start === 3 && paced.top === 3, paced);
+  check("מתקשה — פחות מילים חדשות, ולא פחות מאחת", paced.down === 1 && paced.bottom === 1, paced);
+  check("באמצע, או כשיש מעט ניסיונות, הקצב לא זז", paced.keep === 2 && paced.few === 2, paced);
+  check("רק ניסיונות ראשונים באמירה נספרים, ורמת ההתאמה לא זזה", paced.onlyFirst === 3 && paced.presetKept, paced);
+  check("שקט ו-⏭️ אינם ניסיון שנכשל, והצלחה אחרי ששמעו את המילה אינה הצלחה לקצב",
+    paced.quiet === 3 && paced.heard === 2, paced);
+  check("הסבב הבא בונה לפי הקצב", paced.nextRound === 1, paced);
+
+  // והקצב זז מעצמו בסוף סבב באמירה, ולא בסוף סבב בכתיבה.
+  const paceAtEnd = await page.evaluate(([P, L]) => {
+    const oks = Array.from({ length: 12 }, () => [1, 0, "dog", "say", "ok", 1, "", null, "", "normal", 1]);
+    const seed = () => {
+      localStorage.setItem(P, JSON.stringify({ v: 1, w: {}, pace: 1 }));
+      localStorage.setItem(L, JSON.stringify({ v: 1, a: oks }));
+    };
+    const pace = () => JSON.parse(localStorage.getItem(P)).pace;
+    try{
+      seed();
+      roundTest.end();
+      const say = { ended, pace: pace() };
+      seed();
+      setMode("spell");
+      roundTest.end();
+      return { say, spell: { ended, pace: pace() } };
+    } finally {
+      setMode("say");
+      localStorage.removeItem(P); localStorage.removeItem(L);
+    }
+  }, [P, L]);
+  check("בסוף סבב באמירה הקצב זז לפי היומן", paceAtEnd.say.ended && paceAtEnd.say.pace === 2, paceAtEnd);
+  check("בסוף סבב בכתיבה הקצב לא זז", paceAtEnd.spell.ended && paceAtEnd.spell.pace === 1, paceAtEnd);
+
+  // אמירה שלא התקבלה פעמיים: המילה חוזרת פעם אחת, שלוש מילים אחרי, ולא מיד.
+  const requeueRun = await page.evaluate(async ([P, L]) => {
+    localStorage.removeItem(P); localStorage.removeItem(L);
+    const synth = speechSynthesis;
+    synth.speak = () => {};
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const missTwice = async () => {
+      for(let k = 0; k < 2; k++){
+        await listen();
+        rec.dispatchEvent(new CustomEvent("result", { detail: { result: { result: [{ word: "zzz", conf: 1 }], text: "zzz" } } }));
+        await wait(AGAIN_MS + 150);
+      }
+    };
+    const plan = queue => {
+      round = { queue: queue.slice(), at: -1, row: [], tried: [], fresh: [], requeued: [] };
+      shownWord = null;
+      next();
+    };
+    try{
+      plan(["dog", "sun", "lion", "book", "car"]);
+      await missTwice();
+      const out = { after: word(), queue: round.queue.slice() };
+      next(); next();
+      out.back = word();
+      await missTwice();
+      out.again = round.queue.slice();
+      plan(["dog", "sun"]);
+      await missTwice();
+      out.short = round.queue.slice();
+      plan(["dog", "sun", "lion", "book"]);
+      await listen();
+      rec.dispatchEvent(new CustomEvent("result", { detail: { result: { result: [{ word: "zzz", conf: 1 }], text: "zzz" } } }));
+      await wait(AGAIN_MS + 150);
+      await listen();
+      rec.dispatchEvent(new CustomEvent("result", { detail: { result: { result: [{ word: "dog", conf: 1 }], text: "dog" } } }));
+      out.oneMiss = round.queue.slice();
+      await wait(GOOD_MS + 200);
+      return out;
+    } finally {
+      delete synth.speak;
+      localStorage.removeItem(P); localStorage.removeItem(L);
+    }
+  }, [P, L]);
+  check("שתי אמירות שלא התקבלו — המילה חוזרת שלוש מילים אחרי, ולא מיד",
+    requeueRun.after === "sun" && requeueRun.queue.join() === "dog,sun,lion,dog,book,car", requeueRun);
+  check("ומילה שכבר חזרה לא חוזרת שוב באותו סבב",
+    requeueRun.back === "dog" && requeueRun.again.join() === requeueRun.queue.join(), requeueRun);
+  check("קרוב לסוף הסבב היא לא חוזרת בו", requeueRun.short.join() === "dog,sun", requeueRun);
+  check("מילה שהתקבלה בניסיון השני לא חוזרת", requeueRun.oneMiss.join() === "dog,sun,lion,book", requeueRun);
+
+  // מילה שהילד כבר אמר לבד מוצגת בלי כתב, כדי שישלוף אותה מהתמונה. רק הצלחה
+  // כזו נספרת ליום של "אמר". אמירה שלא התקבלה מחזירה את הכתב, כדוגמה גם בלי שמע.
+  const veil = await page.evaluate(async ([P, L]) => {
+    const realDay = dayNumber, synth = speechSynthesis;
+    synth.speak = () => {};
+    dayNumber = () => 400;
+    const seen = id => getComputedStyle($(id)).visibility === "visible";
+    const say = async w => {
+      await listen();
+      rec.dispatchEvent(new CustomEvent("result", { detail: { result: { result: [{ word: w, conf: 1 }], text: w } } }));
+    };
+    const showWord = w => { turn.word = null; i = words.findIndex(x => x.word === w); show(); };
+    const store = () => JSON.parse(localStorage.getItem(P)).w;
+    try{
+      localStorage.setItem(P, JSON.stringify({ v: 1, w: {
+        dog: { met: 390, seen: 399, box: 2, due: 400, ok: [399], n: 3, k: 2, got: 395 },
+        sun: { met: 390, seen: 399, box: 2, due: 400, ok: [399], n: 3, k: 2, got: 395 },
+        moon: { met: 390, seen: 399, box: 2, due: 400, ok: [399], n: 3, k: 2, got: 395 },
+        book: { met: 390, seen: 399, box: 2, due: 400, ok: [399], n: 3, k: 2, got: 395 } } }));
+      localStorage.removeItem(L);
+      const out = {};
+      showWord("lion");
+      out.fresh = { en: seen("word"), he: seen("wordHe") };
+      showWord("dog");
+      out.known = { en: seen("word"), he: seen("wordHe") };
+      await say("dog");
+      out.cheer = { en: seen("word"), he: seen("wordHe") };
+      out.dog = store().dog;
+      out.dogFlags = JSON.parse(localStorage.getItem(L)).a.slice(-1)[0][6];
+      showWord("lion");
+      await say("lion");
+      out.lion = store().lion;
+      showWord("sun");
+      await say("zzz");
+      out.missed = { en: seen("word"), he: seen("wordHe") };
+      await new Promise(r => setTimeout(r, AGAIN_MS + 100));
+      setMode("spell");
+      showWord("sun");
+      out.spell = { he: seen("wordHe") };
+      setMode("say");
+      // בכתיבה רואים את המילה באותיות שלה. מי שחוזר לאמירה באותו תור לא שלף אותה.
+      showWord("moon");
+      setMode("spell");
+      setMode("say");
+      out.peekVeiled = !seen("word");
+      await say("moon");
+      out.moon = store().moon;
+      out.moonFlags = JSON.parse(localStorage.getItem(L)).a.slice(-1)[0][6];
+      // וגם תור שהתחיל בכתיבה ועבר לאמירה.
+      setMode("spell");
+      showWord("book");
+      setMode("say");
+      await say("book");
+      out.book = store().book;
+      return out;
+    } finally {
+      dayNumber = realDay;
+      delete synth.speak;
+      localStorage.removeItem(P); localStorage.removeItem(L);
+    }
+  }, [P, L]);
+  check("מילה חדשה מוצגת עם הכתב", veil.fresh.en && veil.fresh.he, veil);
+  check("מילה שהילד כבר אמר לבד מוצגת בלי המילה באנגלית ובלי התעתיק", !veil.known.en && !veil.known.he, veil);
+  check("שלף אותה מהתמונה — יום של \"אמר\", והכתב מופיע עם ה-🎉",
+    !!veil.dog && JSON.stringify(veil.dog.ok) === "[399,400]" && veil.dog.box === 3 && !/[te]/.test(veil.dogFlags)
+      && veil.cheer.en && veil.cheer.he, veil);
+  check("הצלחה כשהמילה כתובה על המסך לא נספרת ליום של \"אמר\"",
+    !!veil.lion && veil.lion.got === 400 && veil.lion.ok.length === 0 && veil.lion.box === 1, veil);
+  check("אמירה שלא התקבלה מחזירה את הכתב", veil.missed.en && veil.missed.he, veil);
+  check("בכתיבה התעתיק נשאר גם במילה שהילד כבר אומר", veil.spell.he, veil);
+  check("מילה שראו בכתיבה באותו תור לא נספרת ליום של \"אמר\"",
+    veil.peekVeiled && !!veil.moon && JSON.stringify(veil.moon.ok) === "[399]" && String(veil.moonFlags).includes("p")
+      && !!veil.book && JSON.stringify(veil.book.ok) === "[399]", veil);
+
+  // מסך הסיום: מה שניסו בסבב, בלי מספרים, ו-▶ שמתחיל סבב חדש. ⏭️ על המילה
+  // האחרונה מסיים את הסבב כמו הצלחה.
+  await page.setViewportSize({ width: 360, height: 640 });
+  const ending = await page.evaluate(async ([P, L]) => {
+    const realChime = chime, chimes = [];
+    chime = sound => { chimes.push(sound); return realChime(sound); };
+    const visible = id => $(id).checkVisibility();
+    try{
+      localStorage.removeItem(P); localStorage.removeItem(L);
+      const tried = ["dog", "cat", "sun", "lion", "book", "ship", "tea", "ball"];
+      round = { queue: ["fish"], at: -1, row: tried.slice(0, 5), tried, fresh: ["sun"], requeued: [] };
+      shownWord = null;
+      next();
+      // ה-🎉 מזמן מעבר, ו-⏭️ בזמנו מסיים את הסבב לפניו.
+      good();
+      skipWord();
+      const box = r => ({ top: r.top, bottom: r.bottom, left: r.left, right: r.right });
+      const end = $("roundEnd").getBoundingClientRect();
+      const out = {
+        ended, end: visible("roundEnd"), say: visible("say"), picture: visible("picture"), next: visible("next"),
+        pics: [...$("roundPics").children].map(b => b.dataset.word + (b.classList.contains("big") ? "+" : "")
+          + (b.classList.contains("fresh") ? "*" : "")),
+        focus: document.activeElement.id,
+        text: $("roundEnd").innerText + $("roundRow").innerText,
+        inView: [end, $("againBtn").getBoundingClientRect(), $("basketBtn").getBoundingClientRect(),
+                 ...[...$("roundPics").children].map(b => b.getBoundingClientRect())]
+          .every(r => r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth),
+        sizes: box(end)
+      };
+      // והמעבר שה-🎉 זימן לא מחזיר מילה ולא מסיים את הסבב פעם שנייה.
+      await new Promise(r => setTimeout(r, GOOD_MS + 200));
+      out.stillEnded = ended;
+      out.chimes = chimes.filter(c => c === ROUND_CHEER).length;
+      return out;
+    } finally { chime = realChime; }
+  }, [P, L]);
+  check("בסוף הסבב — מסך סיום במקום התמונה והכפתורים",
+    ending.ended && ending.end && !ending.say && !ending.picture && !ending.next && ending.stillEnded, ending);
+  check("במסך הסיום כל מה שניסו: בלי עזרה בגדול, ו-✨ על מילה חדשה",
+    ending.pics.join() === "dog+,cat+,sun+*,lion+,book+,ship,tea,ball", ending);
+  check("צליל אחד בסוף הסבב, והפוקוס על ▶", ending.chimes === 1 && ending.focus === "againBtn", ending);
+  check("אין מספרים במסך הסיום ובשורה", !/[0-9]/.test(ending.text), ending.text);
+  check("בטלפון בגובה 640 מסך הסיום, ▶ ו-🧺 על המסך", ending.inView, ending);
+
+  // ההגדרות מעל מסך הסיום: Tab לא מגיע אליו.
+  const endInert = await page.evaluate(() => {
+    openPanel();
+    const inert = $("roundEnd").inert;
+    closePanel();
+    return { inert, after: $("roundEnd").inert, ended };
+  });
+  check("מסך הסיום לא נגיש במקלדת כשההגדרות פתוחות, וחוזר אחריהן",
+    endInert.inert && !endInert.after && endInert.ended, endInert);
+
+  // הסל: מילים שהילד אמר לבד מהתמונה בשני ימים שונים. מילה שחזרה לתרגול
+  // נשארת בו, ונגיעה אומרת את המילה רק כשהשמע דלוק.
+  const basket = await page.evaluate(async P => {
+    const synth = speechSynthesis, spoken = [], realSound = soundEnabled;
+    synth.speak = u => spoken.push(u.text);
+    try{
+      $("basketBtn").click();
+      const empty = { shown: !$("basketEmpty").hidden, items: $("basketPics").children.length };
+      $("basketBack").click();
+      localStorage.setItem(P, JSON.stringify({ v: 1, w: {
+        dog: { met: 1, seen: 9, box: 3, due: 20, ok: [5, 9], n: 4, k: 3, got: 1 },
+        lion: { met: 1, seen: 12, box: 0, due: 13, ok: [6, 8], n: 6, k: 2, got: 2, wrote: 7 },
+        sun: { met: 1, seen: 9, box: 1, due: 10, ok: [9], n: 2, k: 1, got: 9 },
+        cat: { met: 1, seen: 9, box: 1, due: 10, ok: [], n: 1, k: 1, got: 9 },
+        sax: { met: 1, seen: 4, box: 2, due: 6, ok: [3, 4], n: 2, k: 2, got: 3 } } }));
+      $("basketBtn").click();
+      const out = { empty, items: [...$("basketPics").children].map(b => b.innerText.replace(/\s+/g, " ").trim()),
+                    focus: document.activeElement.id, endHidden: $("endView").hidden };
+      setSound(false);
+      $("basketPics").children[0].click();
+      out.mutedSpoke = spoken.length;
+      out.mutedKept = !soundEnabled;
+      setSound(true);
+      $("basketPics").children[0].click();
+      out.spoken = spoken.slice();
+      $("basketBack").click();
+      out.back = !$("endView").hidden && $("basketView").hidden && document.activeElement.id === "againBtn";
+      return out;
+    } finally {
+      setSound(realSound);
+      delete synth.speak;
+      localStorage.removeItem(P);
+    }
+  }, P);
+  check("סל ריק אומר מה ייכנס אליו", basket.empty.shown && basket.empty.items === 0, basket);
+  check("בסל: מה שנאמר בשני ימים שונים, עם המילה באנגלית, גם אחרי שחזר לתרגול או יצא מהמאגר, ו-✏️ למה שגם נכתב",
+    basket.items.join("|") === "🐶 dog|🦁 lion ✏️|sax" && basket.endHidden && basket.focus === "basketBack", basket);
+  check("נגיעה בתמונה בסל אומרת אותה רק כשהשמע דלוק, ולא מדליקה אותו",
+    basket.mutedSpoke === 0 && basket.mutedKept && basket.spoken.join() === "dog", basket);
+  check("חזרה מהסל למסך הסיום", basket.back, basket);
+
+  const again = await page.evaluate(() => {
+    $("againBtn").click();
+    const visible = id => $(id).checkVisibility();
+    return { ended, end: visible("roundEnd"), say: visible("say"), picture: visible("picture"),
+             row: $("roundRow").textContent, at: round.at, word: word() };
+  });
+  check("▶ מתחיל סבב חדש: המילה הראשונה בו על המסך, והשורה ריקה",
+    !again.ended && !again.end && again.say && again.picture && again.row === "" && again.at === 0, again);
+
+  // נגיעה כפולה: הראשונה מסיימת את הסבב, והשנייה נוחתת על ▶ שהופיע תחתיה.
+  const guard = await page.evaluate(async () => {
+    roundTest.end();
+    $("againBtn").click();
+    const early = ended;
+    await roundTest.wait(END_GUARD_MS + 50);
+    $("againBtn").click();
+    return { early, late: ended };
+  });
+  check("▶ שנלחץ מיד כשמסך הסיום מופיע לא מדלג עליו", guard.early && !guard.late, guard);
+
+  // ובכיוון השני: נגיעה כפולה ב-▶ נוחתת על ⏭️ של הסבב החדש, ו-🧺 שנלחץ מיד.
+  const tapAfterPlay = await page.evaluate(async () => {
+    roundTest.end();
+    await roundTest.wait(END_GUARD_MS + 50);
+    $("againBtn").click();
+    const first = word();
+    $("next").click();
+    const kept = word() === first;
+    await roundTest.wait(END_GUARD_MS + 50);
+    $("next").click();
+    const moved = word() !== first || ended;
+    roundTest.end();
+    $("basketBtn").click();
+    return { kept, moved, endView: !$("endView").hidden, basket: !$("basketView").hidden };
+  });
+  check("נגיעה שנייה מיד אחרי ▶ לא מדלגת על המילה הראשונה בסבב, ואחר כך ⏭️ עובד",
+    tapAfterPlay.kept && tapAfterPlay.moved, tapAfterPlay);
+  check("🧺 שנלחץ מיד כשמסך הסיום מופיע לא מחליף אותו", tapAfterPlay.endView && !tapAfterPlay.basket, tapAfterPlay);
+  // והמגן הזה לא חוסם את הכפתורים כשהדף רק נפתח, עוד לפני כל סבב. הדף נפתח
+  // בהקשר נפרד, והנגיעה קורית מיד, בחלק השנייה הראשון שלו.
+  const earlyCtx = await browser.newContext({ serviceWorkers: "block" });
+  const earlyPage = await earlyCtx.newPage();
+  await earlyPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  const earlySkip = await earlyPage.evaluate(() => {
+    const before = word(), at = performance.now();
+    $("next").click();
+    return { at, moved: word() !== before };
+  });
+  await earlyCtx.close();
+  check("⏭️ עובד כבר כשהדף נפתח", earlySkip.moved, earlySkip);
+
+  // במקלדת, ▶ ממשיך ל-🎤 של הסבב החדש.
+  await page.evaluate(async () => { roundTest.end(); await roundTest.wait(END_GUARD_MS + 50); $("againBtn").focus(); });
+  await page.keyboard.press("Enter");
+  const keyed = await page.evaluate(() => ({ ended, focus: document.activeElement.id }));
+  check("▶ במקלדת מעביר את הפוקוס ל-🎤", !keyed.ended && keyed.focus === "say", keyed);
+
+  // בסוף הסבב: מחיקת מילה ושינוי התעתיק משאירים את מסך הסיום; מעבר לכתיבה
+  // וקפיצה מהרשימה מתחילים סבב חדש מיד, בלי המילה האחרונה של הסבב שנגמר.
+  const whileEnded = await page.evaluate(async () => {
+    const picture = () => $("picture").checkVisibility();
+    const out = {};
+    roundTest.end("fish");
+    round.row = ["dog"];
+    renderRow();
+    const gone = words.findIndex(x => x.word === "moon");
+    removeAt(gone);
+    out.removed = { ended, picture: picture(), row: $("roundRow").textContent };
+    $("hebrewToggle").click();
+    $("hebrewToggle").click();
+    out.hebrew = { ended, picture: picture() };
+    const spoken = [], synth = speechSynthesis, realSound = soundEnabled;
+    synth.speak = u => spoken.push(u.text);
+    try{
+      setSound(false);
+      toggleSound();
+      out.sound = { ended, spoken: spoken.slice() };
+    } finally { setSound(realSound); delete synth.speak; }
+    setMode("spell");
+    out.spell = { ended, word: word(), at: round.at, moon: round.queue.includes("moon") };
+    setMode("say");
+    roundTest.end("fish");
+    openPanel();
+    showSettingsView("words");
+    const target = words.findIndex(x => x.word === "lion");
+    $("wordList").querySelector(`li[data-index="${target}"] .jump`).click();
+    out.jump = { ended, word: word(), at: round.at, queue: round.queue.length, open: !$("overlay").hidden };
+    return out;
+  });
+  check("מחיקת מילה בסוף הסבב משאירה את מסך הסיום ואת השורה שלו, והסבב הבא בלעדיה",
+    whileEnded.removed.ended && !whileEnded.removed.picture && whileEnded.removed.row === "🐶" && !whileEnded.spell.moon, whileEnded);
+  check("שינוי התעתיק בסוף הסבב משאיר את מסך הסיום", whileEnded.hebrew.ended && !whileEnded.hebrew.picture, whileEnded);
+  check("הדלקת השמע בסוף הסבב לא אומרת את המילה האחרונה",
+    whileEnded.sound.ended && whileEnded.sound.spoken.length === 0, whileEnded);
+  check("מעבר לכתיבה בסוף הסבב מתחיל סבב חדש, לא במילה האחרונה",
+    !whileEnded.spell.ended && whileEnded.spell.word !== "fish" && whileEnded.spell.at === 0, whileEnded);
+  check("קפיצה מהרשימה בסוף הסבב מציגה את המילה, וסבב חדש אחריה",
+    !whileEnded.jump.ended && whileEnded.jump.word === "lion" && whileEnded.jump.at === -1 && whileEnded.jump.queue > 0
+      && !whileEnded.jump.open, whileEnded);
+
+  // מילה שמורה קפצה אליה, כשהיא האחרונה בסבב והילד כבר ניסה אותה, לא חוזרת
+  // מיד; סבב חדש שיש בו רק אותה מילה מציג אותה.
+  const repeat = await page.evaluate(() => {
+    roundTest.plan(["dog", "fish"]);
+    i = words.findIndex(x => x.word === "fish");
+    show();
+    noteTried("fish");
+    next();
+    const jumped = { ended, word: word() };
+    round = { queue: ["fish"], at: -1, row: [], tried: [], fresh: [], requeued: [] };
+    next();
+    return { jumped, alone: { ended, word: word() } };
+  });
+  check("מילה שבדיוק הוצגה לא מוצגת שוב מיד, גם כשהיא האחרונה בסבב",
+    repeat.jumped.ended && repeat.alone.word === "fish" && !repeat.alone.ended, repeat);
+
+  // קפיצה למילה שמופיעה בסבב פעמיים, ואז ⏭️ עד הסוף: אף תמונה לא פעמיים ברצף.
+  const jumpedSkips = await page.evaluate(() => {
+    roundTest.plan(["dog", "fish", "dog", "fish"]);
+    i = words.findIndex(x => x.word === "fish");
+    show();
+    const seen = ["dog", "fish"];
+    for(let k = 0; k < 6 && !ended; k++){ skipWord(); if(!ended) seen.push(word()); }
+    return { seen, ended };
+  });
+  check("אחרי קפיצה מהרשימה ⏭️ לא מציג את אותה תמונה פעמיים ברצף",
+    jumpedSkips.ended && jumpedSkips.seen.every((x, k) => !k || jumpedSkips.seen[k - 1] !== x), jumpedSkips);
+
+  // "תרגלו רק את האלה" כשהסבב החדש נפתח במילה שעל המסך: זה אותו תור, וילד ששמע
+  // אותה רגע לפני לא נרשם כמי שאמר לבד.
+  const sameTurn = await page.evaluate(() => {
+    const before = words, keep = words[i];
+    try{
+      roundTest.plan([keep.word]);
+      turn.heard = true;
+      const was = turn;
+      applyWords([keep], null, false);
+      return { same: turn === was, heard: turn.heard, word: word() === keep.word };
+    } finally { applyWords(before, before.indexOf(keep), false); }
+  });
+  check("רשימה חדשה שהסבב שלה נפתח במילה שעל המסך ממשיכה את אותו תור",
+    sameTurn.same && sameTurn.heard && sameTurn.word, sameTurn);
+
+  // ומסוף הסבב, רשימה חדשה או ילד אחר מתחילים מיד את הסבב שלהם, בלי לסיים
+  // את הקודם פעם שנייה.
+  const freshList = await page.evaluate(([P, L]) => {
+    const realChime = chime, before = words;
+    let cheers = 0;
+    chime = sound => { if(sound === ROUND_CHEER) cheers++; return realChime(sound); };
+    localStorage.setItem(P, JSON.stringify({ v: 1, w: {}, pace: 1 }));
+    localStorage.setItem(L, JSON.stringify({ v: 1, a: Array.from({ length: 12 }, () => [1, 0, "dog", "say", "ok", 1, "", null, "", "normal", 1]) }));
+    try{
+      roundTest.end();
+      const set = words.filter(x => ["sun", "moon", "lion"].includes(x.word));
+      applyWords(set, null, false);
+      return { ended, inSet: set.some(x => x.word === word()), cheers, pace: JSON.parse(localStorage.getItem(P)).pace };
+    } finally {
+      chime = realChime;
+      applyWords(before, 0, false);
+      localStorage.removeItem(P); localStorage.removeItem(L);
+    }
+  }, [P, L]);
+  check("רשימה חדשה מסוף הסבב מתחילה את הסבב שלה, והקודם לא נגמר פעמיים",
+    !freshList.ended && freshList.inSet && freshList.cheers === 1 && freshList.pace === 2, freshList);
+
+  // מה שהילד עשה בפועל מגיע למסך הסיום: אמירה נקייה בגדול, אמירה בניסיון
+  // השני בקטן, וכתיבה נקייה בגדול.
+  const played = await page.evaluate(async ([P, L]) => {
+    const { plan, say, wait } = roundTest, synth = speechSynthesis;
+    const pics = () => [...$("roundPics").children].map(b => b.dataset.word + (b.classList.contains("big") ? "+" : ""));
+    synth.speak = () => {};
+    localStorage.removeItem(P); localStorage.removeItem(L);
+    try{
+      plan(["dog", "sun"]);
+      await say("dog");
+      await wait(GOOD_MS + 200);
+      await say("zzz");
+      await wait(AGAIN_MS + 100);
+      await say("sun");
+      await wait(GOOD_MS + 200);
+      const sayPics = { ended, pics: pics() };
+      setMode("spell");
+      plan(["cat"]);
+      for(const ch of word()) [...$("bank").children].find(t => !t.disabled && t.dataset.letter === ch).click();
+      await wait(GOOD_MS + 200);
+      return { say: sayPics, spell: { ended, pics: pics() } };
+    } finally {
+      setMode("say");
+      delete synth.speak;
+      localStorage.removeItem(P); localStorage.removeItem(L);
+    }
+  }, [P, L]);
+  check("מסך הסיום אחרי סבב אמיתי: מה שנאמר בניסיון הראשון בגדול, בניסיון השני בקטן",
+    played.say.ended && played.say.pics.join() === "dog+,sun", played);
+  check("ובכתיבה: מילה שנכתבה בלי עזרה בגדול", played.spell.ended && played.spell.pics.join() === "cat+", played);
+
+  // בכתיבה הסבב מתחיל במה שהילד כבר אמר ועוד לא כתב.
+  const spellOrder = await page.evaluate(() => {
+    const w = { dog: { got: 1, n: 1 }, cat: { got: 1, n: 1 }, sun: { got: 1, n: 1, wrote: 2 } };
+    return Array.from({ length: 20 }, () => spellRound(w)).filter(r => [r[0], r[1]].sort().join() !== "cat,dog").length;
+  });
+  check("סבב כתיבה מתחיל במילים שהילד אמר ועוד לא כתב", spellOrder === 0, spellOrder);
+
+  // ⏭️ בזמן שהמיקרופון עוד נפתח: ההקשבה לא מתחילה על המילה הבאה, וגם לא על
+  // מסך הסיום כשזו הייתה האחרונה.
+  const raced = await page.evaluate(async () => {
+    const real = { audioReady, ensureAudio };
+    audioReady = () => false;
+    ensureAudio = () => new Promise(r => setTimeout(r, 200));
+    const run = async queue => {
+      roundTest.plan(queue);
+      const opening = listen();
+      skipWord();
+      await opening;
+      return { ended, word: word(), active, listening: $("say").classList.contains("listening") };
+    };
+    try{
+      return { next: await run(["dog", "cat"]), last: await run(["dog"]) };
+    } finally {
+      audioReady = real.audioReady;
+      ensureAudio = real.ensureAudio;
+      stopListening();
+    }
+  });
+  check("⏭️ בזמן שהמיקרופון נפתח — לא מקשיבים למילה הבאה",
+    raced.next.word === "cat" && !raced.next.active && !raced.next.listening, raced);
+  check("סבב שנגמר בזמן שהמיקרופון נפתח לא מקשיב על מסך הסיום",
+    raced.last.ended && !raced.last.active && !raced.last.listening, raced);
+
+  // פתיחת ההגדרות באמצע הקשבה עוצרת אותה: מאחוריהן הילד לא רואה ולא מנסה.
+  const panelStops = await page.evaluate(async () => {
+    roundTest.plan(["dog", "sun"]);
+    await listen();
+    const was = active;
+    openPanel();
+    const out = { was, active, listening: $("say").classList.contains("listening") };
+    closePanel();
+    return out;
+  });
+  check("פתיחת ההגדרות באמצע הקשבה עוצרת אותה", panelStops.was && !panelStops.active && !panelStops.listening, panelStops);
+
+  // 🎉 שבא מהר אחרי "נסו שוב" נשאר ירוק עד סופו.
+  const cheerStays = await page.evaluate(async () => {
+    roundTest.plan(["dog", "sun"]);
+    const realNext = next;
+    next = () => {};
+    try{
+      again();
+      await roundTest.wait(300);
+      good();
+      await roundTest.wait(AGAIN_MS);
+      return { cls: $("picture").className, card: $("picture").textContent };
+    } finally { next = realNext; }
+  });
+  check("🎉 מהר אחרי \"נסו שוב\" נשאר ירוק עד סופו", cheerStays.cls === "good" && cheerStays.card === "🎉", cheerStays);
+
+  // מעבר בין התרגולים באמצע מילה: המילה שעל המסך לא חוזרת מיד בסבב החדש, וגם
+  // אחרי שתי אמירות שלא התקבלו היא חוזרת רק שלוש מילים אחר כך.
+  const held = await page.evaluate(async ([P, L]) => {
+    const day = dayNumber(), synth = speechSynthesis;
+    synth.speak = () => {};
+    localStorage.setItem(P, JSON.stringify({ v: 1, w: {
+      dog: { met: day - 9, seen: day - 2, box: 3, due: day + 5, ok: [day - 3], n: 3, k: 2, got: day - 5 } } }));
+    localStorage.removeItem(L);
+    try{
+      roundTest.plan(["dog"]);
+      setMode("spell");
+      const spellHas = round.queue.includes("dog");
+      setMode("say");
+      const sayHas = round.queue.includes("dog");
+      for(let k = 0; k < 2; k++){
+        await roundTest.say("zzz");
+        await roundTest.wait(AGAIN_MS + 150);
+      }
+      const seen = [word()];
+      for(let k = 0; k < 2 && !ended; k++){ skipWord(); seen.push(word()); }
+      return { spellHas, sayHas, seen };
+    } finally {
+      delete synth.speak;
+      localStorage.removeItem(P); localStorage.removeItem(L);
+    }
+  }, [P, L]);
+  check("מעבר בין התרגולים באמצע מילה — היא לא חוזרת מיד בסבב החדש, ואחרי שתי החמצות שלוש מילים אחר כך",
+    !held.spellHas && !held.sayHas && held.seen.indexOf("dog") === 2, held);
+  await page.setViewportSize(viewport);
+
+  // פתיחה של האפליקציה מתחילה בסבב חדש, ובמילה שהילד כבר אמר ביום קודם:
+  // המילה האחרונה ברשימה השמורה, שהטעינה תמצא.
+  const opener = await page.evaluate(P => {
+    const day = dayNumber(), saved = JSON.parse(localStorage.getItem("words")), w = saved[saved.length - 1].word;
+    localStorage.setItem(P, JSON.stringify({ v: 1, w: {
+      [w]: { met: day - 9, seen: day - 2, box: 2, due: day + 1, ok: [day - 3], n: 3, k: 2, got: day - 3 } } }));
+    return w;
+  }, P);
+  await reload();
+  const startedOn = await page.evaluate(() => ({ word: word(), at: round.at,
+    veiled: getComputedStyle($("word")).visibility === "hidden" }));
+  check("פתיחה מתחילה במילה שהילד כבר אמר, בלי כתב",
+    startedOn.word === opener && startedOn.at === 0 && startedOn.veiled, { opener, startedOn });
+
+  // מחיקת המילה בסוף הסבב שמרה את רשימת הקבוצה, אז הרשימה מלפניה נשמרת בחזרה.
+  await page.evaluate(([P, list]) => {
+    localStorage.removeItem(P);
+    applyWords(list, 0);
+    newRound();
+  }, [P, roundList]);
+  // הטעינה מחדש פותחת את המנוע מחדש, והקבוצה הבאה צריכה אותו מוכן.
+  await page.waitForFunction(() => model !== null, null, { timeout: 60000 });
+
+  // --------------------------------------------------------------
   group("כפתור ההקשבה");
   // ילדים מחזיקים את הכפתור בזמן שהם מדברים, ונוגעים בו שוב כדי "לסיים". לכן
   // לחוץ ומקשיב הם אותו מצב, ואדום נשאר אדום תחת האצבע. הצבע נקרא אחרי
@@ -1803,7 +2566,7 @@ async function main(){
     await page.waitForTimeout(150);
   };
 
-  await page.evaluate(() => { scores.say = 4; scores.spell = 2; window.sameDocument = true; });
+  await page.evaluate(() => { round.row = ["dog", "cat"]; renderRow(); window.sameDocument = true; });
   await page.click("#openSettings");
   await page.waitForTimeout(150);
   const legacyBefore = await legacyRaw();
@@ -1813,7 +2576,7 @@ async function main(){
   await addName("נועה");
   const added = await page.evaluate(() => ({
     reg: JSON.parse(localStorage.getItem("say-the-word-children")), pointer: localStorage.getItem("say-the-word-child"),
-    sameDocument: window.sameDocument === true, scores: { ...scores }
+    sameDocument: window.sameDocument === true, row: $("roundRow").textContent, at: round.at
   }));
   const noaId = added.reg && added.reg[0] && added.reg[0].id;
   const onNoa = await childState();
@@ -1825,7 +2588,7 @@ async function main(){
   check("ילד חדש מתחיל מההגדרות שהיו על המסך",
     JSON.stringify(await childKeys(noaId)) === JSON.stringify(onScreen)
       && settingsOf({ ...onNoa, childId: "" }) === settingsOf(unnamed), { onScreen, onNoa, unnamed });
-  check("הכוכבים מתאפסים במעבר לילד אחר", added.scores.say === 0 && added.scores.spell === 0, added.scores);
+  check("מעבר לילד אחר מתחיל סבב חדש, במילה הראשונה בו, והשורה ריקה", added.row === "" && added.at === 0, added);
   check("בהגדרות: בלי שם, השם המסומן, ➕, וכפתור מחיקה עם השם",
     onNoa.chips === "בלי שם|נועה*|➕ הוספת שם" && onNoa.meta.includes("של נועה") && onNoa.del === "🗑️ מחיקת נועה", onNoa);
 

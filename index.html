@@ -39,6 +39,9 @@
   #picture.again{background:#FFECEC}
   #word{font-size:15px; color:#8B93AD; min-height:20px; direction:ltr}
   #wordHe{font-size:22px; font-weight:600; color:#4A5480; line-height:1.3}
+  /* מילה שהילד כבר אמר לבד מוצגת בלי כתב, כדי שיזכור אותה מהתמונה. המקום
+     נשמר, כדי שהכפתורים לא יקפצו בין מילה למילה. */
+  #word.veiled, #wordHe.veiled{visibility:hidden}
   .toggle-row{
     display:flex; align-items:center; gap:10px; cursor:pointer;
     font-weight:700; font-size:15px; color:#1B2140;
@@ -125,8 +128,8 @@
   #loadtext{font-size:14px; color:#8B93AD; text-align:center}
   /* בעמודה של הדף הסרגל הוא פריט שמתכווץ, ו-min-height שלו מחליף את הגובה
      המינימלי שלפי התוכן. בלי flex-shrink:0, כשחסר גובה — במצב כתיבה, בטלפון
-     נמוך — שורת כוכבים של שלוש שורות נדחסת, עד 44px, וגולשת מעל קצה המסך ועל
-     מתג התרגול. כשגם כך אין מקום, מה שבתחתית הדף יורד מתחת לקצה. */
+     נמוך — שורה של שתי שורות נדחסת, עד 44px, וגולשת מעל קצה המסך ועל מתג
+     התרגול. כשגם כך אין מקום, מה שבתחתית הדף יורד מתחת לקצה. */
   #topBar{
     width:100%; max-width:520px; display:flex; align-items:center;
     justify-content:center; position:relative; min-height:44px; flex-shrink:0;
@@ -139,7 +142,9 @@
   #topBar::before, #topBar::after{content:""; flex:1}
   #topBar::before{min-width:50px}
   #topBar::after{min-width:100px}
-  #stars{font-size:26px; letter-spacing:3px; min-height:32px; text-align:center}
+  /* בגודל הזה סבב שלם נכנס בשורה אחת בטלפון ברוחב 360, בכרום, בלי רווח
+     נוסף בין התמונות. אימוג'י רחב יותר שובר אותו לשתי שורות. */
+  #roundRow{font-size:18px; min-height:26px; text-align:center}
   #topBarLeft{
     position:absolute; left:0; top:50%; transform:translateY(-50%);
     display:flex; align-items:center; gap:6px;
@@ -162,6 +167,44 @@
   #toggleSound:active{transform:translateY(calc(-50% + 2px))}
   #toggleSound.on{background:#EBF8FF; border-color:#2B6CB0; color:#2B6CB0}
   #note{font-size:14px; color:#B23A00; text-align:center; min-height:20px}
+  /* סוף הסבב יושב במקום התמונה והכפתורים ולא מעליהם, כך ש-⚙️, 🔇 והמתג
+     נשארים זמינים. */
+  #roundEnd{
+    flex:1; min-height:0; width:100%; max-width:520px;
+    display:flex; flex-direction:column; overflow-y:auto;
+    background:#fff; border:5px solid #1B2140; border-radius:32px; padding:16px 12px;
+  }
+  #roundEnd[hidden]{display:none}
+  body.ended #picture, body.ended #word, body.ended #wordHe, body.ended #spell, body.ended #buttons{display:none}
+  .end-view{flex:1; display:flex; flex-direction:column; align-items:center; gap:14px; width:100%}
+  .end-view[hidden]{display:none}
+  .end-view h2{margin:0; font-size:22px; font-weight:800}
+  #roundPics{display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px}
+  .pic-btn{
+    position:relative; border:0; background:transparent; padding:4px; line-height:1;
+    font-size:34px; border-radius:14px; -webkit-tap-highlight-color:transparent;
+  }
+  .pic-btn:active{background:#FFF8E1}
+  /* מילה שנאמרה בניסיון הראשון, בלי עזרה, גדולה יותר. */
+  .pic-btn.big{font-size:52px}
+  /* ✨ על מילה שפגשו לראשונה בסבב הזה. */
+  .pic-btn.fresh::after{content:"✨"; position:absolute; top:-2px; left:-4px; font-size:18px}
+  #endActions{display:flex; gap:12px; width:100%; margin-top:auto; direction:ltr}
+  #endActions button{
+    height:74px; border-radius:24px; box-shadow:0 4px 0 #1B2140; font-size:34px;
+    display:flex; align-items:center; justify-content:center; padding:0;
+  }
+  #endActions button:active{transform:translateY(3px); box-shadow:0 1px 0 #1B2140}
+  #basketBtn{flex:1; background:#EBF8FF}
+  #againBtn{flex:2; background:#FFD65A}
+  .basket-head{display:flex; align-items:center; justify-content:space-between; width:100%}
+  #basketPics{
+    width:100%; display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:6px;
+  }
+  #basketPics .pic-btn{display:flex; flex-direction:column; align-items:center; gap:4px; font-size:30px}
+  #basketPics .w{font-size:13px; font-weight:700; color:#1B2140; direction:ltr}
+  #basketEmpty{text-align:center}
+  #basketEmpty[hidden]{display:none}
   #settingsActions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
   #installBtn{
     border-width:2px; border-color:#2B6CB0; border-radius:12px; padding:8px 12px;
@@ -464,7 +507,7 @@
     <button id="openSettings" type="button" aria-label="הגדרות ואוצר מילים" title="הגדרות">⚙️</button>
     <a id="openFeedback" data-feedback target="_blank" rel="noopener noreferrer" aria-label="משוב והצעות" title="שליחת משוב ורעיונות (טופס Google)">💬</a>
   </div>
-  <div id="stars"></div>
+  <div id="roundRow"></div>
   <button id="toggleSound" type="button" aria-label="הפעלת שמע" title="שמע מכובה - לחצו להפעלה">🔇</button>
 </div>
 <div id="modeSwitch" role="radiogroup" aria-label="סוג התרגול">
@@ -472,6 +515,27 @@
   <button type="button" role="radio" data-mode="spell" title="כותבים את המילה מאותיות">🔤 כותבים</button>
 </div>
 <button id="picture" type="button" aria-label="השמעת המילה באנגלית" title="לחצו לשמיעת המילה">🐶</button>
+<section id="roundEnd" hidden aria-label="סוף הסבב">
+  <div id="endView" class="end-view">
+    <h2>סיימנו סבב!</h2>
+    <div id="roundPics" role="group" aria-label="המילים של הסבב"></div>
+    <div id="endActions">
+      <button id="basketBtn" type="button" aria-label="הסל: המילים שכבר יודעים להגיד" title="הסל">🧺</button>
+      <button id="againBtn" type="button" aria-label="עוד סבב" title="עוד סבב">▶</button>
+    </div>
+  </div>
+  <div id="basketView" class="end-view" hidden>
+    <div class="basket-head">
+      <button id="basketBack" type="button" class="panel-back-btn" title="חזרה לסוף הסבב">
+        <span>➔</span>
+        <span>חזרה</span>
+      </button>
+      <h2>🧺</h2>
+    </div>
+    <p id="basketEmpty" class="match-desc" hidden>כאן ייאספו המילים שתגידו נכון מהתמונה, בשני ימים שונים.</p>
+    <div id="basketPics" role="group" aria-label="המילים בסל"></div>
+  </div>
+</section>
 <div id="word"></div>
 <div id="wordHe" lang="he" dir="rtl"></div>
 <div id="spell" hidden>
@@ -670,6 +734,7 @@ var WORD_BY_EMOJI = window.WORD_BY_EMOJI || {};
 var DEFAULT_WORDS = window.DEFAULT_WORDS || [];
 var THEMES = window.THEMES || [];
 var THEME_BY_WORD = window.THEME_BY_WORD || {};
+const PAIR_BY_WORD = Object.fromEntries(PAIRS.map(p => [p[1], p]));
 
 const $ = id => document.getElementById(id);
 
@@ -734,12 +799,17 @@ function readStore(key){
 }
 
 // הסולם של מילה אחת. clean היא אמירה שהתקבלה בניסיון הראשון, בלי ששמעו את
-// המילה קודם. היא מעלה תיבה רק ביום אחרי ההצלחה הנקייה הקודמת: הצלחה חוזרת
-// באותו יום מראה שהמילה עוד בזיכרון הקצר, לא שנלמדה. ok שומר את שני הימים
-// האחרונים כאלה, ושני ימים הם "אמר". helped (אחרי 🔊 או בניסיון השני) ו-miss
-// רק נספרים. failed, שתי אמירות שלא התקבלו, מוריד תיבה אחת, ו-got נשאר: מה
-// שהילד כבר הצליח בו לא נלקח ממנו. write היא כתיבה נקייה, והיא לא נוגעת
-// בסולם של האמירה. שעון שחזר אחורה נחשב לאותו יום.
+// המילה קודם ובלי כתב על המסך: הילד שלף אותה מהתמונה. היא מעלה תיבה רק ביום
+// אחרי ההצלחה הנקייה הקודמת: הצלחה חוזרת באותו יום מראה שהמילה עוד בזיכרון
+// הקצר, לא שנלמדה. ok שומר את שני הימים האחרונים כאלה, ושני ימים הם "אמר",
+// והמילה נכנסת לסל. cleanText היא אותה הצלחה כשהמילה כתובה על המסך: ייתכן
+// שהילד קרא אותה, ולכן היא לא נכנסת ל-ok. היא רק מסמנת שהצליח, ומכאן המילה
+// מוצגת בלי כתב. helped (אחרי 🔊 או בניסיון השני) ו-miss רק נספרים. failed,
+// שתי אמירות שלא התקבלו, מוריד תיבה אחת, ו-got ו-ok נשארים: מה שהילד כבר
+// הצליח בו לא נלקח ממנו. התיבה עולה לכל היותר פעם ביום: cleanText מעלה רק
+// את ההצלחה הראשונה במילה, ו-clean באותו יום שלה, כמו מילה חדשה שחוזרת בסבב
+// שלה, נכנס ל-ok בלי לעלות שוב. write היא כתיבה נקייה, והיא לא נוגעת בסולם של
+// האמירה. שעון שחזר אחורה נחשב לאותו יום.
 function ladderStep(rec, step, day){
   const r = rec ? Object.assign({}, rec, { ok: (rec.ok || []).slice() })
                 : { met: day, seen: day, box: 0, due: day, ok: [], n: 0, k: 0 };
@@ -750,13 +820,23 @@ function ladderStep(rec, step, day){
     return r;
   }
   r.n++;
-  if(step === "clean"){
+  if(step === "cleanText"){
     r.k++;
+    if(r.got === undefined){
+      r.got = day;
+      r.box = 1;
+      r.due = day + LADDER_DAYS[1];
+    }
+  } else if(step === "clean"){
+    r.k++;
+    const raisedToday = r.got === day;
     if(r.got === undefined) r.got = day;
     if(!r.ok.length || day > r.ok[r.ok.length - 1]){
       r.ok = r.ok.concat(day).slice(-2);
-      r.box = Math.min(r.box + 1, LADDER_DAYS.length - 1);
-      r.due = day + LADDER_DAYS[r.box];
+      if(!raisedToday){
+        r.box = Math.min(r.box + 1, LADDER_DAYS.length - 1);
+        r.due = day + LADDER_DAYS[r.box];
+      }
     }
   } else if(step === "failed"){
     r.box = Math.max(r.box - 1, 0);
@@ -765,10 +845,18 @@ function ladderStep(rec, step, day){
   return r;
 }
 
+// מה מהכתב באמת נראה על המסך: המילה באנגלית, והתעתיק.
+function textOnScreen(){
+  const seen = id => !$(id).hidden && !$(id).classList.contains("veiled") && !!$(id).textContent;
+  return { en: seen("word"), he: seen("wordHe") };
+}
+
 // אותיות ביומן: h שמעו את המילה לפני הניסיון, t המילה באנגלית על המסך, e
-// התעתיק על המסך, m השמע כבוי, x נעזרו ב-💡, w כבר נבדקה מילה שגויה בכתיבה.
+// התעתיק על המסך, p ראו את המילה בכתיבה באותו תור, m השמע כבוי, x נעזרו
+// ב-💡, w כבר נבדקה מילה שגויה בכתיבה.
 function attemptFlags(){
-  return (turn.heard ? "h" : "") + ($("word").hidden ? "" : "t") + ($("wordHe").textContent ? "e" : "") +
+  const text = textOnScreen();
+  return (turn.heard ? "h" : "") + (text.en ? "t" : "") + (text.he ? "e" : "") + (turn.peeked ? "p" : "") +
          (soundEnabled ? "" : "m") + (turn.hinted ? "x" : "") + (turn.wrong ? "w" : "");
 }
 
@@ -810,10 +898,7 @@ function halveLog(data){
 }
 
 let words = load() || DEFAULT_WORDS.slice();
-// לכל תרגול ניקוד משלו, והשורה מראה את של התרגול הפתוח. הניקוד לא נשמר
-// בין פתיחות: הכוכבים מודדים את מה שהילד עושה עכשיו, ושמירה הייתה מחייבת
-// להחליט מתי מאפסים. בלי שמירה אין מה לאפס.
-let i = 0, scores = { say: 0, spell: 0 };
+let i = 0;
 
 let model = null, rec = null;
 let ctx = null, srcNode = null, procNode = null, sinkNode = null, micStream = null;
@@ -904,6 +989,8 @@ function toggleSound(){
   if(soundEnabled && "speechSynthesis" in window) speechSynthesis.cancel();
   setSound(!soundEnabled);
   setNote(soundEnabled ? "השמע הופעל 🔊" : "השמע כובה 🔇", 2000);
+  // בסוף הסבב המילה האחרונה כבר לא על המסך.
+  if(ended) return;
   speak(word(), EN);   // שותק כשהשמע כבוי
   if(soundEnabled) turn.heard = true;
 }
@@ -937,33 +1024,54 @@ let sayMisses = 0;
 // הוכרעה (הצליחה, או שתי אמירות שלא התקבלו). מעבר לכתיבה וחזרה, הדלקת
 // התעתיק או שינוי ברשימה מציגים מחדש את אותה מילה, ואז זה אותו תור: אחרת ילד
 // ששמע את המילה רגע לפני היה נרשם כמי שאמר אותה לבד. next() מתחיל תור חדש
-// גם כשהמילה חוזרת.
+// גם כשהמילה חוזרת. known: הילד כבר הצליח בה לבד, ולכן באמירה היא מוצגת בלי
+// כתב; revealed: הכתב חזר, אחרי אמירה שלא התקבלה או בהצלחה. known נקבע פעם
+// אחת לתור, כדי שהצלחה לא תעלים את הכתב באמצע ה-🎉. peeked: עברו לכתיבה
+// באמצע התור, וראו את המילה באותיות שלה, ולכן אמירה אחר כך לא נשלפה מהתמונה.
 function newTurn(){
-  return { word: word(), child: childId, heard: false, hinted: false, says: 0, spells: 0, wrong: false, done: false };
+  return { word: word(), child: childId, heard: false, hinted: false, says: 0, spells: 0, wrong: false, done: false,
+           known: isKnown(word()), revealed: false, peeked: false };
 }
 let turn = { word: null };
+// המילה שהוצגה אחרונה, כדי שסבב לא יתחיל בה. null כשעוד לא הוצג כלום לילד.
+let shownWord = null;
 function show(){
   // הקשבה שהתחילה על המילה הקודמת נעצרת בשקט, כמו במעבר לכתיבה. אחרת שאר
   // החלון, ותוצאה סופית שמגיעה באיחור, נשפטים מול המילה החדשה, והילד שומע
   // "נסו שוב" על מילה שלא ניסה.
   stopListening();
+  hideRoundEnd();
   shownCount++;
   sayMisses = 0;
   if(turn.word !== word() || turn.child !== childId) turn = newTurn();
+  shownWord = word();
   $("picture").textContent = words[i].emoji;
   $("picture").className = "";
   $("word").textContent = word();
   // מילה שנשמרה לפני שהיה תעתיק, או words.js ישן מהמטמון, פשוט בלי שורה.
   const he = typeof HE_BY_WORD !== "undefined" && HE_BY_WORD[word()] || "";
   $("wordHe").textContent = hebrewEnabled ? he : "";
+  renderVeil();
   setNote("");
   if(mode === "spell") startSpelling();
 }
 
+// בכתיבה המילה באנגלית מוסתרת ממילא, והתעתיק נשאר כמו שהיה.
+function renderVeil(){
+  const veil = mode === "say" && turn.known && !turn.revealed;
+  $("word").classList.toggle("veiled", veil);
+  $("wordHe").classList.toggle("veiled", veil);
+}
+function reveal(){
+  turn.revealed = true;
+  renderVeil();
+}
+
+// בסוף הסבב ההחלפה נשמרת למילה הבאה, ולא מחזירה את המילה האחרונה למסך.
 function setHebrew(on){
   hebrewEnabled = on;
   try{ localStorage.setItem(childKey(HEBREW_KEY), on ? "1" : "0"); }catch(e){}
-  show();
+  if(!ended) show();
 }
 
 const EN = "en-US";   // המילה שמתרגלים
@@ -1334,13 +1442,15 @@ async function listen(){
   if(active || opening) return;
   if(!audioReady()){
     opening = true;
+    const mine = shownCount;
     try{ await ensureAudio(); }
     catch(err){ setNote("צריך לאשר את המיקרופון."); return; }
     finally{ opening = false; }
-    // בזמן ההמתנה הדף ירד מהמסך — releaseMic כבר רץ ולא מצא מה לסגור —
-    // או שהילד עבר לכתיבה. בשני המקרים אין למה להקשיב.
+    // בזמן ההמתנה הדף ירד מהמסך — releaseMic כבר רץ ולא מצא מה לסגור — או
+    // שמשהו אחר הוצג: ⏭️, מעבר לכתיבה, קפיצה מהרשימה, סוף הסבב. בכל אלה הנגיעה
+    // הייתה במילה שכבר לא על המסך.
     if(document.hidden){ releaseMic(); return; }
-    if(mode !== "say") return;
+    if(shownCount !== mine) return;
   }
 
   setNote("");
@@ -1392,60 +1502,43 @@ function stopListening(){
 // ה-🎉, או אחרי מעבר לכתיבה וחזרה — נרשמת ביומן ולא מזיזה שוב את הסולם.
 function finish(ok, info = {}){
   if(!stopListening()) return;
-  const tryNo = ++turn.says;
+  const tryNo = ++turn.says, text = textOnScreen();
+  const clean = text.en || text.he || turn.peeked ? "cleanText" : "clean";
   const step = turn.done ? null
-    : ok ? (tryNo === 1 && !turn.heard ? "clean" : "helped") : (tryNo >= SAY_TRIES ? "failed" : "miss");
+    : ok ? (tryNo === 1 && !turn.heard ? clean : "helped") : (tryNo >= SAY_TRIES ? "failed" : "miss");
   recordAttempt(word(), ok ? "ok" : "no", step, { tryNo, score: info.score, heard: info.heard });
+  noteTried(word());
+  if(step === "clean" || step === "cleanText") addToRow(word());
   if(ok || step === "failed") turn.done = true;
   ok ? good() : notYet();
 }
 
-// שלושה כוכבים מתחלפים במדליה, וחמישה מכל סמל אחר בסמל שמעליו — מדליות
-// בגביע, גביעים בכתר, כתרים ביהלום — כך שהשורה משתנה כל עוד הילד מתרגל
-// ובכל זאת לא מתארכת בלי סוף ודוחקת את התמונה. מעל היהלום אין סמל: כבר
-// יהלום אחד הוא מאות הצלחות בפתיחה אחת של הדף. בטלפון צר שורה ארוכה נשברת
-// בין הכפתורים שבצדי הסרגל (ראו #topBar).
-const PER_MEDAL = 3, MEDALS_PER_TROPHY = 5, TROPHIES_PER_CROWN = 5, CROWNS_PER_DIAMOND = 5;
-const PER_TROPHY = PER_MEDAL * MEDALS_PER_TROPHY;
-const PER_CROWN = PER_TROPHY * TROPHIES_PER_CROWN;
-const PER_DIAMOND = PER_CROWN * CROWNS_PER_DIAMOND;
-// מהגדול לקטן, וכמה כוכבים שווה כל סמל.
-const SCORE_ICONS = [["💎", PER_DIAMOND], ["👑", PER_CROWN], ["🏆", PER_TROPHY], ["🏅", PER_MEDAL], ["⭐", 1]];
-
-function renderScore(){
-  let rest = scores[mode];
-  $("stars").textContent = SCORE_ICONS.map(([icon, worth]) => {
-    const n = Math.floor(rest / worth);
-    rest %= worth;
-    return icon.repeat(n);
-  }).join("");
-}
-
-// כל הצלחה שווה כוכב אחד, באמירה ובכתיבה, עם רמז או בלי.
-// המשוב הוא הצבע, ה-🎉 והצליל. ההקראה היחידה היא המילה עצמה, באנגלית, אחרי
-// אמירה שלא התקבלה (notYet). ה-🎉 נשאר כשנייה ואז עוברים למילה הבאה; האדום
-// של ניסיון נוסף נשאר מעט יותר, כדי שיספיקו לראות אותו.
+// המשוב הוא הצבע, ה-🎉 והצליל, ובהצלחה גם הכתב של מילה שהוצגה בלעדיו. התמונה
+// בשורה למעלה נוספת רק בהצלחה בלי עזרה (addToRow). ההקראה היחידה היא המילה
+// עצמה, באנגלית, אחרי אמירה שלא התקבלה (notYet). ה-🎉 נשאר כשנייה ואז עוברים
+// למילה הבאה; האדום של ניסיון נוסף נשאר מעט יותר, כדי שיספיקו לראות אותו.
 const GOOD_MS = 1000, AGAIN_MS = 1300;
 function good(){
-  scores[mode]++;
-  renderScore();
+  reveal();
   $("picture").className = "good";
   $("picture").textContent = "🎉";
   const mine = shownCount;
   chime(CHEER);
   setTimeout(()=>{ if(mine === shownCount) next(); }, GOOD_MS);
 }
-// אמירה שלא התקבלה. בפעם הראשונה "נסו שוב" כמו בכתיבה, ואחרי הצליל המילה
-// נאמרת באנגלית (speak שותקת כשהשמע כבוי), כדי שהילד ישמע אותה לפני הניסיון
-// הבא. ילד שכבר לחץ שוב על 🎤 לא שומע אותה באמצע. בפעם השנייה עוברים למילה
-// אחרת בלי סימן: הרבה מהאמירות שלא מתקבלות הן של המנוע ולא של הילד, ושלישית
-// רק מתסכלת. המילה חוזרת בהגרלה.
+// אמירה שלא התקבלה. בפעם הראשונה "נסו שוב" כמו בכתיבה, הכתב של מילה שהוצגה
+// בלעדיו חוזר, ואחרי הצליל המילה נאמרת באנגלית (speak שותקת כשהשמע כבוי),
+// כדי שהילד ישמע אותה לפני הניסיון הבא; בלי שמע הכתב הוא הדוגמה. ילד שכבר
+// לחץ שוב על 🎤 לא שומע אותה באמצע. בפעם השנייה עוברים למילה אחרת בלי סימן:
+// הרבה מהאמירות שלא מתקבלות הן של המנוע ולא של הילד, ושלישית רק מתסכלת.
+// המילה חוזרת עוד פעם בסבב (requeue).
 const SAY_TRIES = 2;
 function notYet(){
   sayMisses++;
   const mine = shownCount;
   if(sayMisses < SAY_TRIES){
     again(preset.why);
+    reveal();
     setTimeout(()=>{
       if(mine !== shownCount || active) return;
       speak(word(), EN);
@@ -1453,22 +1546,21 @@ function notYet(){
     }, CHIME_SECONDS * 1000);
     return;
   }
+  requeue(word());
   setTimeout(()=>{ if(mine === shownCount) next(); }, AGAIN_MS);
 }
-// why: הסבר מתחת לתמונה, כשיש מה להסביר.
+// why: הסבר מתחת לתמונה, כשיש מה להסביר. האדום יורד רק אם הוא עדיין של
+// הקריאה הזו: 🎉 שבא מהר אחריו, או אדום נוסף, נשארים לכל הזמן שלהם.
+let againCount = 0;
 function again(why = ""){
   $("picture").className = "again";
-  const note = setNote(why);
+  const note = setNote(why), mine = ++againCount;
   chime(OOPS);
   setTimeout(()=>{
-    $("picture").className = "";
+    if(mine === againCount && $("picture").className === "again") $("picture").className = "";
     clearNote(note);
   }, AGAIN_MS);
 }
-function pick(){
-  return Math.floor(Math.random() * words.length);
-}
-
 // ⏭️ של הילד נרשם ביומן, כדי לדעת על אילו מילים מוותרים. מילה שכבר
 // הוכרעה, כמו ⏭️ בזמן ה-🎉, אינה ויתור.
 function skipWord(){
@@ -1476,17 +1568,300 @@ function skipWord(){
   next();
 }
 
-function next(){
-  turn.word = null;
-  // הגרלה בלי סדר קבוע. נמנעת רק אותה מילה פעמיים ברצף, כי זה נראה כמו
-  // תקלה; מילה שחוזרת פעמיים בתוך עשר היא עדיין הגרלה תקינה.
-  // התנאי הוא מה שמונע לולאה אינסופית כשיש מילה אחת ברשימה.
-  if(words.length > 1){
-    let n;
-    do{ n = pick(); }while(n === i);
-    i = n;
+// --- סבב: כמה מילים, ואז מסך סיום ---
+// המילים באות מהרשימה שבתרגול, והדקדוק של המנוע נשאר כל הרשימה, כך שהזיהוי
+// לא משתנה. סדר הסבב באמירה (sayRound): מילה שהילד כבר אמר לבד ביום קודם,
+// כדי להתחיל בהצלחה; מילים שהגיע יומן לחזור; מילים שניסה ועוד לא הצליח בהן
+// לבד; ועד pace מילים חדשות, הקלות קודם, מנושאים שונים. כל מילה חדשה חוזרת
+// עוד פעם בהמשך הסבב, כדי שהילד ישלוף אותה אחרי כמה מילים אחרות. אף שתי
+// מילים בסבב לא דומות זו לזו (confusable): ship ו-sheep באותו סבב מתחרות
+// בזיכרון, והמנוע מבלבל ביניהן. כשאין מספיק, הסבב מתמלא במילים שהילד כבר
+// אומר, ובימים הראשונים הוא קצר יותר. בכתיבה (spellRound) הסבב הוא מילים
+// מהרשימה בסדר אקראי, קודם מה שהילד כבר אמר ועוד לא כתב.
+// pace זז בסוף כל סבב באמירה (adaptPace), לפי הניסיונות הראשונים האחרונים:
+// מילדים מצליחים יותר ממה שמתאים ללמידה, יותר מילים חדשות; מתקשים, פחות.
+// הסף של המנוע (preset) לא זז מזה. כל המספרים כאן ניחושים, לכוונון מתוך
+// היומן.
+const ROUND_SIZE = 8, RECHECK_GAP = 3;
+const PACE_MIN = 1, PACE_MAX = 3, PACE_START = 2;
+const PACE_WINDOW = 30, PACE_MIN_TRIES = 10, PACE_UP = 0.85, PACE_DOWN = 0.75;
+// queue: המילים של הסבב לפי הסדר, ו-at: איפה אוחזים. row: מה שנאמר או נכתב
+// בלי עזרה, לשורה למעלה. tried: כל מה שניסו, למסך הסיום. fresh: מילים
+// חדשות. requeued: מילים שכבר חזרו אחרי שתי אמירות שלא התקבלו. הסבב רק
+// בזיכרון: טעינה מחדש מתחילה סבב חדש, ושום דבר לא נכתב בטעינה.
+let round = { queue: [], at: -1, row: [], tried: [], fresh: [], requeued: [] };
+let ended = false;
+
+function wordRecord(w){ return readStore(PROGRESS_KEY).data.w[w]; }
+function isKnown(w){
+  const r = wordRecord(w);
+  return !!r && r.got !== undefined;
+}
+function paceOf(data){
+  const p = data.pace;
+  return Number.isInteger(p) && p >= PACE_MIN && p <= PACE_MAX ? p : PACE_START;
+}
+function emojiFor(w){
+  const item = words.find(x => x.word === w);
+  return item ? item.emoji : (PAIR_BY_WORD[w] || [])[0] || "";
+}
+function levelOf(w){ return (PAIR_BY_WORD[w] || [])[3] || 2; }
+
+// מילים שקל לבלבל ביניהן, בשמיעה או בזיכרון: אות אחת שונה (cat, hat; ten,
+// tent), אותו צליל בכתיב אחר (ship, sheep; tea, tie), אותו תעתיק (ball,
+// bowl), או מה שהמנוע עצמו היה מקבל כאחת מהן.
+function confusable(a, b){
+  if(a === b) return false;
+  const plain = w => (typeof HE_BY_WORD !== "undefined" && HE_BY_WORD[w] || "").replace(/[֑-ׇ]/g, "");
+  return levenshtein(a, b) <= 1 || phoneticKey(a) === phoneticKey(b)
+    || scoreToken(a, 1, b) >= DEFAULT_PRESET.threshold || scoreToken(b, 1, a) >= DEFAULT_PRESET.threshold
+    || (!!plain(a) && plain(a) === plain(b));
+}
+
+function shuffle(list){
+  const out = list.slice();
+  for(let k = out.length - 1; k > 0; k--){
+    const r = Math.floor(Math.random() * (k + 1));
+    [out[k], out[r]] = [out[r], out[k]];
   }
+  return out;
+}
+
+function sayRound(w, day, pace){
+  const list = shuffle([...new Set(words.map(x => x.word))]);
+  const rec = x => w[x];
+  const known = list.filter(x => rec(x) && rec(x).got !== undefined);
+  const due = known.filter(x => rec(x).due <= day).sort((a, b) => rec(a).due - rec(b).due);
+  const opener = known.filter(x => rec(x).got < day).sort((a, b) => rec(b).box - rec(a).box).slice(0, 1);
+  const learning = list.filter(x => rec(x) && rec(x).n && rec(x).got === undefined)
+    .sort((a, b) => rec(a).seen - rec(b).seen);
+  const fillers = known.filter(x => !due.includes(x)).sort((a, b) => rec(a).box - rec(b).box);
+  // sort יציב, אז בתוך אותה רמה הסדר הוא של הרשימה.
+  const freshPool = words.map(x => x.word).filter((x, k, all) => all.indexOf(x) === k && !(rec(x) && rec(x).n))
+    .sort((a, b) => levelOf(a) - levelOf(b));
+
+  const picked = [];
+  const fits = x => !picked.includes(x) && !picked.some(p => confusable(p, x));
+  const take = (from, room) => {
+    const got = [];
+    for(const x of from){
+      if(got.length >= room) break;
+      if(fits(x)){ picked.push(x); got.push(x); }
+    }
+    return got;
+  };
+  // כל מילה חדשה תופסת שני מקומות: היא, והחזרה שלה.
+  const planned = Math.min(pace, freshPool.length);
+  const others = take([...opener, ...due, ...learning], ROUND_SIZE - 2 * planned);
+  // קודם מנושאים שונים, ורק אם אין — מאותו נושא.
+  const themes = new Set();
+  const fresh = take(freshPool.filter(x => {
+    const t = THEME_BY_WORD[x] || x;
+    if(themes.has(t)) return false;
+    themes.add(t);
+    return true;
+  }), planned);
+  fresh.push(...take(freshPool, planned - fresh.length));
+  others.push(...take([...due, ...learning, ...fillers], ROUND_SIZE - others.length - 2 * fresh.length));
+
+  // המילים החדשות מפוזרות בין האחרות, אחרי מילת הפתיחה. מילה חדשה אחרונה
+  // לא הייתה חוזרת, אז היא מתחלפת עם המילה שלפניה, אם זו לא מילת הפתיחה.
+  const firsts = [];
+  for(let k = 0; k < Math.max(others.length, fresh.length); k++){
+    if(k < others.length) firsts.push(others[k]);
+    if(k < fresh.length) firsts.push(fresh[k]);
+  }
+  const last = firsts.length - 1;
+  if(last > 0 && fresh.includes(firsts[last]) && !fresh.includes(firsts[last - 1]) && !opener.includes(firsts[last - 1]))
+    [firsts[last - 1], firsts[last]] = [firsts[last], firsts[last - 1]];
+  // החזרה של מילה חדשה באה RECHECK_GAP מקומות אחריה. כשאין מה לשים באמצע,
+  // היא באה מוקדם יותר, אבל אף פעם לא מיד אחרי עצמה.
+  const queue = [], pending = [];
+  while(firsts.length || pending.length){
+    const ready = pending.findIndex(p => queue.length - p.at >= RECHECK_GAP);
+    if(ready >= 0) queue.push(pending.splice(ready, 1)[0].word);
+    else if(firsts.length){
+      const x = firsts.shift();
+      if(fresh.includes(x)) pending.push({ word: x, at: queue.length });
+      queue.push(x);
+    } else {
+      const p = pending.shift();
+      if(queue.length - p.at > 1) queue.push(p.word);
+    }
+  }
+  return { queue, fresh };
+}
+
+function spellRound(w){
+  const tier = x => w[x] && w[x].wrote === undefined ? (w[x].got !== undefined ? 0 : 1) : 2;
+  return shuffle([...new Set(words.map(x => x.word))]).sort((a, b) => tier(a) - tier(b)).slice(0, ROUND_SIZE);
+}
+
+// המילה שעל המסך כשסבב נבנה תופסת בו את המקום שלה, כדי שלא תחזור מיד: מילה
+// חדשה נשארת עם החזרה שלה בהמשך, ומילה שהופיעה בו פעם אחת יוצאת ממנו.
+function holdCurrent(){
+  const k = round.queue.indexOf(word());
+  if(k >= 0) round.queue.splice(k, 1);
+}
+
+// בונה סבב חדש בתרגול שנבחר, בלי להחליף את המילה שעל המסך.
+function startRound(){
+  const data = readStore(PROGRESS_KEY).data;
+  const built = mode === "say" ? sayRound(data.w, dayNumber(), paceOf(data)) : { queue: spellRound(data.w), fresh: [] };
+  round = { queue: built.queue, at: -1, row: [], tried: [], fresh: built.fresh, requeued: [] };
+  renderRow();
+}
+
+// המילה הבאה בסבב, או null כשהוא נגמר. כל שינוי ברשימה בונה סבב חדש, כך
+// שכל מילה בתור נמצאת בה. מילה שבדיוק הוצגה, למשל זו שמורה קפצה אליה, לא
+// מוצגת שוב מיד: כשהיא מופיעה בתור גם בהמשך, ההופעה הזו מדולגת; אחרת היא
+// מתחלפת במקום עם הבאה אחריה. כשאין אחריה אחרת והילד כבר ניסה אותה בסבב,
+// הסבב נגמר בלעדיה. סבב חדש שיש בו רק אותה מילה מציג אותה בכל זאת: מסך הסיום
+// היה מפריד בין השתיים, וסבב ריק לא.
+function nextInRound(){
+  const q = round.queue;
+  for(let k = round.at + 1; k < q.length; k++){
+    if(q[k] === shownWord){
+      if(q.some((x, j) => j > k && x === shownWord)) continue;
+      const m = q.findIndex((x, j) => j > k && x !== shownWord);
+      if(m > 0) [q[k], q[m]] = [q[m], q[k]];
+      else if(round.tried.includes(q[k])) continue;
+    }
+    round.at = k;
+    return q[k];
+  }
+  round.at = q.length;
+  return null;
+}
+
+// keepTurn: המילה שעל המסך נשארת אותו תור אם הסבב החדש נפתח בה, כמו כשהרשימה
+// משתנה והמילה נשארת (ראו newTurn).
+function next(keepTurn = false){
+  if(!keepTurn) turn.word = null;
+  const w = nextInRound();
+  if(w === null) return endRound();
+  i = words.findIndex(x => x.word === w);
   show();
+}
+
+// מילה שלא התקבלה פעמיים חוזרת פעם אחת, RECHECK_GAP מקומות אחרי זו שעל
+// המסך. כשנשארו פחות מילים בסבב היא לא חוזרת בו: הסולם מחזיר אותה מחר.
+function requeue(w){
+  if(round.requeued.includes(w)) return;
+  round.requeued.push(w);
+  if(round.queue.some((x, k) => k > round.at && x === w)) return;
+  if(round.queue.length < round.at + RECHECK_GAP) return;
+  round.queue.splice(round.at + RECHECK_GAP, 0, w);
+}
+
+function addToRow(w){
+  if(round.row.includes(w)) return;
+  round.row.push(w);
+  renderRow();
+}
+function noteTried(w){
+  if(!round.tried.includes(w)) round.tried.push(w);
+}
+function renderRow(){
+  $("roundRow").textContent = round.row.map(emojiFor).join("");
+}
+
+function endRound(){
+  if(mode === "say") adaptPace();
+  showRoundEnd();
+}
+
+// לפי הניסיונות הראשונים באמירה, מהיומן, בלי אלה שבאו אחרי ששמעו את המילה:
+// חזרה על מה שהדף אמר אינה הצלחה של הילד. שקט ו-⏭️ אינם ניסיון. כמו
+// recordAttempt: ילד שנמחק בחלון אחר לא מקבל כלום, וכל תקלה נבלעת.
+function adaptPace(){
+  try{
+    if(childId && !(readChildren() || []).some(c => c.id === childId)) return;
+    const p = readStore(PROGRESS_KEY);
+    if(!p.writable) return;
+    const firsts = readStore(LOG_KEY).data.a
+      .filter(e => e[3] === "say" && e[5] === 1 && (e[4] === "ok" || e[4] === "no") && !String(e[6]).includes("h"))
+      .slice(-PACE_WINDOW);
+    if(firsts.length < PACE_MIN_TRIES) return;
+    const rate = firsts.filter(e => e[4] === "ok").length / firsts.length, pace = paceOf(p.data);
+    const to = rate > PACE_UP ? Math.min(pace + 1, PACE_MAX) : rate < PACE_DOWN ? Math.max(pace - 1, PACE_MIN) : pace;
+    if(to === pace) return;
+    p.data.pace = to;
+    localStorage.setItem(childKey(PROGRESS_KEY), JSON.stringify(p.data));
+  }catch(e){}
+}
+
+// צליל אחד בסוף הסבב, ארוך מזה של מילה אחת.
+const ROUND_CHEER = { notes: [[784, 0], [1046.5, 0.12], [1318.5, 0.24], [1568, 0.36]], volume: 0.16 };
+
+// מסך הסיום: כל המילים שניסו בסבב, הגדולות הן אלה שנאמרו או נכתבו בלי עזרה,
+// ו-✨ על מילה חדשה. בלי מספרים. נגיעה בתמונה אומרת את המילה כשהשמע דלוק,
+// ולא מדליקה אותו. ▶ מתחיל סבב חדש, ו-🧺 מראה את הסל.
+// ▶ יושב בדיוק מתחת ל-🎤 ול-⏭️. נגיעה כפולה, או נגיעה ב-🎤 רגע אחרי שה-🎉
+// התחלף, הייתה מדלגת על המסך הזה בלי שהילד ראה אותו.
+const END_GUARD_MS = 600;
+let endShownAt = -Infinity;
+function showRoundEnd(){
+  stopListening();
+  // כמו כל הצגה: מעבר שתוזמן קודם לא מחליף את המסך הזה.
+  shownCount++;
+  ended = true;
+  endShownAt = performance.now();
+  document.body.classList.add("ended");
+  $("roundEnd").hidden = false;
+  $("roundPics").replaceChildren(...round.tried.map(w => picButton(w,
+    (round.row.includes(w) ? " big" : "") + (round.fresh.includes(w) ? " fresh" : ""))));
+  showEndView("end");
+  setNote("");
+  chime(ROUND_CHEER);
+}
+function hideRoundEnd(){
+  if(!ended) return;
+  ended = false;
+  document.body.classList.remove("ended");
+  $("roundEnd").hidden = true;
+}
+// מי שלחץ ▶ במקלדת ממשיך מ-🎤, או מ-⏭️ כשהמיקרופון עוד לא מוכן ובכתיבה;
+// אחרת הפוקוס נופל לגוף הדף עם הכפתור שהוסתר.
+function newRound(){
+  const keyboard = $("roundEnd").contains(document.activeElement);
+  startRound();
+  next();
+  if(keyboard) (mode === "say" && !$("say").disabled ? $("say") : $("next")).focus({ preventScroll: true });
+}
+
+function picButton(w, cls = ""){
+  const b = el("button", "pic-btn" + cls, emojiFor(w));
+  b.type = "button";
+  b.dataset.word = w;
+  b.setAttribute("aria-label", w);
+  return b;
+}
+
+// הסל: כל מילה שהילד אמר לבד מהתמונה בשני ימים שונים, החדשות קודם. מה שנכנס
+// לסל נשאר בו, גם כשהמילה חוזרת לתרגול, וגם אם יצאה מהרשימה; מילה שיצאה גם
+// מהמאגר, כמו sax, מופיעה בלי תמונה, רק באנגלית. ✏️ ליד מילה שגם כתב.
+function basketWords(){
+  const w = readStore(PROGRESS_KEY).data.w;
+  return Object.keys(w).filter(x => w[x] && Array.isArray(w[x].ok) && w[x].ok.length >= 2)
+    .sort((a, b) => w[b].ok[1] - w[a].ok[1] || a.localeCompare(b))
+    .map(x => ({ word: x, wrote: w[x].wrote !== undefined }));
+}
+function renderBasket(){
+  const items = basketWords();
+  $("basketPics").replaceChildren(...items.map(({ word: w, wrote }) => {
+    const b = picButton(w);
+    b.append(span("w", w + (wrote ? " ✏️" : "")));
+    return b;
+  }));
+  $("basketEmpty").hidden = items.length > 0;
+}
+
+function showEndView(view){
+  if(view === "basket") renderBasket();
+  $("endView").hidden = view !== "end";
+  $("basketView").hidden = view !== "basket";
+  $(view === "end" ? "againBtn" : "basketBack").focus({ preventScroll: true });
 }
 
 // --- כתיבה: בונים את המילה מהאותיות שלה, משמאל לימין ---
@@ -1567,6 +1942,8 @@ function checkWord(){
   // היא לא מקדמת את האמירה.
   const clean = !wrong.length && !turn.hinted && !turn.wrong && !turn.done;
   recordAttempt(target, wrong.length ? "no" : "ok", clean ? "write" : null, { tryNo: turn.spells });
+  noteTried(target);
+  if(clean) addToRow(target);
   if(wrong.length) turn.wrong = true;
   else turn.done = true;
   if(!wrong.length){
@@ -1608,7 +1985,7 @@ function renderMode(){
   $("spell").hidden = !spell;
   $("say").hidden = spell;
   $("hint").hidden = !spell;
-  renderScore();
+  renderRow();
   for(const b of $("modeSwitch").children){
     const on = b.dataset.mode === mode;
     b.classList.toggle("active", on);
@@ -1622,7 +1999,14 @@ function setMode(to){
   stopListening();
   mode = to;
   try{ localStorage.setItem(childKey(MODE_KEY), mode); }catch(e){}
+  // בכתיבה רואים את המילה באותיות שלה, ומעבר לכל כיוון אומר שהתור הזה היה שם.
+  turn.peeked = true;
+  // לכל תרגול סבב משלו. המילה שעל המסך נשארת, והסבב ממשיך אחריה; בסוף סבב
+  // המילה האחרונה כבר תורגלה, והסבב החדש מתחיל מיד.
+  startRound();
   renderMode();
+  if(ended) return next();
+  holdCurrent();
   show();
 }
 
@@ -1661,6 +2045,9 @@ function showSettingsView(tabName, focusSearch = true){
   if(tabName === "catalog" && focusSearch) setTimeout(()=>$("search").focus(), 50);
 }
 
+// nextIndex: המילה שתוצג. null מציג במקומה את המילה הראשונה בסבב החדש. בסוף
+// סבב מסך הסיום נשאר, ו-▶ מתחיל את הסבב מהרשימה החדשה; אחרת מורה שמוחקת
+// מילה, או חלון אחר ששומר את הרשימה, היו מחזירים את המילה האחרונה למסך.
 function applyWords(nextWords, nextIndex, persist = true){
   words = nextWords;
   // המפענח החי צריך את הדקדוק החדש. אין כאן בדיקה שהמודל מכיר את המילה:
@@ -1670,7 +2057,16 @@ function applyWords(nextWords, nextIndex, persist = true){
   if(persist) save();
   if(typeof nextIndex === "number") i = nextIndex;
   if(i >= words.length) i = 0;
-  show();
+  // רשימה אחרת היא סבב חדש, שנבנה ממנה. בסוף סבב ▶ בונה אותו, והשורה של
+  // הסבב שנגמר נשארת עם מסך הסיום שלו.
+  if(!ended || nextIndex === null) startRound();
+  if(nextIndex === null){
+    shownWord = null;
+    next(!ended);
+  } else if(!ended){
+    holdCurrent();
+    show();
+  }
   renderPanel();
 }
 
@@ -1789,7 +2185,7 @@ function practiceShown(){
   const set = shownWords();
   if(!set.length) return;
   if(!confirm(`להחליף את רשימת התרגול (${words.length} מילים) ב-${set.length} המילים האלה?`)) return;
-  applyWords(set, Math.floor(Math.random() * set.length));   // גם מרנדר
+  applyWords(set, null);   // גם מרנדר
   setSettingsNotice("catalogNotice", `🎉 עכשיו בתרגול: ${set.length} מילים.`, false);
 }
 
@@ -1862,11 +2258,9 @@ function switchChild(id, remember = true){
   preset = readPreset();
   updateMatchUI();
   mode = readMode();
-  // הכוכבים מודדים את מה שהילד שעל המסך עושה עכשיו, ולא עוברים לבא בתור.
-  scores = { say: 0, spell: 0 };
   renderMode();
-  const list = load() || DEFAULT_WORDS.slice();
-  applyWords(list, Math.floor(Math.random() * list.length), false);   // גם מרנדר
+  // הסבב, והשורה שלו, של הילד החדש: מההתקדמות שלו, ומתחיל במילה הראשונה בו.
+  applyWords(load() || DEFAULT_WORDS.slice(), null, false);   // גם מרנדר
 }
 
 function childrenNotSaved(){
@@ -1943,7 +2337,10 @@ function setBehindInert(on){
   for(const child of document.body.children) if(child !== $("overlay")) child.inert = on;
 }
 
+// מאחורי ההגדרות הילד לא רואה משוב ולא יכול לנסות שוב, ומה שהמיקרופון שומע
+// שם — המורה מדברת, 🔊 ברשימה — אינו ניסיון שלו. עצירה בשקט, כמו כשהדף יורד.
 function openPanel(){
+  stopListening();
   $("search").value = "";
   catalogTheme = catalogLevel = "";
   $("overlay").hidden = false;
@@ -1992,6 +2389,27 @@ $("say").addEventListener("click", e=>{
 });
 $("next").addEventListener("click", skipWord);
 $("hint").addEventListener("click", giveHint);
+// ▶ ו-🧺 מתעלמים מנגיעה ברגע שמסך הסיום מופיע (ראו END_GUARD_MS), והכפתורים
+// של הסבב החדש — ⏭️, 💡, 🎤 — מתעלמים מנגיעה ברגע שאחרי ▶, שיושב מעליהם:
+// נגיעה כפולה ב-▶ הייתה מדלגת על המילה הראשונה בסבב לפני שהילד ראה אותה.
+let roundShownAt = -Infinity;
+const endSettled = () => performance.now() - endShownAt >= END_GUARD_MS;
+$("againBtn").addEventListener("click", () => {
+  if(!endSettled()) return;
+  roundShownAt = performance.now();
+  newRound();
+});
+$("basketBtn").addEventListener("click", () => { if(endSettled()) showEndView("basket"); });
+for(const type of ["pointerdown", "click"])
+  $("buttons").addEventListener(type, e => {
+    if(performance.now() - roundShownAt < END_GUARD_MS){ e.stopPropagation(); e.preventDefault(); }
+  }, true);
+$("basketBack").addEventListener("click", () => showEndView("end"));
+// תמונה במסך הסיום או בסל אומרת את המילה רק כשהשמע כבר דלוק.
+$("roundEnd").addEventListener("click", e => {
+  const b = e.target.closest(".pic-btn");
+  if(b) speak(b.dataset.word, EN);
+});
 $("openSettings").addEventListener("click", openPanel);
 
 $("modeSwitch").addEventListener("click", e=>{
@@ -2040,7 +2458,16 @@ $("wordList").addEventListener("click", e=>{
     speak(words[n].word, EN);
     if(n === i && soundEnabled) turn.heard = true;
   }
-  else if(e.target.closest(".jump")){ i = n; show(); closePanel(); }
+  // מסוף הסבב קופצים לסבב חדש, שהמילה שנבחרה פותחת.
+  else if(e.target.closest(".jump")){
+    i = n;
+    if(ended){
+      startRound();
+      holdCurrent();
+    }
+    show();
+    closePanel();
+  }
 });
 
 $("overlay").addEventListener("click", e=>{ if(e.target.id === "overlay") closePanel(); });
@@ -2125,9 +2552,9 @@ if(navigator.storage && navigator.storage.persist){
   navigator.storage.persist().catch(()=>{});
 }
 
-i = pick();
 renderMode();
-show();
+startRound();
+next();
 if(childId) setNote(`שלום ${childName()}! 👋`, 3000);
 updateSoundUI();
 updateMatchUI();
