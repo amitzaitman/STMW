@@ -100,11 +100,22 @@ async function main(){
   // סבב שנגמר מציג מסך סיום ומסתיר את 🎤. רוב הקבוצות קוראות ל-next() שוב
   // ושוב בלי קשר לסבבים, ולכן בהן הילד לוחץ ▶ מיד, בכל טעינה של הדף.
   // קבוצת הסבב מחזירה את מסך הסיום האמיתי, realShowRoundEnd, בזמן שהיא רצה.
+  // באותו אופן שלב "להבין" והבדיקה מהתמונה של מילה חדשה כבויים מחוץ לקבוצה
+  // שלהם: בלעדיהם כל מילה חדשה בבדיקות הייתה מוצגת בלי כתב, כי ילד בלי
+  // ניסיונות הוא ילד חדש במסלול המהיר. קבוצת "הבנה" מחזירה אותם.
   await page.addInitScript(() => {
     document.addEventListener("DOMContentLoaded", () => {
       if(typeof showRoundEnd !== "function") return;
       window.realShowRoundEnd = showRoundEnd;
       showRoundEnd = () => newRound();
+      window.realStep = { laneFast, canSpeak, loanwords: [...LOANWORD_SET] };
+      laneFast = () => false;
+      canSpeak = () => false;
+      LOANWORD_SET.clear();
+      // המילה הראשונה כבר הוצגה, לפני שהם כבו.
+      turn.step = "say";
+      renderVeil();
+      renderStep();
     });
   });
   // טעינה מחדש של הדף הראשי, עם זמן לסקריפט שלו לעלות.
@@ -426,6 +437,14 @@ async function main(){
   });
   const built = await page.evaluate(() => document.querySelectorAll("#catalog .catalog-item").length);
   check("כל המאגר נבנה", built === pairsInFile, { built, pairsInFile });
+  // מילה ברשימת המילים מעברית שאינה במאגר לא תופיע לעולם, וטעות כתיב בה עוברת בשקט.
+  const loanwords = await page.evaluate(() => {
+    const pool = new Set(PAIRS.map(p => p[1]));
+    const set = new Set(realStep.loanwords);
+    return { size: set.size, listed: (window.LOANWORDS || []).length, outside: [...set].filter(w => !pool.has(w)) };
+  });
+  check("כל מילה ברשימת המילים מעברית נמצאת במאגר, פעם אחת",
+    loanwords.size > 0 && loanwords.size === loanwords.listed && loanwords.outside.length === 0, loanwords);
 
   // בנייה מחדש מלאה נותנת את אותו מספר פריטים, אז נבדק שהצומת עצמו נשאר.
   const firstItem = await page.$("#catalog .catalog-item");
@@ -1722,7 +1741,7 @@ async function main(){
         rec.dispatchEvent(new CustomEvent("result", { detail: { result: { result: [{ word: w, conf: 1 }], text: w } } }));
       },
       plan: (queue, tried = []) => {
-        round = { queue: queue.slice(), at: -1, row: [], tried: tried.slice(), fresh: [], requeued: [] };
+        round = { queue: queue.slice(), at: -1, row: [], tried: tried.slice(), fresh: [], requeued: [], seen: [] };
         shownWord = null;
         next();
       },
@@ -1901,7 +1920,7 @@ async function main(){
       }
     };
     const plan = queue => {
-      round = { queue: queue.slice(), at: -1, row: [], tried: [], fresh: [], requeued: [] };
+      round = { queue: queue.slice(), at: -1, row: [], tried: [], fresh: [], requeued: [], seen: [] };
       shownWord = null;
       next();
     };
@@ -2021,7 +2040,7 @@ async function main(){
     try{
       localStorage.removeItem(P); localStorage.removeItem(L);
       const tried = ["dog", "cat", "sun", "lion", "book", "ship", "tea", "ball"];
-      round = { queue: ["fish"], at: -1, row: tried.slice(0, 5), tried, fresh: ["sun"], requeued: [] };
+      round = { queue: ["fish"], at: -1, row: tried.slice(0, 5), tried, fresh: ["sun"], requeued: [], seen: [] };
       shownWord = null;
       next();
       // ה-🎉 מזמן מעבר, ו-⏭️ בזמנו מסיים את הסבב לפניו.
@@ -2215,7 +2234,7 @@ async function main(){
     noteTried("fish");
     next();
     const jumped = { ended, word: word() };
-    round = { queue: ["fish"], at: -1, row: [], tried: [], fresh: [], requeued: [] };
+    round = { queue: ["fish"], at: -1, row: [], tried: [], fresh: [], requeued: [], seen: [] };
     next();
     return { jumped, alone: { ended, word: word() } };
   });
@@ -2414,6 +2433,693 @@ async function main(){
   }, [P, roundList]);
   // הטעינה מחדש פותחת את המנוע מחדש, והקבוצה הבאה צריכה אותו מוכן.
   await page.waitForFunction(() => model !== null, null, { timeout: 60000 });
+
+  // --------------------------------------------------------------
+  group("הבנה");
+  // מילה שהילד עוד לא אמר מתחילה בשמיעה: הדף אומר אותה, והילד בוחר את התמונה
+  // שלה מבין שלוש. ילד שאולי כבר יודע מילה חדשה נבדק קודם מהתמונה בלבד. כאן
+  // שניהם דולקים, וההקראה מדומה: לדפדפן של הבדיקות אין קולות, ולכן speak
+  // מוחלפת בהקראה שמתחילה, נכשלת או שותקת, ו-voices מקבל קול אחד באנגלית.
+  await page.evaluate(([P, L]) => {
+    laneFast = realStep.laneFast;
+    canSpeak = realStep.canSpeak;
+    for(const w of realStep.loanwords) LOANWORD_SET.add(w);
+    localStorage.removeItem(P); localStorage.removeItem(L);
+    const before = words, names = ["dog", "cat", "sun", "moon", "banana", "ship", "ball", "tea", "fish", "apple", "car",
+                                   "book", "lion", "tree", "bird", "house", "flower", "cake"];
+    applyWords(PAIRS.filter(p => names.includes(p[1])).map(([emoji, word]) => ({ emoji, word })), 0, false);
+    window.uTest = {
+      before, spoken: [], speech: "start", chimes: [], realSpeak: speak, realChime: chime, realSound: soundEnabled,
+      realRefresh: refreshVoices, pending: null,
+      voice: { name: "Test", lang: "en-US", localService: true, default: true, voiceURI: "test" },
+      wait: ms => new Promise(r => setTimeout(r, ms)),
+      // מילה על המסך כתור חדש, כאילו זו הפעם הראשונה שלה בסבב.
+      show: (w, keepSeen = false) => {
+        if(!keepSeen) round.seen = [];
+        turn.word = null;
+        i = words.findIndex(x => x.word === w);
+        show();
+      },
+      lane: v => localStorage.setItem(P, JSON.stringify({ v: 1, w: {}, ...(v ? { lane: v } : {}) })),
+      store: () => JSON.parse(localStorage.getItem(P) || "null"),
+      log: () => (JSON.parse(localStorage.getItem(L) || "null") || { a: [] }).a,
+      seen: id => $(id).checkVisibility() && getComputedStyle($(id)).visibility === "visible",
+      choice: right => [...$("choices").children].find(b => (b.dataset.word === word()) === right && !b.disabled),
+      say: async w => {
+        await listen();
+        rec.dispatchEvent(new CustomEvent("result", { detail: { result: { result: [{ word: w, conf: 1 }], text: w } } }));
+      }
+    };
+    voices = [uTest.voice];
+    refreshVoices = () => {};
+    // "slow": מתחילה רק אחרי 300ms, והקראה חדשה מבטלת את זו שעוד לא התחילה, כמו ב-cancel().
+    speak = text => {
+      if(!soundEnabled) return null;
+      uTest.spoken.push(text);
+      const u = new EventTarget(), old = uTest.pending;
+      if(old && !old.started) old.dispatchEvent(Object.assign(new Event("error"), { error: "canceled" }));
+      uTest.pending = u;
+      const start = () => { if(uTest.pending === u){ u.started = true; u.dispatchEvent(new Event("start")); } };
+      if(uTest.speech === "start") setTimeout(start, 5);
+      if(uTest.speech === "slow") setTimeout(start, 300);
+      if(uTest.speech === "error") setTimeout(() => u.dispatchEvent(Object.assign(new Event("error"), { error: "synthesis-failed" })), 5);
+      return u;
+    };
+    chime = sound => { uTest.chimes.push(sound); return uTest.realChime(sound); };
+    setSound(true);
+  }, [P, L]);
+
+  // שלב "להבין" רק כשהמכשיר מדבר: שמע דלוק וקול באנגלית.
+  const speechGate = await page.evaluate(() => {
+    const out = {};
+    uTest.lane("off");
+    uTest.show("dog");
+    out.on = { step: turn.step, choices: uTest.seen("choices"), picture: uTest.seen("picture"), text: uTest.seen("word") };
+    setSound(false);
+    uTest.show("dog");
+    out.muted = { step: turn.step, choices: uTest.seen("choices"), text: uTest.seen("word") };
+    setSound(true);
+    const realVoices = voices;
+    voices = [];
+    uTest.show("dog");
+    out.voiceless = { step: turn.step, text: uTest.seen("word") };
+    voices = realVoices;
+    return out;
+  });
+  check("עם שמע וקול באנגלית, מילה חדשה מתחילה בשלוש תמונות, בלי הכתב",
+    speechGate.on.step === "understand" && speechGate.on.choices && !speechGate.on.picture && !speechGate.on.text, speechGate);
+  check("בלי שמע, או בלי קול באנגלית, אין \"להבין\": המילה מוצגת עם הכתב, כמו קודם",
+    speechGate.muted.step === "say" && !speechGate.muted.choices && speechGate.muted.text && speechGate.voiceless.step === "say" && speechGate.voiceless.text, speechGate);
+
+  // שלוש תמונות שונות, ביניהן של המילה, מנושאים שונים, ששום שתיים מהן לא דומות,
+  // בלי אימוג'י מורכב, ושמות שלא מגלים את התשובה.
+  const choiceSet = await page.evaluate(() => {
+    const bad = [];
+    for(let k = 0; k < 40; k++){
+      const target = ["dog", "ship", "ball", "tea", "cat"][k % 5], c = choicesFor(target);
+      const themes = new Set(c.map(x => THEME_BY_WORD[x])), emojis = new Set(c.map(emojiFor));
+      const problems = [];
+      if(c.length !== 3 || !c.includes(target) || new Set(c).size !== 3 || emojis.size !== 3) problems.push("shape");
+      if(themes.size !== 3) problems.push("themes");
+      for(const a of c) for(const b of c) if(a < b && confusable(a, b)) problems.push(a + "/" + b);
+      if(c.filter(x => x !== target).some(x => emojiFor(x).includes("‍"))) problems.push("zwj");
+      if(problems.length) bad.push({ target, c, problems });
+    }
+    uTest.show("dog");
+    const labels = [...$("choices").children].map(b => (b.getAttribute("aria-label") || "") + (b.title || ""));
+    return { bad: bad.slice(0, 3), leak: labels.filter(l => turn.choices.some(w => l.includes(w))),
+             digits: /[0-9]/.test($("choices").innerText) };
+  });
+  check("שלוש תמונות שונות, ביניהן של המילה, מנושאים שונים ולא דומות זו לזו", choiceSet.bad.length === 0, choiceSet);
+  check("שמות התמונות לא אומרים את המילה, ואין בהן מספרים", choiceSet.leak.length === 0 && !choiceSet.digits, choiceSet);
+
+  // המילה נאמרת מעצמה כשהשלב מתחיל, רק אם כבר נגעו בדף. 🔊 ו-🎤 הישן משמיעים שוב,
+  // ואינם תשובה.
+  const replays = await page.evaluate(async () => {
+    const out = {};
+    uTest.spoken = [];
+    uTest.show("dog");
+    out.auto = uTest.spoken.slice();
+    const realUA = Object.getOwnPropertyDescriptor(Navigator.prototype, "userActivation");
+    Object.defineProperty(navigator, "userActivation", { value: { hasBeenActive: false }, configurable: true });
+    try{
+      uTest.spoken = [];
+      uTest.show("dog");
+      out.untouched = { spoken: uTest.spoken.length, nudge: $("playWord").classList.contains("nudge") };
+    } finally { delete navigator.userActivation; }
+    uTest.spoken = [];
+    const picksBefore = uTest.log().filter(e => e[4] === "pick").length;
+    $("playWord").click();
+    out.replay = { spoken: uTest.spoken.slice(), step: turn.step };
+    out.label = $("say").getAttribute("aria-label");
+    out.asleep = $("say").classList.contains("asleep");
+    uTest.spoken = [];
+    $("say").click();
+    await uTest.wait(50);
+    out.mic = { spoken: uTest.spoken.slice(), active, step: turn.step };
+    out.noPick = uTest.log().filter(e => e[4] === "pick").length === picksBefore;
+    return out;
+  });
+  check("המילה נאמרת מעצמה כשהשלב מתחיל", JSON.stringify(replays.auto) === '["dog"]', replays);
+  check("לפני נגיעה ראשונה בדף היא לא נאמרת, ו-🔊 פועם", replays.untouched.spoken === 0 && replays.untouched.nudge, replays);
+  check("🔊 משמיע שוב, ו-🎤 ישן ומשמיע שוב בלי להקשיב — ואף אחד מהם אינו תשובה",
+    JSON.stringify(replays.replay.spoken) === '["dog"]' && replays.replay.step === "understand" && replays.asleep
+      && JSON.stringify(replays.mic.spoken) === '["dog"]' && !replays.mic.active && replays.mic.step === "understand"
+      && replays.noPick, replays);
+  check("🎤 הישן לא מוכרז כהקלטה", replays.label === "השמעת המילה שוב", replays);
+
+  // תמונה שגויה דוהה, והמילה נשמעת שוב, בלי אדום ובלי צליל. הנכונה בניסיון הראשון
+  // מסמנת הבנה, בלי לגעת בסולם של האמירה, ועוברת לאמירה של אותה מילה.
+  const picked = await page.evaluate(async ([P]) => {
+    const out = {};
+    uTest.lane("off");
+    uTest.show("dog");
+    await uTest.wait(HEAR_MS + 50);
+    uTest.spoken = []; uTest.chimes = [];
+    const wrong = uTest.choice(false);
+    wrong.click();
+    out.wrong = { faded: wrong.classList.contains("faded"), disabled: wrong.disabled, card: $("picture").className,
+                  oops: uTest.chimes.includes(OOPS), spoken: uTest.spoken.slice(), log: uTest.log().slice(-1)[0],
+                  n: ((uTest.store() || { w: {} }).w.dog || { n: 0 }).n };
+    await uTest.wait(HEAR_MS + 50);
+    uTest.chimes = [];
+    uTest.choice(true).click();
+    out.right = { green: !!$("choices").querySelector(".right"), cheer: uTest.chimes.includes(CHEER), text: uTest.seen("word") };
+    await uTest.wait(UNDERSTOOD_MS + 200);
+    out.after = { step: turn.step, choices: uTest.seen("choices"), picture: uTest.seen("picture"), awake: !$("say").classList.contains("asleep") };
+    out.secondTry = (uTest.store() || { w: {} }).w.dog;
+    uTest.lane("off");
+    uTest.show("dog");
+    await uTest.wait(HEAR_MS + 50);
+    uTest.choice(true).click();
+    out.firstRec = uTest.store().w.dog;
+    await uTest.wait(UNDERSTOOD_MS + 200);
+    await uTest.say("dog");
+    out.saidRec = uTest.store().w.dog;
+    await uTest.wait(GOOD_MS + 200);
+    return out;
+  }, [P]);
+  check("תמונה שגויה דוהה, והמילה נשמעת שוב — בלי אדום ובלי צליל",
+    picked.wrong.faded && picked.wrong.disabled && picked.wrong.card !== "again" && !picked.wrong.oops
+      && JSON.stringify(picked.wrong.spoken) === '["dog"]' && picked.wrong.log[4] === "pick" && picked.wrong.log[8] !== "dog"
+      && picked.wrong.n === 0, picked);
+  check("תמונה נכונה — ירוק, צליל, המילה כתובה, ואז אמירה של אותה מילה",
+    picked.right.green && picked.right.cheer && picked.right.text && picked.after.step === "say" && !picked.after.choices
+      && picked.after.picture && picked.after.awake, picked);
+  check("בחירה נכונה רק אחרי שגויה לא מסמנת הבנה, ולא נוגעת באמירה",
+    !picked.secondTry || (picked.secondTry.u === undefined && picked.secondTry.n === 0), picked);
+  check("בחירה נכונה ראשונה מסמנת הבנה בלי לגעת בסולם, והאמירה אחריה נעזרה",
+    !!picked.firstRec && picked.firstRec.u !== undefined && picked.firstRec.n === 0 && picked.firstRec.box === 0
+      && !!picked.saidRec && picked.saidRec.n === 1 && picked.saidRec.k === 0 && picked.saidRec.got === undefined, picked);
+
+  // כשהדיבור לא עובד השלב לא יכול לעבוד, וילד שלא שומע היה רק מנחש.
+  const brokenSpeech = await page.evaluate(async () => {
+    const out = {};
+    uTest.lane("off");
+    uTest.speech = "silent";
+    uTest.show("dog");
+    await uTest.wait(SPEECH_START_MS + 200);
+    out.silentAuto = { step: turn.step, nudge: $("playWord").classList.contains("nudge") };
+    uTest.speech = "error";
+    const misses = uTest.log().filter(e => e[4] === "no").length;
+    $("playWord").click();
+    await uTest.wait(100);
+    out.errorTap = { step: turn.step, text: uTest.seen("word"), misses: uTest.log().filter(e => e[4] === "no").length - misses };
+    uTest.speech = "start";
+    uTest.show("cat");
+    out.after = turn.step;
+    speechBroken = false;
+    return out;
+  });
+  check("הקראה שלא התחילה מעצמה — 🔊 פועם, והשלב נשאר", brokenSpeech.silentAuto.step === "understand" && brokenSpeech.silentAuto.nudge, brokenSpeech);
+  check("הקראה שנכשלה אחרי נגיעה — המילה עוברת לאמירה עם הכתב, בלי שנרשם ניסיון, ו\"להבין\" יורד לפתיחה הזו",
+    brokenSpeech.errorTap.step === "say" && brokenSpeech.errorTap.text && brokenSpeech.errorTap.misses === 0 && brokenSpeech.after === "say", brokenSpeech);
+
+  // 🔇 באמצע, מעבר לכתיבה וחזרה, והחזרה של המילה בהמשך הסבב: אמירה.
+  const leaving = await page.evaluate(() => {
+    const out = {};
+    uTest.lane("off");
+    uTest.show("dog");
+    toggleSound();
+    out.muted = { step: turn.step, text: uTest.seen("word"), choices: uTest.seen("choices") };
+    toggleSound();
+    uTest.show("dog");
+    setMode("spell");
+    out.spell = uTest.seen("choices");
+    setMode("say");
+    out.back = { step: turn.step, choices: uTest.seen("choices") };
+    uTest.show("dog");
+    uTest.show("dog", true);
+    out.again = turn.step;
+    // מילה שנפגשה בלי שמע, ועוד לא נאמרה לבד ולא זוהתה בשמיעה, מקבלת את השלב כשיש שמע.
+    localStorage.setItem("say-the-word-progress", JSON.stringify({ v: 1, lane: "off", w: { sun: { met: 1, seen: 1, box: 0, due: 1, ok: [], n: 2, k: 0 } } }));
+    uTest.show("sun");
+    out.later = turn.step;
+    return out;
+  });
+  check("🔇 באמצע \"להבין\" — המילה עוברת לאמירה, עם הכתב",
+    leaving.muted.step === "say" && leaving.muted.text && !leaving.muted.choices, leaving);
+  check("מעבר לכתיבה וחזרה באמצע \"להבין\" — ממשיכים באמירה", !leaving.spell && leaving.back.step === "say" && !leaving.back.choices, leaving);
+  check("החזרה של מילה בהמשך הסבב היא אמירה, בלי \"להבין\" שוב", leaving.again === "say", leaving);
+  check("מילה שנפגשה בלי שמע מקבלת את \"להבין\" כשיש שמע", leaving.later === "understand", leaving);
+
+  // הבדיקה מהתמונה: ילד חדש במסלול המהיר, ומילים מעברית לכל ילד.
+  const probes = await page.evaluate(async () => {
+    const out = {};
+    uTest.lane(null);
+    uTest.show("dog");
+    out.fresh = { step: turn.step, text: uTest.seen("word"), choices: uTest.seen("choices"), picture: uTest.seen("picture") };
+    await uTest.say("dog");
+    await uTest.wait(GOOD_MS + 200);
+    const s = uTest.store();
+    out.accepted = { lane: s.lane, dog: s.w.dog, flags: uTest.log().slice(-1)[0][6] };
+    uTest.show("sun");
+    out.stillFast = turn.step;
+    uTest.spoken = []; uTest.chimes = [];
+    await uTest.say("zzz");
+    out.missed = { card: $("picture").className, oops: uTest.chimes.includes(OOPS), text: uTest.seen("word"),
+                   lane: uTest.store().lane, step: turn.step };
+    await uTest.wait(100);
+    out.missed.spoken = uTest.spoken.slice();
+    await uTest.wait(AGAIN_MS);
+    uTest.show("moon");
+    out.afterLane = turn.step;
+    // מילה מעברית נבדקת מהתמונה גם אצל מי שכבר לא במסלול.
+    uTest.show("banana");
+    out.loanword = turn.step;
+    // 🔊 בבדיקה הוא "אני לא יודע": הכתב מופיע, והמסלול נגמר.
+    uTest.lane(null);
+    uTest.show("dog");
+    $("playWord").click();
+    out.heard = { step: turn.step, text: uTest.seen("word"), lane: uTest.store().lane };
+    uTest.lane(null);
+    uTest.show("dog");
+    skipWord();
+    out.skipped = uTest.store().lane;
+    return out;
+  });
+  check("ילד חדש: מילה חדשה נבדקת קודם מהתמונה בלבד, בלי הכתב ובלי \"להבין\"",
+    probes.fresh.step === "probe" && !probes.fresh.text && !probes.fresh.choices && probes.fresh.picture, probes);
+  check("בדיקה מהתמונה שהצליחה — יום של \"אמר\", והילד נשאר במסלול המהיר",
+    probes.accepted.lane === "fast" && !!probes.accepted.dog && JSON.stringify(probes.accepted.dog.ok).length > 2
+      && String(probes.accepted.flags).includes("q") && probes.stillFast === "probe", probes);
+  check("בדיקה שלא הצליחה — בלי אדום ובלי צליל, המילה כתובה ונשמעת, והמסלול המהיר נגמר",
+    probes.missed.card !== "again" && !probes.missed.oops && probes.missed.text && probes.missed.lane === "off"
+      && JSON.stringify(probes.missed.spoken) === '["sun"]' && probes.afterLane === "understand", probes);
+  check("מילה מעברית נבדקת מהתמונה גם אחרי המסלול המהיר", probes.loanword === "probe", probes);
+  check("🔊 או ⏭️ בבדיקה מהתמונה מסיימים את המסלול המהיר, ו-🔊 מביא את הכתב",
+    probes.heard.step === "say" && probes.heard.text && probes.heard.lane === "off" && probes.skipped === "off", probes);
+
+  // ועוד: נגיעה לפני שמיעה, נגיעה כפולה ב-🔊, ומה ש"להבין" מסמן כשיוצאים ממנו.
+  const more = await page.evaluate(async () => {
+    const out = {};
+    // לפני שהמילה נשמעה, נגיעה בתמונה רק משמיעה אותה.
+    uTest.lane("off");
+    Object.defineProperty(navigator, "userActivation", { value: { hasBeenActive: false }, configurable: true });
+    try{ uTest.show("dog"); } finally { delete navigator.userActivation; }
+    uTest.spoken = [];
+    const picksBefore = uTest.log().filter(e => e[4] === "pick").length;
+    uTest.choice(true).click();
+    out.early = { spoken: uTest.spoken.slice(), step: turn.step, picks: uTest.log().filter(e => e[4] === "pick").length - picksBefore,
+                  rec: (uTest.store() || { w: {} }).w.dog };
+    await uTest.wait(HEAR_MS + 50);
+    uTest.choice(true).click();
+    out.afterHeard = (uTest.store().w.dog || {}).u !== undefined;
+    await uTest.wait(UNDERSTOOD_MS + 200);
+    // נגיעה כפולה ב-🔊 לפני שההקראה התחילה אינה תקלה.
+    uTest.lane("off");
+    uTest.speech = "slow";
+    uTest.show("cat");
+    $("playWord").click();
+    await uTest.wait(80);
+    $("playWord").click();
+    await uTest.wait(SPEECH_START_MS + 500);
+    out.double = { step: turn.step, broken: speechBroken };
+    uTest.speech = "start";
+    speechBroken = false;
+    // מי ששמע את המילה ב"להבין" ויצא ממנו ב-🔇 חוזר עליה: האמירה נעזרה.
+    uTest.lane("off");
+    uTest.show("sun");
+    await uTest.wait(HEAR_MS + 50);
+    toggleSound();
+    await uTest.say("sun");
+    out.mutedSay = uTest.store().w.sun;
+    await uTest.wait(GOOD_MS + 200);
+    toggleSound();
+    // מילה שהילד כבר אמר לבד, ומילה שכבר זוהתה בשמיעה, לא מקבלות "להבין".
+    const d = dayNumber();
+    localStorage.setItem("say-the-word-progress", JSON.stringify({ v: 1, lane: "off", w: {
+      dog: { met: d - 9, seen: d - 2, box: 2, due: d + 1, ok: [d - 3, d - 2], n: 3, k: 2, got: d - 5 },
+      cat: { met: d, seen: d, box: 0, due: d, ok: [], n: 1, k: 0, u: d } } }));
+    uTest.show("dog");
+    out.known = { step: turn.step, text: uTest.seen("word") };
+    uTest.show("cat");
+    out.understood = turn.step;
+    // ילד שכבר ניסה מילים, בלי מסלול כתוב, אינו ילד חדש.
+    localStorage.setItem("say-the-word-progress", JSON.stringify({ v: 1, w: {
+      dog: { met: d - 9, seen: d - 2, box: 2, due: d + 1, ok: [d - 3], n: 3, k: 2, got: d - 5 } } }));
+    uTest.show("cat");
+    out.veteran = { step: turn.step, lane: uTest.store().lane };
+    // מילה מעברית שנאמרה נכון אצל מי שלא במסלול לא מחזירה אותו למסלול.
+    uTest.lane("off");
+    uTest.show("banana");
+    const wasProbe = turn.step;
+    await uTest.say("banana");
+    out.loanOk = { wasProbe, lane: uTest.store().lane };
+    await uTest.wait(GOOD_MS + 200);
+    // הצלחה בבדיקה מסיימת אותה מיד, ו-🔊 בזמן ה-🎉 לא מוציא מהמסלול.
+    uTest.lane(null);
+    uTest.show("moon");
+    await uTest.say("moon");
+    out.probeDone = turn.step;
+    $("playWord").click();
+    out.laneAfterCheer = uTest.store().lane;
+    await uTest.wait(GOOD_MS + 200);
+    // אמירה אחרי ששמעו את המילה, למשל מ-🔊 ברשימה, אינה הצלחה של הבדיקה.
+    uTest.lane(null);
+    uTest.show("fish");
+    turn.heard = true;
+    await uTest.say("fish");
+    out.helpedProbe = uTest.store().lane;
+    await uTest.wait(GOOD_MS + 200);
+    // הדלקת השמע בבדיקה, כמו 🔊: הכתב מופיע והמסלול נגמר.
+    uTest.lane(null);
+    setSound(false);
+    uTest.show("apple");
+    toggleSound();
+    out.soundOn = { step: turn.step, text: uTest.seen("word"), lane: uTest.store().lane };
+    return out;
+  });
+  check("נגיעה בתמונה לפני שהמילה נשמעה רק משמיעה אותה, ואינה בחירה",
+    JSON.stringify(more.early.spoken) === '["dog"]' && more.early.step === "understand" && more.early.picks === 0
+      && !more.early.rec && more.afterHeard, more);
+  check("נגיעה כפולה ב-🔊 לפני שההקראה התחילה אינה תקלה", more.double.step === "understand" && !more.double.broken, more);
+
+  // מתחת להגדרות, ובזמן שהמנוע עוד נטען או שהמיקרופון נפתח.
+  const covered = await page.evaluate(async () => {
+    const out = {};
+    uTest.lane("off");
+    openPanel();
+    uTest.spoken = [];
+    uTest.show("ball");
+    out.underPanel = uTest.spoken.slice();
+    closePanel();
+    out.onClose = uTest.spoken.slice();
+    await uTest.wait(30);
+    openPanel(); closePanel();
+    out.again = uTest.spoken.slice();
+    // נגיעה כפולה בתמונה לפני שהמילה נשמעה: השנייה, ממש כשהיא מתחילה, אינה בחירה.
+    Object.defineProperty(navigator, "userActivation", { value: { hasBeenActive: false }, configurable: true });
+    try{ uTest.show("tea"); } finally { delete navigator.userActivation; }
+    const picksBefore = uTest.log().filter(e => e[4] === "pick").length;
+    uTest.choice(false).click();
+    await uTest.wait(50);
+    uTest.choice(false).click();
+    out.doubleTap = uTest.log().filter(e => e[4] === "pick").length - picksBefore;
+    // בדיקה מהתמונה רק כשהמנוע מוכן: לפני כן 🎤 כבוי.
+    const realModel = model;
+    model = null;
+    try{
+      uTest.lane(null);
+      uTest.show("dog");
+      out.loading = turn.step;
+    } finally { model = realModel; }
+    // קולות שמגיעים בזמן שהמיקרופון נפתח לא מחליפים את התור.
+    uTest.lane("off");
+    voices = [];
+    uTest.show("ship");
+    opening = true;
+    refreshVoices = () => { voices = [uTest.voice]; };
+    try{
+      speechSynthesis.dispatchEvent(new Event("voiceschanged"));
+      out.opening = turn.step;
+    } finally {
+      opening = false;
+      refreshVoices = () => {};
+      voices = [uTest.voice];
+    }
+    return out;
+  });
+  check("מתחת להגדרות המילה לא נאמרת, והיא נאמרת פעם אחת כשהן נסגרות",
+    covered.underPanel.length === 0 && JSON.stringify(covered.onClose) === '["ball"]' && covered.again.length === 1, covered);
+  check("נגיעה שנייה ממש כשהמילה מתחילה להישמע אינה בחירה", covered.doubleTap === 0, covered);
+  check("בזמן שהמנוע נטען אין בדיקה מהתמונה", covered.loading !== "probe", covered);
+  check("קולות שמגיעים בזמן שהמיקרופון נפתח לא מחליפים את התור", covered.opening === "say", covered);
+
+  // המילה הראשונה בכל פתיחה מוצגת לפני שהמנוע מוכן. כשהוא מוכן היא לא מתחלפת
+  // מתחת לאצבע, וילד חדש שאמר אותה נשאר במסלול המהיר. בדיקה שלא הצליחה מסיימת
+  // אותו גם אם הילד אומר שוב באותו תור.
+  const startup = await page.evaluate(async () => {
+    const out = {}, realModel = model;
+    try{
+      Object.defineProperty(navigator, "userActivation", { value: { hasBeenActive: false }, configurable: true });
+      try{
+        model = null;
+        uTest.lane(null);
+        uTest.show("dog");
+        out.before = { step: turn.step, choices: uTest.seen("choices") };
+        model = realModel;
+        modelReady();
+        out.after = { step: turn.step, choices: uTest.seen("choices") };
+      } finally { delete navigator.userActivation; }
+      model = null;
+      setSound(false);
+      uTest.lane(null);
+      uTest.show("cat");
+      out.saidFirst = turn.step;
+      model = realModel;
+      await uTest.say("cat");
+      out.lane = uTest.store().lane;
+      await uTest.wait(GOOD_MS + 200);
+      uTest.show("fish");
+      out.next = turn.step;
+    } finally {
+      model = realModel;
+      setSound(true);
+    }
+    out.again = [];
+    for(const how of ["miss", "hear", "sound"]){
+      uTest.lane(null);
+      if(how === "sound") setSound(false);
+      uTest.show("tree");
+      if(how === "miss"){ await uTest.say("zzz"); await uTest.wait(100); }
+      if(how === "hear") $("playWord").click();
+      if(how === "sound") toggleSound();
+      await uTest.say("tree");
+      out.again.push(uTest.store().lane);
+      await uTest.wait(Math.max(GOOD_MS, AGAIN_MS) + 200);
+      setSound(true);
+    }
+    // מילה שהתחילה להישמע מתחת להגדרות שנפתחו רגע אחרי, נאמרת שוב כשהן נסגרות.
+    uTest.lane("off");
+    uTest.speech = "slow";
+    uTest.show("moon");
+    await uTest.wait(20);
+    openPanel();
+    await uTest.wait(400);
+    out.underPanel = turn.said;
+    uTest.spoken = [];
+    closePanel();
+    out.onClose = uTest.spoken.slice();
+    await uTest.wait(400);
+    uTest.speech = "start";
+    return out;
+  });
+  check("כשהמנוע מוכן, המילה שעל המסך לא מתחלפת מתחת לאצבע",
+    startup.before.step === "understand" && startup.after.step === "understand" && startup.after.choices, startup);
+  check("בדיקה שלא הצליחה מסיימת את המסלול גם כשהילד אומר שוב באותו תור — אחרי אמירה, 🔊 או הדלקת השמע",
+    startup.again.every(l => l === "off"), startup);
+  check("ילד חדש שאמר מילה שלא נבדקה נשאר במסלול המהיר", startup.saidFirst === "say" && startup.lane === "fast"
+    && startup.next === "probe", startup);
+  check("מילה שהתחילה להישמע מתחת להגדרות נאמרת שוב כשהן נסגרות",
+    startup.underPanel === false && JSON.stringify(startup.onClose) === '["moon"]', startup);
+  check("מי ששמע את המילה ב\"להבין\" ויצא ב-🔇 — האמירה שאחר כך נעזרה",
+    !!more.mutedSay && more.mutedSay.k === 0 && more.mutedSay.got === undefined, more);
+  check("מילה שהילד כבר אמר, או שכבר זוהתה בשמיעה, לא מקבלת \"להבין\"",
+    more.known.step === "say" && !more.known.text && more.understood === "say", more);
+  check("ילד שכבר ניסה מילים אינו במסלול המהיר", more.veteran.step === "understand" && more.veteran.lane === undefined, more);
+  check("מילה מעברית שנאמרה נכון לא מחזירה למסלול המהיר", more.loanOk.wasProbe === "probe" && more.loanOk.lane === "off", more);
+  check("בדיקה שהצליחה נגמרת מיד, ו-🔊 בזמן ה-🎉 לא מוציא מהמסלול", more.probeDone === "say" && more.laneAfterCheer === "fast", more);
+  check("אמירה אחרי ששמעו את המילה אינה הצלחה של הבדיקה", more.helpedProbe === "off", more);
+  check("הדלקת השמע בבדיקה מהתמונה — הכתב מופיע והמסלול נגמר",
+    more.soundOn.step === "say" && more.soundOn.text && more.soundOn.lane === "off", more);
+
+  // מילה שמורה מוסיפה מהמאגר מתחילה ב"להבין", ומילה מעברית בבדיקה. הקולות
+  // שמגיעים אחרי שהמילה הראשונה הוצגה מביאים לה "להבין".
+  const catalogAdd = await page.evaluate(async () => {
+    const out = {}, before = words;
+    uTest.lane("off");
+    try{
+      const add = w => {
+        const [emoji] = PAIRS.find(p => p[1] === w);
+        applyWords(words.concat([{ emoji, word: w }]), words.length, false);
+        return turn.step;
+      };
+      out.plain = add("mouse");
+      out.loan = add("pizza");
+      applyWords(before, 0, false);
+      voices = [];
+      uTest.show("ship");
+      out.before = turn.step;
+      refreshVoices = () => { voices = [uTest.voice]; };
+      uTest.spoken = [];
+      speechSynthesis.dispatchEvent(new Event("voiceschanged"));
+      out.after = { step: turn.step, choices: uTest.seen("choices"), spoken: uTest.spoken.slice() };
+    } finally {
+      refreshVoices = () => {};
+      voices = [uTest.voice];
+      applyWords(before, 0, false);
+    }
+    // ושההקראה האמיתית מחזירה את ההקראה, כדי שאפשר לדעת שנכשלה.
+    const stub = speak;
+    uTest.show("tree");
+    speak = uTest.realSpeak;
+    voices = [];
+    speechSynthesis.speak = u => setTimeout(() => u.dispatchEvent(Object.assign(new Event("error"), { error: "synthesis-failed" })), 5);
+    try{
+      $("playWord").click();
+      await uTest.wait(100);
+      out.real = { step: turn.step, broken: speechBroken };
+    } finally {
+      delete speechSynthesis.speak;
+      speak = stub;
+      voices = [uTest.voice];
+      speechBroken = false;
+    }
+    return out;
+  });
+  check("מילה שמורה מוסיפה מהמאגר מתחילה ב\"להבין\", ומילה מעברית בבדיקה מהתמונה",
+    catalogAdd.plain === "understand" && catalogAdd.loan === "probe", catalogAdd);
+  check("קולות שמגיעים אחרי שהמילה הראשונה הוצגה מביאים לה \"להבין\"",
+    catalogAdd.before === "say" && catalogAdd.after.step === "understand" && catalogAdd.after.choices
+      && JSON.stringify(catalogAdd.after.spoken) === '["ship"]', catalogAdd);
+  check("הקראה אמיתית שנכשלת אחרי נגיעה מעבירה לאמירה", catalogAdd.real.step === "say" && catalogAdd.real.broken, catalogAdd);
+
+  // מה שקורה לצד השלב: ההגדרות, חלון אחר, קולות והקראה שמגיעים באיחור.
+  const aside = await page.evaluate(async () => {
+    const out = {};
+    // ⚙️ בזמן שהמיקרופון עוד נפתח: ההקשבה לא מתחילה מתחת להגדרות.
+    const real = { audioReady, ensureAudio };
+    setSound(false);
+    uTest.lane("off");
+    uTest.show("dog");
+    audioReady = () => false;
+    ensureAudio = () => new Promise(r => setTimeout(r, 200));
+    try{
+      const opening = listen();
+      openPanel();
+      await opening;
+      out.panel = { step: turn.step, active, listening: $("say").classList.contains("listening") };
+    } finally {
+      audioReady = real.audioReady;
+      ensureAudio = real.ensureAudio;
+      stopListening();
+      closePanel();
+      setSound(true);
+    }
+    // 🔊 של המורה ברשימה מבטל את המילה של "להבין" לפני שהתחילה, וזו לא תקלה.
+    uTest.speech = "slow";
+    uTest.show("cat");
+    $("playWord").click();
+    openPanel();
+    showSettingsView("words");
+    $("wordList").querySelector(".speak-word-btn").click();
+    await uTest.wait(SPEECH_START_MS + 300);
+    out.list = { step: turn.step, broken: speechBroken };
+    speechBroken = false;
+    closePanel();
+    await uTest.wait(400);
+    // הקראה אמיתית שמתחילה באיחור: השלב ירד, והמילים הבאות שוב מתחילות ב"להבין" —
+    // גם כשמה שהתחיל הוא נגיעה נוספת ב-🔊, שביטלה את המאחרת.
+    out.late = [];
+    for(const again of [false, true]){
+      uTest.show("sun");
+      const stub = speak;
+      let last = null, delay = SPEECH_START_MS + 300;
+      speak = uTest.realSpeak;
+      voices = [];
+      speechSynthesis.speak = u => {
+        last = u;
+        setTimeout(() => { if(last === u) u.dispatchEvent(new Event("start")); }, delay);
+      };
+      try{
+        $("playWord").click();
+        await uTest.wait(SPEECH_START_MS + 100);
+        const fell = { again, step: turn.step, broken: speechBroken };
+        if(again){ delay = 5; $("playWord").click(); }
+        await uTest.wait(400);
+        speak = stub;
+        voices = [uTest.voice];
+        uTest.show("moon");
+        out.late.push({ ...fell, next: turn.step });
+      } finally {
+        delete speechSynthesis.speak;
+        speak = stub;
+        voices = [uTest.voice];
+        speechBroken = false;
+      }
+    }
+    await uTest.wait(100);
+    // ילד חדש שעבר את הבדיקה, בזמן שבחלון אחר הוא כבר יצא מהמסלול.
+    uTest.lane(null);
+    uTest.show("dog");
+    out.otherWindow = { step: turn.step };
+    uTest.lane("off");
+    await uTest.say("dog");
+    out.otherWindow.lane = uTest.store().lane;
+    await uTest.wait(GOOD_MS + 200);
+    // קולות שמגיעים כשהילד כבר רואה את המילה עם הכתב לא מסתירים אותו.
+    uTest.lane("off");
+    voices = [];
+    uTest.show("ship");
+    await uTest.wait(VOICES_GRACE_MS + 100);
+    refreshVoices = () => { voices = [uTest.voice]; };
+    try{
+      speechSynthesis.dispatchEvent(new Event("voiceschanged"));
+      out.lateVoices = { step: turn.step, text: uTest.seen("word") };
+    } finally {
+      refreshVoices = () => {};
+      voices = [uTest.voice];
+    }
+    // הדף ירד מהמסך לפני שהמילה נשמעה: הדפדפן עצר את הדיבור, וזו לא תקלה בו.
+    uTest.speech = "silent";
+    uTest.show("cat");
+    $("playWord").click();
+    Object.defineProperty(document, "hidden", { value: true, configurable: true });
+    try{ document.dispatchEvent(new Event("visibilitychange")); }
+    finally { delete document.hidden; }
+    await uTest.wait(SPEECH_START_MS + 200);
+    out.hidden = { step: turn.step, broken: speechBroken };
+    uTest.speech = "start";
+    speechBroken = false;
+    return out;
+  });
+  check("⚙️ בזמן שהמיקרופון נפתח — לא מקשיבים מתחת להגדרות",
+    aside.panel.step === "say" && !aside.panel.active && !aside.panel.listening, aside);
+  check("🔊 ברשימת המילים בזמן \"להבין\" אינו תקלה בדיבור", aside.list.step === "understand" && !aside.list.broken, aside);
+  check("הקראה שמתחילה באיחור מחזירה את \"להבין\" למילים הבאות, גם כשנגיעה נוספת ב-🔊 ביטלה אותה",
+    aside.late.length === 2 && aside.late.every(l => l.step === "say" && l.broken && l.next === "understand"), aside);
+  check("ילד שיצא מהמסלול בחלון אחד לא חוזר אליו מחלון אחר",
+    aside.otherWindow.step === "probe" && aside.otherWindow.lane === "off", aside);
+  check("קולות שמגיעים אחרי הרגע הראשון של המילה לא מסתירים את הכתב",
+    aside.lateVoices.step === "say" && aside.lateVoices.text, aside);
+  check("דף שירד מהמסך לפני שהמילה נשמעה נשאר ב\"להבין\"", aside.hidden.step === "understand" && !aside.hidden.broken, aside);
+
+  // מקלדת, ומסך של טלפון: התמונות בגובה של אצבע, על המסך, והתחתונה רחוקה מ-⏭️.
+  await page.setViewportSize({ width: 360, height: 640 });
+  const reachChoices = await page.evaluate(() => {
+    uTest.lane("off");
+    uTest.show("dog");
+    const first = $("choices").children[0];
+    first.focus();
+    const focused = document.activeElement === first;
+    openPanel();
+    const inert = $("choices").inert;
+    closePanel();
+    const rects = [...$("choices").children].map(b => b.getBoundingClientRect()), row = $("buttons").getBoundingClientRect();
+    return { focused, inert, tabbable: [...$("choices").children].every(b => b.tabIndex === 0), heights: rects.map(r => Math.round(r.height)),
+             onScreen: rects.every(r => r.top >= 0 && r.bottom <= innerHeight), gap: Math.round(row.top - rects[2].bottom),
+             rowOnScreen: row.bottom <= innerHeight };
+  });
+  check("אפשר להגיע לתמונות במקלדת, ולא כשההגדרות פתוחות",
+    reachChoices.focused && reachChoices.tabbable && reachChoices.inert, reachChoices);
+  check("בטלפון בגובה 640 שלוש התמונות על המסך, כל אחת בגובה של אצבע, והתחתונה רחוקה מהכפתורים",
+    reachChoices.onScreen && reachChoices.rowOnScreen && reachChoices.heights.every(h => h >= 64) && reachChoices.gap >= 40, reachChoices);
+  await page.setViewportSize(viewport);
+
+  await page.evaluate(([P, L]) => {
+    speak = uTest.realSpeak;
+    chime = uTest.realChime;
+    refreshVoices = uTest.realRefresh;
+    voices = [];
+    laneFast = () => false;
+    canSpeak = () => false;
+    LOANWORD_SET.clear();
+    setSound(uTest.realSound);
+    localStorage.removeItem(P); localStorage.removeItem(L);
+    turn.word = null;
+    applyWords(uTest.before, 0, false);
+  }, [P, L]);
 
   // --------------------------------------------------------------
   group("כפתור ההקשבה");

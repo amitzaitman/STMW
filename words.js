@@ -448,6 +448,22 @@
   const HE_BY_WORD = Object.fromEntries(PAIRS.map(([, word, he]) => [word, he]));
   const THEME_BY_WORD = Object.fromEntries(THEMES.flatMap(t => t.pairs.map(([, word]) => [word, t.id])));
 
+  // מילים שאומרים כמעט כך גם בעברית, וילד שעברית היא שפת האם שלו כנראה כבר
+  // מכיר. מילה חדשה מהרשימה הזו נבדקת קודם מהתמונה בלבד, בלי ההסבר, ומי
+  // שאומר אותה נכון לא צריך אותו. שינוי ברשימה משפיע רק על מילים שעוד לא
+  // נפגשו. כל מילה כאן חייבת להיות במאגר.
+  const LOANWORDS = [
+    "hamster", "poodle", "llama", "gorilla", "zebra", "panda", "koala", "kangaroo", "giraffe", "unicorn",
+    "flamingo", "penguin", "dolphin", "crocodile",
+    "banana", "mango", "kiwi", "melon", "lemon", "avocado", "broccoli",
+    "pizza", "pasta", "sushi", "falafel", "pita", "taco", "burrito", "salad", "burger", "hotdog", "noodles", "steak",
+    "pancake", "waffle", "bagel", "bacon", "donut", "cupcake", "popcorn", "chocolate",
+    "taxi", "tractor", "scooter", "helicopter", "ambulance",
+    "tennis", "puzzle", "yoyo", "balloon", "goal", "guitar", "music",
+    "radio", "tv", "toilet", "jeans", "shorts", "doctor", "bank", "baby", "student", "magnet", "cactus",
+    "robot", "ninja", "dinosaur", "dragon", "princess"
+  ];
+
   const DEFAULT_WORDS = [
     {emoji:"🐶", word:"dog"},
     {emoji:"🐱", word:"cat"},
@@ -473,4 +489,5 @@
   global.HE_BY_WORD = HE_BY_WORD;
   global.THEME_BY_WORD = THEME_BY_WORD;
   global.DEFAULT_WORDS = DEFAULT_WORDS;
+  global.LOANWORDS = LOANWORDS;
 })(typeof window !== "undefined" ? window : (typeof globalThis !== "undefined" ? globalThis : this));

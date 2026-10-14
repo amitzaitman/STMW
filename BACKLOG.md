@@ -73,7 +73,7 @@ Issues כדי שייקרא לצד הקוד וייכנס לאותו diff. כשי�
 
 ### הצגה מחדש של אותה מילה מבטלת את מה שהתור מחכה לו
 
-עוגן: `index.html` — `if(turn.word !== word() || turn.child !== childId) turn = newTurn();`
+עוגן: `index.html` — `const fresh = turn.word !== word() || turn.child !== childId;`
 
 `show()` מקדם את `shownCount` ומאפס את `sayMisses` בכל הצגה, גם כשזו אותה מילה
 באותו תור: הדלקת התעתיק, מחיקה של מילה אחרת, רשימה שנשמרה בחלון אחר. לכן הצגה
