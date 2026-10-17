@@ -8,7 +8,7 @@
 <meta property="og:title" content="Say the word">
 <meta property="og:description" content="English word pronunciation practice app for kids with voice recognition and speech synthesis.">
 <link rel="manifest" href="./manifest.json">
-<meta name="theme-color" content="#FFD65A">
+<meta name="theme-color" content="#E4F6EE">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -20,218 +20,328 @@
 <script src="./cache-name.js"></script>
 <script src="./words.js?v=11"></script>
 <style>
+  /* המסך של הילד: בכל רגע דבר אחד בסגול ללחוץ עליו, ומה שאי אפשר להשתמש בו
+     עכשיו לא על המסך. סגול = ללחוץ, טורקיז = מקשיב, ירוק = הצלחה, כתום =
+     "יודעים?". סמלי הממשק מצוירים בקו; אימוג'י רק לתמונות של המילים. */
+  :root{
+    --bg:#E4F6EE; --ink:#17302A; --muted:#4D6B62; --line:#A9CFC2; --card:#fff;
+    --act:#6C4CF1; --act-soft:#B7A6FF; --turq:#14B8A6; --turq-ink:#0B5F57; --turq-soft:#E3FAF7;
+    --ok:#2F855A; --ok-ink:#1F6B45; --ok-soft:#DFF7E7; --ask:#FFB020; --teach:#E3F0FF;
+  }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
   body{
-    font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
-    background:#EAF6FF; color:#1B2140;
-    display:flex; flex-direction:column; align-items:center;
-    padding:14px; gap:12px; -webkit-user-select:none; user-select:none;
+    font-family:"Rubik","Assistant",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+    background:var(--bg); color:var(--ink);
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
   }
-  #picture{
-    flex:1; width:100%; max-width:520px; padding:0; font-family:inherit; color:inherit;
-    display:flex; align-items:center; justify-content:center;
-    background:#fff; border:5px solid #1B2140; border-radius:32px;
-    font-size:clamp(90px,38vw,220px); line-height:1; cursor:pointer;
+  button{font:inherit; color:inherit; border:4px solid var(--ink); border-radius:22px; cursor:pointer; background:#fff}
+  button[disabled]{opacity:.5; cursor:not-allowed}
+  .ico{width:1em; height:1em; display:block; flex:0 0 auto}
+
+  /* שלושה מסכים, ורק אחד מוצג: פתיחה, משחק, וקראו למבוגר. */
+  .screen{
+    height:100dvh; width:100%; max-width:560px; margin:0 auto;
+    padding:max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    display:none; flex-direction:column; align-items:center; gap:14px;
   }
-  #picture:active{background:#FFF8E1}
-  #picture.good{background:#DFF7E7}
-  #picture.again{background:#FFECEC}
-  #word{font-size:15px; color:#8B93AD; min-height:20px; direction:ltr}
-  #wordHe{font-size:22px; font-weight:600; color:#4A5480; line-height:1.3}
+  body[data-screen="door"] #door, body[data-screen="game"] #game, body[data-screen="grownup"] #grownup{display:flex}
+
+  /* 🔒 קטן וחיוור, רק במסכי מנוחה: פתיחה, סוף סבב וקראו למבוגר. נגיעה רגילה
+     בו לא עושה כלום; לחיצה ארוכה פותחת את שאלת המספר. */
+  #lock{
+    position:fixed; top:max(8px, env(safe-area-inset-top)); left:8px; z-index:5;
+    width:64px; height:64px; border:0; background:transparent; color:#7FA89A; opacity:.6;
+    display:none; align-items:center; justify-content:center; font-size:22px; padding:0;
+    -webkit-tap-highlight-color:transparent;
+  }
+  body[data-screen="door"] #lock, body[data-screen="grownup"] #lock, body.ended #lock{display:flex}
+  body.ended #game .guide{padding-inline-end:52px}
+  #lock.holding{opacity:1; color:var(--act)}
+  /* בפינה העליונה של המשחק: החזקה של 3 שניות חוזרת למסך הפתיחה. באייפון אין
+     כפתור "חזור". */
+  #exit{position:fixed; top:0; right:0; width:64px; height:64px; z-index:4; display:none}
+  body[data-screen="game"] #exit{display:block}
+
+  /* הציפור ובועת הדיבור. הבועה היא שורת ההנחיה: סמל ועד 3 מילים מנוקדות. אי
+     אפשר ללחוץ עליה, והיא אף פעם לא בצבע של "ללחוץ". */
+  .guide{width:100%; display:flex; align-items:flex-end; gap:10px; flex:0 0 auto}
+  .bird{width:80px; height:88px; flex:0 0 auto; pointer-events:none; overflow:visible}
+  .cue{
+    flex:1; min-width:0; background:#fff; border:3px solid var(--ink); border-radius:26px 26px 6px 26px;
+    padding:10px 16px; display:flex; align-items:center; gap:10px;
+    font-size:clamp(20px, 6.4vw, 28px); font-weight:800; line-height:1.25; min-height:64px;
+  }
+  .cue .ico{font-size:30px; color:var(--act)}
+  .cue[data-cue="listen"] .ico{color:var(--turq)}
+  .cue[data-cue="listen"] .ico{animation:wave 1s infinite alternate ease-in-out}
+  @keyframes wave{to{opacity:.35}}
+  .cue[data-cue="listening"]{background:var(--turq-soft); border-color:var(--turq); color:var(--turq-ink)}
+  .cue[data-cue="listening"] .ico{color:var(--turq-ink)}
+  .cue[data-cue="good"], .cue[data-cue="wrote"]{border-color:var(--ok); color:var(--ok-ink)}
+  .cue[data-cue="good"] .ico, .cue[data-cue="wrote"] .ico{color:var(--ok)}
+  .cue[data-cue="probe"] .ico{color:var(--ask)}
+  .cue.poke{animation:poke .3s}
+  @keyframes poke{50%{transform:scale(1.05)}}
+
+  /* תנוחות הציפור: כל חלק מוסתר, וכל תנוחה מציגה את שלה. */
+  .bird .wing{fill:var(--act)}
+  .bird .opt{display:none}
+  .bird[data-pose="wave"] .p-wave, .bird[data-pose="speak"] .p-speak, .bird[data-pose="point"] .p-point,
+  .bird[data-pose="wait"] .p-wait, .bird[data-pose="tilt"] .p-tilt, .bird[data-pose="ear"] .p-ear,
+  .bird[data-pose="happy"] .p-happy, .bird[data-pose="cheer"] .p-cheer{display:inline}
+  .bird[data-pose="tilt"] .b-all{transform:rotate(-12deg); transform-origin:48px 62px}
+  .bird[data-pose="happy"] .b-all{animation:hop .5s 2}
+  @keyframes hop{50%{transform:translateY(-6px)}}
+
+  /* מסך הפתיחה. ▶ "נושם" רק כאן, במסך מנוחה. */
+  #door{justify-content:space-between}
+  .door-top{display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:40px}
+  #childName{font-size:28px; font-weight:700; color:var(--muted); min-height:34px}
+  #door .guide, #grownup .guide{flex-direction:column; align-items:center; gap:14px; flex:1; justify-content:center}
+  #door .cue, #grownup .cue{flex:0 0 auto; border-radius:26px}
+  #door .bird, #grownup .bird{width:150px; height:164px}
+  .big-play{
+    width:168px; height:168px; border-radius:50%; flex:0 0 auto; padding:0;
+    background:var(--act); border:5px solid var(--ink); box-shadow:0 8px 0 var(--ink); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:76px; margin-bottom:12px;
+    animation:breathe 2.6s .4s infinite ease-in-out; -webkit-tap-highlight-color:transparent;
+  }
+  .big-play:active{transform:translateY(4px); box-shadow:0 4px 0 var(--ink)}
+  @keyframes breathe{50%{transform:scale(1.05)}}
+  body.starting #play{visibility:hidden}
+  .grownup-art{display:flex; align-items:center; gap:18px; font-size:64px; color:var(--muted)}
+
+  /* המשחק: למעלה הציפור, באמצע הבמה, ולמטה שורת הכפתורים. לפי גובה המסך
+     (dvh), כדי שגם בטלפון נמוך או שוכב שורת הכפתורים תישאר על המסך. */
+  #stage{flex:1; min-height:0; width:100%; position:relative; display:flex; flex-direction:column; align-items:center; gap:10px}
+  #card{
+    flex:1; min-height:0; width:100%; position:relative; overflow:hidden;
+    background:var(--card); border:4px solid var(--ink); border-radius:32px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:8px;
+  }
+  #picture{font-size:clamp(64px, min(34vw, 22dvh), 180px); line-height:1.1}
+  #word{font-size:clamp(28px, 6dvh, 44px); font-weight:800; direction:ltr; min-height:1.2em; line-height:1.2}
+  #wordHe{font-size:clamp(28px, 6dvh, 44px); font-weight:700; color:var(--muted); min-height:1.2em; line-height:1.2}
   /* מילה שהילד כבר אמר לבד מוצגת בלי כתב, כדי שיזכור אותה מהתמונה. המקום
-     נשמר, כדי שהכפתורים לא יקפצו בין מילה למילה. */
+     נשמר, כדי שהכפתורים לא יקפצו ואורך המילה לא ייחשף. */
   #word.veiled, #wordHe.veiled{visibility:hidden}
-  /* שלב "להבין": שלוש תמונות זו מתחת לזו, במקום הכרטיס. הן שטוחות, בלי הצל של
-     הכפתורים, כדי שייראו כמו תמונות לבחירה ולא כמו פקדים. השורה של 🔊, 🎤
-     ו-⏭️ נשארת במקומה, ושורות המילה והתעתיק, המוסתרות, מרחיקות ממנה את התמונה
-     התחתונה. */
-  #choices{flex:1; min-height:0; width:100%; max-width:520px; display:flex; flex-direction:column; gap:14px}
+  /* ❓ בבדיקה של מילה חדשה, 💭 במילה שכבר אמרו לבד. */
+  #badge{
+    position:absolute; top:14px; right:14px; width:48px; height:48px; border-radius:50%;
+    display:none; align-items:center; justify-content:center; font-size:28px; font-weight:800;
+  }
+  #badge.probe{display:flex; background:var(--ask); color:var(--ink)}
+  #badge.recall{display:flex; background:#EEEAFE; color:var(--act)}
+  #card.good{background:var(--ok-soft); border-color:var(--ok)}
+  #card.again{animation:shake .4s}
+  #card.teach{background:var(--teach)}
+  #card.fall{animation:fall .6s ease-in forwards}
+  @keyframes fall{to{transform:translateY(40%) scale(.3); opacity:0}}
+  @keyframes shake{20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(5px)}}
+  /* קונפטי מעל התמונה, שנשארת. */
+  .confetti{position:absolute; inset:0; pointer-events:none; display:none}
+  #card.good .confetti{display:block}
+  .confetti i{position:absolute; top:-12px; width:12px; height:14px; border-radius:3px; animation:drop 1s ease-in forwards}
+  .confetti i:nth-child(1){right:12%; background:var(--act)}
+  .confetti i:nth-child(2){right:30%; background:var(--turq); animation-delay:.1s; border-radius:50%}
+  .confetti i:nth-child(3){right:48%; background:var(--ask); animation-delay:.05s}
+  .confetti i:nth-child(4){right:64%; background:var(--act-soft); animation-delay:.15s}
+  .confetti i:nth-child(5){right:80%; background:var(--act); animation-delay:.08s; border-radius:50%}
+  .confetti i:nth-child(6){right:90%; background:var(--ask); animation-delay:.2s}
+  @keyframes drop{to{transform:translateY(220px) rotate(260deg); opacity:0}}
+  /* הכרטיס גדל מהתמונה שנבחרה, וכרטיס של "שומעים ובוחרים בלבד" עף למעלה. */
+  #card.grow{animation:grow .35s ease-out}
+  @keyframes grow{from{transform:scale(.6); opacity:.4} to{transform:scale(1); opacity:1}}
+
+  /* "נחזור לזה": כיס רך שהכרטיס נופל לתוכו. הוא ציור ולא כפתור: בלי מסגרת,
+     בלי צל ובלי חץ, ואי אפשר ללחוץ עליו. */
+  #pocket{position:absolute; bottom:4px; left:50%; transform:translateX(-50%); width:120px; height:64px; pointer-events:none; color:var(--act-soft)}
+  #pocket[hidden]{display:none}
+
+  /* שומעים ובוחרים: כל תמונה בעיגול, והעיגולים מפוזרים על הבמה ולא בטור:
+     בזיגזג על רשת, כך שגם במסך נמוך או שוכב הם לא עולים זה על זה. הגודל לפי
+     התא, ביחידות של הבמה עצמה (cq), ובדפדפן ישן גודל קבוע. */
+  /* והשורה התחתונה רחוקה משורת הכפתורים, כדי שנגיעה בתמונה לא תנחת על ⏭️. */
+  #choices{position:absolute; inset:0 0 32px; display:grid; grid-template:repeat(3, 1fr) / repeat(2, 1fr); place-items:center; container-type:size}
   #choices[hidden]{display:none}
   .choice{
-    flex:1; min-height:64px; padding:0; font-family:inherit; color:inherit; line-height:1;
-    display:flex; align-items:center; justify-content:center;
-    background:#fff; border:5px solid #1B2140; border-radius:28px;
-    font-size:clamp(40px,10vh,96px); -webkit-tap-highlight-color:transparent;
-    transition:opacity .25s ease, background-color .2s ease;
+    --d:120px; --d:min(46cqw, 31cqh, 200px);
+    width:var(--d); height:var(--d); border-radius:50%; padding:0;
+    background:#fff; border:5px solid var(--ink); box-shadow:0 0 0 5px var(--act);
+    font-size:calc(var(--d) * .5); line-height:1; display:flex; align-items:center; justify-content:center;
+    transition:opacity .25s ease, background-color .2s ease, box-shadow .2s ease; -webkit-tap-highlight-color:transparent;
   }
-  .choice:active:not([disabled]){background:#FFF8E1}
-  .choice.faded{opacity:.3; cursor:default}
-  .choice.right{background:#DFF7E7}
-  body.understanding #picture{display:none}
-  /* הכרטיס חוזר אחרי הבחירה הנכונה וגדל מהשורה שנבחרה. */
-  #picture.grow{animation:grow .35s ease-out}
-  @keyframes grow{from{transform:scale(.6); opacity:.4} to{transform:scale(1); opacity:1}}
-  @media (prefers-reduced-motion: reduce){ #picture.grow{animation:none} }
-  .toggle-row{
-    display:flex; align-items:center; gap:10px; cursor:pointer;
-    font-weight:700; font-size:15px; color:#1B2140;
+  .choice.asleep{opacity:.5; border-color:var(--line); box-shadow:none}
+  .choice.faded{opacity:.25; border-color:var(--line); box-shadow:none; cursor:default}
+  .choice.right{background:var(--ok-soft); border-color:var(--ok); box-shadow:0 0 0 5px var(--ok)}
+  .choice.fly{transition:transform .6s ease-in, opacity .6s ease-in; transform:translateY(-120%); opacity:0}
+  #choices.l0 .choice:nth-child(1){grid-area:1/1} #choices.l0 .choice:nth-child(2){grid-area:2/2} #choices.l0 .choice:nth-child(3){grid-area:3/1}
+  #choices.l1 .choice:nth-child(1){grid-area:1/2} #choices.l1 .choice:nth-child(2){grid-area:2/1} #choices.l1 .choice:nth-child(3){grid-area:3/2}
+  #choices.l2 .choice:nth-child(1){grid-area:1/2} #choices.l2 .choice:nth-child(2){grid-area:2/1} #choices.l2 .choice:nth-child(3){grid-area:3/1; justify-self:end}
+  @media (orientation: landscape){
+    #choices{grid-template:repeat(2, 1fr) / repeat(3, 1fr)}
+    .choice{--d:min(31cqw, 46cqh, 200px)}
+    #choices.l0 .choice:nth-child(1){grid-area:1/1} #choices.l0 .choice:nth-child(2){grid-area:2/2} #choices.l0 .choice:nth-child(3){grid-area:1/3}
+    #choices.l1 .choice:nth-child(1){grid-area:2/1} #choices.l1 .choice:nth-child(2){grid-area:1/2} #choices.l1 .choice:nth-child(3){grid-area:2/3}
+    #choices.l2 .choice:nth-child(1){grid-area:1/1} #choices.l2 .choice:nth-child(2){grid-area:2/2} #choices.l2 .choice:nth-child(3){grid-area:2/3; justify-self:start}
   }
-  .toggle-row input{width:22px; height:22px; margin:0; accent-color:#1B2140; flex:0 0 auto}
-  #buttons{
-    display:flex; align-items:center; gap:12px; width:100%; max-width:520px; direction:ltr;
-  }
-  button{
-    font:inherit; color:inherit; border:4px solid #1B2140;
-    border-radius:22px; cursor:pointer; background:#fff;
-  }
-  #buttons button{
-    display:flex; align-items:center; justify-content:center;
-    padding:0; height:74px; border:4px solid #1B2140;
-    border-radius:24px; box-shadow:0 4px 0 #1B2140;
-    transition:transform .12s ease, box-shadow .12s ease, background-color .15s ease;
-    user-select:none; -webkit-tap-highlight-color:transparent;
-  }
-  #buttons button:active:not([disabled]){
-    transform:translateY(3px); box-shadow:0 1px 0 #1B2140;
-  }
-  button[disabled]{opacity:.5; cursor:not-allowed; box-shadow:0 2px 0 #1B2140}
-  #playWord{flex:1; background:#EBF8FF}
-  #playWord:active:not([disabled]){background:#D8EFFF}
-  #playWord.playing{background:#BAE3FF}
-  #say{flex:2; background:#FFD65A}
-  /* 🎤 ישן בשלב "להבין": נגיעה בו רק משמיעה שוב את המילה. */
-  #say.asleep{background:#F1F4F9; border-color:#B9C2D8; box-shadow:0 4px 0 #B9C2D8}
-  #say.asleep .btn-icon{opacity:.45}
-  /* אדום תחת האצבע נשאר אדום: ההקשבה ממשיכה, וצהוב היה נראה כמו כפתור שכבה. */
-  #say:active:not([disabled]):not(.listening){background:#FAD04C}
-  #say.listening{background:#FF6B8A; color:#fff}
-  #next{flex:1; background:#F8FAFC}
-  #next:active:not([disabled]){background:#EDF2F7}
-  #hint{flex:1; background:#FFF8E1}
-  #hint:active:not([disabled]){background:#FFEFC2}
-  /* display:flex של כפתורי השורה גובר על [hidden] של הדפדפן, ובלי זה
-     החלפת מצב משאירה גם את 🎤 וגם את 💡 על המסך. */
-  #buttons button[hidden]{display:none}
-  #modeSwitch{
-    display:flex; gap:4px; padding:4px; background:#fff;
-    border:3px solid #1B2140; border-radius:18px;
-  }
-  #modeSwitch button{
-    border:0; border-radius:13px; padding:6px 16px; background:transparent;
-    font-size:15px; font-weight:700; color:#4A5480;
-  }
-  #modeSwitch button.active{background:#FFD65A; color:#1B2140}
-  #spell{
-    display:flex; flex-direction:column; align-items:center; gap:10px;
-    width:100%; max-width:520px; direction:ltr;
-  }
+  body.understanding #card{display:none}
+
+  /* כתיבה (שלב 1: כמו היום, בלי הכפתורים שירדו). */
+  body.spelling #card{flex:0 1 auto; min-height:120px}
+  body.spelling #picture{font-size:clamp(48px, 13dvh, 110px)}
+  body.spelling #word{display:none}
+  #spell{display:flex; flex-direction:column; align-items:center; gap:10px; width:100%; direction:ltr}
   #spell[hidden]{display:none}
   #slots, #bank{display:flex; justify-content:center; gap:6px; width:100%}
   #bank{flex-wrap:wrap; gap:8px}
   .slot{
     flex:1 1 0; min-width:0; max-width:48px; height:52px;
-    border:3px dashed #B9C2D8; border-radius:12px; background:#fff;
+    border:3px dashed var(--line); border-radius:12px; background:#fff;
     font-size:clamp(20px,7vw,30px); font-weight:800;
     display:flex; align-items:center; justify-content:center;
   }
-  .slot.filled{border-style:solid; border-color:#1B2140; cursor:pointer}
+  .slot.filled{border-style:solid; border-color:var(--ink); cursor:pointer}
   .slot.hinted{border-style:solid; border-color:#2B6CB0; color:#2B6CB0; background:#EBF8FF}
-  .slot.right{border-style:solid; border-color:#2F855A; color:#2F855A; background:#F0FFF4}
-  .slot.wrong{border-color:#C53030; color:#C53030; background:#FFECEC; animation:shake .3s}
+  .slot.right{border-style:solid; border-color:var(--ok); color:var(--ok); background:#F0FFF4}
+  .slot.wrong{border-color:#C05621; color:#C05621; background:#FFF4E5; animation:shake .3s}
   .tile{
-    width:52px; height:52px; padding:0; font-size:30px; font-weight:800;
-    border-width:3px; border-radius:14px; box-shadow:0 3px 0 #1B2140;
-    -webkit-tap-highlight-color:transparent;
+    width:56px; height:56px; padding:0; font-size:30px; font-weight:800;
+    border-width:3px; border-radius:14px; box-shadow:0 3px 0 var(--ink); -webkit-tap-highlight-color:transparent;
   }
-  .tile:active{transform:translateY(2px); box-shadow:0 1px 0 #1B2140}
+  .tile:active{transform:translateY(2px); box-shadow:0 1px 0 var(--ink)}
   /* אות שכבר במקומה משאירה חור, כדי ששאר האותיות לא יזוזו מתחת לאצבע. */
   .tile.used{visibility:hidden}
-  @keyframes shake{25%{transform:translateX(-6px)} 75%{transform:translateX(6px)}}
-  .btn-icon{font-size:34px; line-height:1; display:inline-block}
-  #say .btn-icon{font-size:42px}
-  /* פעימה אחת אחרי חלון הקשבה שנגמר בלי מילה. לפני .listening, כדי
-     שהקשבה שמתחילה באמצע הפעימה תיראה כהקשבה. */
-  #say.nudge .btn-icon{animation:micPulse .3s 2 alternate ease-in-out}
-  #say.listening .btn-icon{animation:micPulse .7s infinite alternate ease-in-out}
-  /* 🔊 פועם כשהמילה לא נאמרה מעצמה, כדי שהילד יבקש לשמוע אותה. */
-  #playWord.nudge .btn-icon{animation:micPulse .3s 4 alternate ease-in-out}
-  @keyframes micPulse{0%{transform:scale(1)} 100%{transform:scale(1.25)}}
-  #loading{width:100%; max-width:520px; display:flex; flex-direction:column; gap:6px}
-  #loading[hidden]{display:none}
-  #bar{height:16px; border:3px solid #1B2140; border-radius:10px; background:#fff; overflow:hidden}
-  #fill{display:block; height:100%; background:#FFD65A; transition:width .2s}
-  #loadtext{font-size:14px; color:#8B93AD; text-align:center}
-  /* בעמודה של הדף הסרגל הוא פריט שמתכווץ, ו-min-height שלו מחליף את הגובה
-     המינימלי שלפי התוכן. בלי flex-shrink:0, כשחסר גובה — במצב כתיבה, בטלפון
-     נמוך — שורה של שתי שורות נדחסת, עד 44px, וגולשת מעל קצה המסך ועל מתג
-     התרגול. כשגם כך אין מקום, מה שבתחתית הדף יורד מתחת לקצה. */
-  #topBar{
-    width:100%; max-width:520px; display:flex; align-items:center;
-    justify-content:center; position:relative; min-height:44px; flex-shrink:0;
+
+  /* שורת הכפתורים: 🎤 גדול באמצע, תמיד באותו מקום. העזרה מימין ו-⏭️ משמאל,
+     קטנים ולא סגולים, עם שטח מגע של 64px לפחות. כפתור שלא שמיש עכשיו מוסתר
+     בלי להזיז את האחרים (.away), ומה שלא שייך לתרגול לא קיים בכלל ([hidden]). */
+  #buttons{
+    flex:0 0 auto; width:100%; height:120px; direction:rtl;
+    display:grid; grid-template-columns:1fr auto 1fr; grid-template-areas:"help main skip"; align-items:center;
   }
-  /* הכפתורים שבצדדים מונחים מעל הסרגל ולא תופסים בו מקום, אז שני מרווחים
-     שומרים להם את הרוחב. כל עוד השורה קצרה המרווחים שווים, והיא ממורכזת
-     כמו המתג שמתחתיה; שורה ארוכה ממלאת את מה שנשאר ביניהם ונשברת לשורה
-     נוספת, במקום להיכנס מתחת ל-⚙️. הדף מימין לשמאל, אז ::before הוא הצד
-     של 🔇 ו-::after הצד של ⚙️💬, ולכל אחד עוד מרווח קטן. */
-  #topBar::before, #topBar::after{content:""; flex:1}
-  #topBar::before{min-width:50px}
-  #topBar::after{min-width:100px}
-  /* בגודל הזה סבב שלם נכנס בשורה אחת בטלפון ברוחב 360, בכרום, בלי רווח
-     נוסף בין התמונות. אימוג'י רחב יותר שובר אותו לשתי שורות. */
-  #roundRow{font-size:18px; min-height:26px; text-align:center}
-  #topBarLeft{
-    position:absolute; left:0; top:50%; transform:translateY(-50%);
-    display:flex; align-items:center; gap:6px;
+  #buttons button{-webkit-tap-highlight-color:transparent; touch-action:manipulation}
+  #buttons button[hidden]{display:none}
+  #buttons .away{visibility:hidden; pointer-events:none}
+  .small{
+    min-width:72px; height:72px; border-radius:22px; background:#fff; border:3px solid var(--line); color:var(--muted);
+    display:flex; align-items:center; justify-content:center; gap:6px; padding:0 12px; font-size:30px;
   }
-  #openSettings, #openFeedback{
-    width:44px; height:44px; border:2px solid #B9C2D8;
-    border-radius:14px; background:#fff; color:#4A5480; font-size:20px;
-    display:flex; align-items:center; justify-content:center; padding:0;
-    cursor:pointer; transition:background-color .15s, transform .15s;
-    text-decoration:none;
+  .small:active{background:#F2FAF6}
+  .small .lbl{font-size:13px; font-weight:700; white-space:nowrap}
+  .small:has(.lbl){flex-direction:column; gap:0; padding:0 6px; font-size:26px}
+  #playWord{grid-area:help; justify-self:start}
+  #next{grid-area:skip; justify-self:end}
+  #say, #hint{grid-area:main}
+  #say{
+    width:176px; height:112px; border-radius:34px; background:var(--act); color:#fff; border:4px solid var(--ink);
+    box-shadow:0 6px 0 var(--ink); display:flex; align-items:center; justify-content:center; font-size:54px; padding:0;
+    transition:background-color .15s ease, box-shadow .15s ease;
   }
-  #openSettings:active, #openFeedback:active{transform:translateY(2px); background:#EAF0FF}
-  #toggleSound{
-    position:absolute; right:0; top:50%; transform:translateY(-50%);
-    width:44px; height:44px; border:2px solid #B9C2D8;
-    border-radius:14px; background:#F1F4F9; color:#7A859E; font-size:20px;
-    display:flex; align-items:center; justify-content:center; padding:0;
-    cursor:pointer; transition:background-color .15s, border-color .15s, transform .15s;
-  }
-  #toggleSound:active{transform:translateY(calc(-50% + 2px))}
-  #toggleSound.on{background:#EBF8FF; border-color:#2B6CB0; color:#2B6CB0}
-  #note{font-size:14px; color:#B23A00; text-align:center; min-height:20px}
-  /* סוף הסבב יושב במקום התמונה והכפתורים ולא מעליהם, כך ש-⚙️, 🔇 והמתג
-     נשארים זמינים. */
+  #say:active:not(.listening){transform:translateY(4px); box-shadow:0 2px 0 var(--ink)}
+  /* מקשיב: טורקיז, גם תחת האצבע, כי ההקשבה ממשיכה. */
+  #say.listening{background:var(--turq); border-color:#0E7C72; box-shadow:0 0 0 10px rgba(20,184,166,.25), 0 0 0 22px rgba(20,184,166,.12)}
+  #say.appear .ico{animation:pulse .3s 2 alternate ease-in-out}
+  /* פעימה אחת אחרי חלון הקשבה שנגמר בלי מילה. */
+  #say.nudge{animation:bounce .35s 2 alternate ease-in-out}
+  #playWord.nudge .ico{animation:pulse .3s 4 alternate ease-in-out}
+  @keyframes pulse{to{transform:scale(1.2)}}
+  @keyframes bounce{to{transform:translateY(-8px)}}
+  #hint{width:120px; height:88px; border-radius:28px; background:#fff; font-size:40px; display:flex; align-items:center; justify-content:center; padding:0}
+
+  /* יד שקופה שמדגימה, ואף פעם לא לוחצת באמת. */
+  #hand{position:fixed; left:0; top:0; font-size:56px; z-index:30; pointer-events:none; opacity:0; color:var(--ink)}
+  #hand.tap{animation:handTap 1.6s ease-in-out}
+  @keyframes handTap{0%{opacity:0; transform:translate(18px,30px)} 25%{opacity:.8; transform:none} 45%{transform:translateY(5px) scale(.9)} 62%{transform:none} 85%{opacity:.8} 100%{opacity:0}}
+
+  /* סוף הסבב (שלב 1: כמו היום, בלי גדול/קטן ובלי קול בנגיעה). */
   #roundEnd{
-    flex:1; min-height:0; width:100%; max-width:520px;
+    flex:1; min-height:0; width:100%;
     display:flex; flex-direction:column; overflow-y:auto;
-    background:#fff; border:5px solid #1B2140; border-radius:32px; padding:16px 12px;
+    background:#fff; border:4px solid var(--ink); border-radius:32px; padding:16px 12px;
   }
   #roundEnd[hidden]{display:none}
-  body.ended #picture, body.ended #choices, body.ended #word, body.ended #wordHe, body.ended #spell,
-  body.ended #buttons{display:none}
+  body.ended #card, body.ended #choices, body.ended #spell, body.ended #buttons, body.ended #pocket{display:none}
   .end-view{flex:1; display:flex; flex-direction:column; align-items:center; gap:14px; width:100%}
   .end-view[hidden]{display:none}
-  .end-view h2{margin:0; font-size:22px; font-weight:800}
   #roundPics{display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px}
   .pic-btn{
     position:relative; border:0; background:transparent; padding:4px; line-height:1;
-    font-size:34px; border-radius:14px; -webkit-tap-highlight-color:transparent;
+    font-size:44px; border-radius:14px; -webkit-tap-highlight-color:transparent; cursor:default;
   }
-  .pic-btn:active{background:#FFF8E1}
-  /* מילה שנאמרה בניסיון הראשון, בלי עזרה, גדולה יותר. */
-  .pic-btn.big{font-size:52px}
   /* ✨ על מילה שפגשו לראשונה בסבב הזה. */
   .pic-btn.fresh::after{content:"✨"; position:absolute; top:-2px; left:-4px; font-size:18px}
   #endActions{display:flex; gap:12px; width:100%; margin-top:auto; direction:ltr}
   #endActions button{
-    height:74px; border-radius:24px; box-shadow:0 4px 0 #1B2140; font-size:34px;
+    height:88px; border-radius:28px; box-shadow:0 5px 0 var(--ink); font-size:40px;
     display:flex; align-items:center; justify-content:center; padding:0;
   }
-  #endActions button:active{transform:translateY(3px); box-shadow:0 1px 0 #1B2140}
-  #basketBtn{flex:1; background:#EBF8FF}
-  #againBtn{flex:2; background:#FFD65A}
+  #endActions button:active{transform:translateY(3px); box-shadow:0 1px 0 var(--ink)}
+  #endActions button[hidden]{display:none}
+  #basketBtn{flex:1; background:#fff; border-color:var(--line) !important; box-shadow:none !important; color:var(--muted)}
+  #againBtn{flex:2; background:var(--act); color:#fff}
   .basket-head{display:flex; align-items:center; justify-content:space-between; width:100%}
+  .basket-head h2{margin:0; font-size:22px}
   #basketPics{
     width:100%; display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:6px;
   }
   #basketPics .pic-btn{display:flex; flex-direction:column; align-items:center; gap:4px; font-size:30px}
-  #basketPics .w{font-size:13px; font-weight:700; color:#1B2140; direction:ltr}
+  #basketPics .w{font-size:13px; font-weight:700; color:var(--ink); direction:ltr}
   #basketEmpty{text-align:center}
   #basketEmpty[hidden]{display:none}
+
+  /* שאלת המספר לפני ההגדרות: מספר כתוב באנגלית, שילד שלא קורא אנגלית לא יפתור. */
+  #gate{position:fixed; inset:0; z-index:25; background:rgba(23,48,42,.55); display:flex; align-items:center; justify-content:center; padding:16px}
+  #gate[hidden]{display:none}
+  .gate-box{
+    background:#fff; border:4px solid var(--ink); border-radius:24px; padding:16px; width:100%; max-width:320px;
+    display:flex; flex-direction:column; align-items:center; gap:10px; -webkit-user-select:none; user-select:none;
+  }
+  .gate-box p{margin:0; font-size:16px; text-align:center}
+  #gateWord{font-size:26px; font-weight:800; direction:ltr}
+  #gateEntry{min-width:110px; height:44px; border:3px solid var(--ink); border-radius:10px; font-size:26px; font-weight:800; direction:ltr; display:flex; align-items:center; justify-content:center; letter-spacing:4px}
+  #gateKeys{display:grid; grid-template-columns:repeat(3, 64px); gap:8px; direction:ltr}
+  #gateKeys button{height:56px; border-width:2px; border-radius:14px; font-size:24px; font-weight:700}
+  #gateClose{align-self:flex-start; width:44px; height:44px; border-width:2px; border-radius:12px; font-size:22px; padding:0}
+
+  /* טלפון שוכב: הכרטיס נמוך, אז התמונה והכתב בשורה אחת, ושורת הכפתורים נמוכה יותר. */
+  @media (orientation: landscape) and (max-height: 520px){
+    #game.screen{gap:8px}
+    #game .bird{width:56px; height:62px}
+    #game .cue{min-height:52px; padding:6px 14px}
+    #card{flex-direction:row; gap:24px}
+    #picture{font-size:clamp(48px, 26dvh, 140px)}
+    #buttons{height:92px}
+    #say{width:150px; height:84px}
+    .small{height:64px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .big-play, .cue .ico, #card.again, #card.fall, #card.grow, .confetti i, #say.nudge, #say.appear .ico,
+    #playWord.nudge .ico, .bird .b-all, #hand.tap, .cue.poke{animation:none !important}
+    .choice.fly{transition:none}
+  }
+
+  /* אזור המבוגר */
+  #loading{display:flex; flex-direction:column; gap:6px}
+  #loading[hidden]{display:none}
+  #bar{height:16px; border:3px solid #1B2140; border-radius:10px; background:#fff; overflow:hidden}
+  #fill{display:block; height:100%; background:var(--act); transition:width .2s}
+  #loadtext{font-size:14px; color:#4A5480; text-align:center}
+  .status-line{display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:14px; font-weight:600; color:#B23A00}
+  .status-line[hidden]{display:none}
+  .status-line button{border-width:2px; border-radius:12px; padding:6px 10px; font-size:13px; flex:0 0 auto}
+  #deviceStatus[hidden]{display:none}
+  .toggle-row{
+    display:flex; align-items:center; gap:10px; cursor:pointer;
+    font-weight:700; font-size:15px; color:#1B2140;
+  }
+  .toggle-row input{width:22px; height:22px; margin:0; accent-color:#1B2140; flex:0 0 auto}
+  #modeSwitch{display:flex; gap:4px; padding:4px; background:#fff; border:3px solid #1B2140; border-radius:18px; align-self:flex-start}
+  #modeSwitch button{border:0; border-radius:13px; padding:6px 16px; background:transparent; font-size:15px; font-weight:700; color:#4A5480}
+  #modeSwitch button.active{background:#FFD65A; color:#1B2140}
+  #lastRound{font-size:14px; line-height:1.6; margin:0}
+  .howto{margin:0; padding-inline-start:20px; font-size:13px; color:#4A5480; line-height:1.5}
   #settingsActions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
   #installBtn{
     border-width:2px; border-color:#2B6CB0; border-radius:12px; padding:8px 12px;
@@ -527,76 +637,95 @@
   #feedbackBtnInSettings:active{transform:translateY(1px)}
 </style>
 </head>
-<body>
+<body data-screen="door">
 
-<div id="topBar">
-  <div id="topBarLeft">
-    <button id="openSettings" type="button" aria-label="הגדרות ואוצר מילים" title="הגדרות">⚙️</button>
-    <a id="openFeedback" data-feedback target="_blank" rel="noopener noreferrer" aria-label="משוב והצעות" title="שליחת משוב ורעיונות (טופס Google)">💬</a>
+<button id="lock" type="button" aria-label="למבוגרים: לחיצה ארוכה" title="למבוגרים: לחיצה ארוכה"></button>
+<div id="exit" aria-hidden="true"></div>
+
+<section id="door" class="screen" aria-label="פתיחה">
+  <div class="door-top"><div id="childName"></div></div>
+  <div class="guide">
+    <div class="cue" data-cue="door"></div>
+    <svg class="bird" viewBox="0 0 96 104" data-pose="wave" aria-hidden="true"></svg>
   </div>
-  <div id="roundRow"></div>
-  <button id="toggleSound" type="button" aria-label="הפעלת שמע" title="שמע מכובה - לחצו להפעלה">🔇</button>
-</div>
-<div id="modeSwitch" role="radiogroup" aria-label="סוג התרגול">
-  <button type="button" role="radio" data-mode="say" title="אומרים את המילה בקול">🎤 אומרים</button>
-  <button type="button" role="radio" data-mode="spell" title="כותבים את המילה מאותיות">🔤 כותבים</button>
-</div>
-<button id="picture" type="button" aria-label="השמעת המילה באנגלית" title="לחצו לשמיעת המילה">🐶</button>
-<!-- השמות לא אומרים את המילה, אחרת קורא מסך היה מגלה את התשובה. -->
-<div id="choices" role="group" aria-label="איזו תמונה שמעתם?" hidden>
-  <button type="button" class="choice" aria-label="תמונה ראשונה"></button>
-  <button type="button" class="choice" aria-label="תמונה שנייה"></button>
-  <button type="button" class="choice" aria-label="תמונה שלישית"></button>
-</div>
-<section id="roundEnd" hidden aria-label="סוף הסבב">
-  <div id="endView" class="end-view">
-    <h2>סיימנו סבב!</h2>
-    <div id="roundPics" role="group" aria-label="המילים של הסבב"></div>
-    <div id="endActions">
-      <button id="basketBtn" type="button" aria-label="הסל: המילים שכבר יודעים להגיד" title="הסל">🧺</button>
-      <button id="againBtn" type="button" aria-label="עוד סבב" title="עוד סבב">▶</button>
-    </div>
+  <button id="play" class="big-play" type="button" aria-label="לשחק"></button>
+</section>
+
+<section id="game" class="screen" aria-label="משחק">
+  <div class="guide">
+    <svg class="bird" id="bird" viewBox="0 0 96 104" data-pose="wait" aria-hidden="true"></svg>
+    <div id="cue" class="cue" aria-live="polite"></div>
   </div>
-  <div id="basketView" class="end-view" hidden>
-    <div class="basket-head">
-      <button id="basketBack" type="button" class="panel-back-btn" title="חזרה לסוף הסבב">
-        <span>➔</span>
-        <span>חזרה</span>
-      </button>
-      <h2>🧺</h2>
+  <div id="stage">
+    <div id="card">
+      <span id="badge" aria-hidden="true"></span>
+      <div id="picture"></div>
+      <div id="word"></div>
+      <div id="wordHe" lang="he" dir="rtl"></div>
+      <div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
     </div>
-    <p id="basketEmpty" class="match-desc" hidden>כאן ייאספו המילים שתגידו נכון מהתמונה, בשני ימים שונים.</p>
-    <div id="basketPics" role="group" aria-label="המילים בסל"></div>
+    <!-- השמות לא אומרים את המילה, אחרת קורא מסך היה מגלה את התשובה. -->
+    <div id="choices" role="group" aria-label="איזו תמונה שמעתם?" hidden>
+      <button type="button" class="choice" aria-label="תמונה ראשונה"></button>
+      <button type="button" class="choice" aria-label="תמונה שנייה"></button>
+      <button type="button" class="choice" aria-label="תמונה שלישית"></button>
+    </div>
+    <div id="spell" hidden>
+      <div id="slots"></div>
+      <div id="bank" role="group" aria-label="האותיות של המילה"></div>
+    </div>
+    <svg id="pocket" viewBox="0 0 120 64" aria-hidden="true" hidden>
+      <path d="M8 10 Q60 22 112 10 L104 50 Q60 66 16 50 Z" fill="currentColor" opacity=".55"/>
+      <path d="M14 18 Q60 30 106 18" fill="none" stroke="#6C4CF1" stroke-width="2" stroke-dasharray="5 5" opacity=".6"/>
+    </svg>
+    <section id="roundEnd" hidden aria-label="סוף הסבב">
+      <div id="endView" class="end-view">
+        <div id="roundPics" role="group" aria-label="המילים של הסבב"></div>
+        <div id="endActions">
+          <button id="basketBtn" type="button" aria-label="הסל: המילים שכבר יודעים להגיד" title="הסל">🧺</button>
+          <button id="againBtn" type="button" aria-label="עוד סבב" title="עוד סבב" hidden></button>
+        </div>
+      </div>
+      <div id="basketView" class="end-view" hidden>
+        <div class="basket-head">
+          <button id="basketBack" type="button" class="panel-back-btn" title="חזרה לסוף הסבב">
+            <span>➔</span>
+            <span>חזרה</span>
+          </button>
+          <h2>🧺</h2>
+        </div>
+        <p id="basketEmpty" class="match-desc" hidden>כאן ייאספו המילים שתגידו נכון מהתמונה, בשני ימים שונים.</p>
+        <div id="basketPics" role="group" aria-label="המילים בסל"></div>
+      </div>
+    </section>
+  </div>
+  <div id="buttons">
+    <button id="playWord" class="small" type="button" aria-label="השמעת המילה" title="השמעת המילה באנגלית"></button>
+    <button id="say" type="button" aria-label="הקלטת קול - אמירת המילה" title="אמירת המילה"><span id="sayIcon"></span></button>
+    <button id="hint" type="button" hidden aria-label="רמז: האות הבאה" title="רמז — ממלא את האות הבאה"></button>
+    <button id="next" class="small" type="button" aria-label="המילה הבאה" title="מעבר למילה הבאה"></button>
   </div>
 </section>
-<div id="word"></div>
-<div id="wordHe" lang="he" dir="rtl"></div>
-<div id="spell" hidden>
-  <div id="slots"></div>
-  <div id="bank" role="group" aria-label="האותיות של המילה"></div>
-</div>
 
-<div id="loading" hidden>
-  <div id="bar"><i id="fill"></i></div>
-  <div id="loadtext"></div>
-</div>
+<section id="grownup" class="screen" aria-label="קראו למבוגר">
+  <div class="guide">
+    <div class="cue" data-cue="grownup"></div>
+    <div class="grownup-art" aria-hidden="true"><span id="adultArt"></span><span id="mutedMicArt"></span></div>
+  </div>
+  <button id="resume" class="big-play" type="button" aria-label="להמשיך לשחק"></button>
+</section>
 
-<div id="buttons">
-  <button id="playWord" type="button" aria-label="השמעת המילה" title="השמעת המילה באנגלית">
-    <span class="btn-icon">🔊</span>
-  </button>
-  <button id="say" type="button" disabled aria-label="הקלטת קול - אמירת המילה" title="אמירת המילה">
-    <span class="btn-icon" id="sayIcon">⏳</span>
-  </button>
-  <button id="hint" type="button" hidden aria-label="רמז: האות הבאה" title="רמז — ממלא את האות הבאה">
-    <span class="btn-icon">💡</span>
-  </button>
-  <button id="next" type="button" aria-label="המילה הבאה" title="מעבר למילה הבאה">
-    <span class="btn-icon">⏭️</span>
-  </button>
-</div>
+<div id="hand" aria-hidden="true"></div>
 
-<div id="note"></div>
+<div id="gate" hidden role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+  <div class="gate-box">
+    <button id="gateClose" type="button" aria-label="סגירה">×</button>
+    <p id="gateTitle">למבוגרים: הקלידו את המספר</p>
+    <div id="gateWord"></div>
+    <div id="gateEntry" aria-live="polite"></div>
+    <div id="gateKeys"></div>
+  </div>
+</div>
 
 <div id="overlay" hidden>
   <div id="panel">
@@ -610,6 +739,22 @@
         <button id="closePanel" class="panel-close-btn" type="button" data-goto="close" aria-label="סגירת הגדרות">×</button>
       </div>
 
+      <!-- מצב המכשיר, רק כשמשהו לא בסדר או עוד יורד. לילד אין כאן כלום: הוא
+           משחק בשומעים ובוחרים, או רואה "קראו למבוגר". -->
+      <div id="deviceStatus" class="match-section" hidden>
+        <div class="match-title-wrap">
+          <span class="match-icon">🛠️</span>
+          <span class="match-title">מצב המכשיר</span>
+        </div>
+        <div id="loading" hidden>
+          <div id="bar"><i id="fill"></i></div>
+          <div id="loadtext"></div>
+        </div>
+        <p id="micStatus" class="status-line" hidden><span>המיקרופון חסום. צריך לאשר אותו בהגדרות הדפדפן.</span><button id="retryMic" type="button">נסו שוב</button></p>
+        <p id="modelStatus" class="status-line" hidden><span id="modelStatusText"></span><button id="retryModel" type="button">נסו שוב</button></p>
+        <p id="voiceStatus" class="status-line" hidden><span>אין במכשיר קול באנגלית, ולכן אין שלב של שומעים ובוחרים.</span></p>
+      </div>
+
       <div class="match-section">
         <div class="match-title-wrap">
           <span class="match-icon">🧒</span>
@@ -619,6 +764,14 @@
         <p id="childNotice" class="panel-notice"></p>
         <p class="match-desc">לכל שם רשימת מילים והגדרות משלו. השמע משותף לכל המכשיר.</p>
         <button id="deleteChildBtn" type="button" hidden></button>
+      </div>
+
+      <div id="lastRoundSection" class="match-section" hidden>
+        <div class="match-title-wrap">
+          <span class="match-icon">📋</span>
+          <span class="match-title">הסבב האחרון</span>
+        </div>
+        <p id="lastRound"></p>
       </div>
 
       <!-- כפתור גישה לחלון רשימת המילים הקיימות -->
@@ -676,11 +829,30 @@
       </div>
 
       <div class="match-section">
+        <div class="match-title-wrap">
+          <span class="match-icon">✍️</span>
+          <span class="match-title">סוג התרגול</span>
+        </div>
+        <div id="modeSwitch" role="radiogroup" aria-label="סוג התרגול">
+          <button type="button" role="radio" data-mode="say" title="אומרים את המילה בקול">🎤 אומרים</button>
+          <button type="button" role="radio" data-mode="spell" title="כותבים את המילה מאותיות">🔤 כותבים</button>
+        </div>
+      </div>
+
+      <div class="match-section">
         <label class="toggle-row">
           <input type="checkbox" id="hebrewToggle">
           <span>🔤 איך אומרים — באותיות עבריות</span>
         </label>
         <p class="match-desc">מתחת למילה באנגלית מופיע איך הוגים אותה, למשל cat — קֶט.</p>
+      </div>
+
+      <div class="match-section">
+        <label class="toggle-row">
+          <input type="checkbox" id="soundToggle">
+          <span>🔊 שמע במכשיר</span>
+        </label>
+        <p class="match-desc">המילים נשמעות באנגלית, והמשחק נשען עליהן. בכיתה מומלץ להשתמש באוזניות. משותף לכל השמות במכשיר.</p>
       </div>
 
       <div id="settingsActions">
@@ -690,6 +862,20 @@
       </div>
 
       <p id="settingsNotice" class="panel-notice"></p>
+
+      <div class="match-section">
+        <div class="match-title-wrap">
+          <span class="match-icon">💡</span>
+          <span class="match-title">איך המשחק עובד</span>
+        </div>
+        <ul class="howto">
+          <li>מילה חדשה: המשחק אומר אותה, הילד בוחר את התמונה שלה, ואז אומר אותה בעצמו.</li>
+          <li>מילה שהילד כבר אמר לבד מוצגת בלי כתב, כדי שישלוף אותה מהתמונה.</li>
+          <li>אחרי שתי אמירות שלא התקבלו, או שלוש שתיקות, המילה חוזרת בהמשך הסבב.</li>
+          <li>מה שנאמר לבד ומה שנאמר בעזרה רואים רק כאן, בסבב האחרון.</li>
+          <li>בלי מסך: בקשו מהילד לומר באנגלית את המילים שהוא כבר יודע, על חפצים בבית.</li>
+        </ul>
+      </div>
     </div>
 
     <!-- תצוגה 2: חלון נפרד של רשימת המילים הקיימות -->
@@ -756,8 +942,8 @@
 <script>
 const MODEL_URL = new URL("model.tar.gz", location.href).href;
 
-// כתובת טופס המשוב, פעם אחת לשני הקישורים — זה שבסרגל העליון וזה שבהגדרות —
-// כדי שהחלפת טופס לא תשאיר אחד מהם שולח לטופס הישן.
+// כתובת טופס המשוב, פעם אחת, לקישור שבאזור המבוגר. בקוד ולא ב-HTML, כדי
+// שהחלפת טופס תהיה שורה אחת.
 const FEEDBACK_URL = "https://docs.google.com/forms/d/e/1FAIpQLSf0Ftx6bCraujLqIVmZnvL5FbNfwQCUPfUr7eHMjWN7cPbCrA/viewform";
 for(const a of document.querySelectorAll("a[data-feedback]")) a.href = FEEDBACK_URL;
 
@@ -948,9 +1134,9 @@ let model = null, rec = null;
 let ctx = null, srcNode = null, procNode = null, sinkNode = null, micStream = null;
 let active = false, timer = null;
 const SOUND_KEY = "sound_enabled";
-// נשמר בין פתיחות, כמו המילים ורמת ההתאמה, כדי שהילד לא ילחץ 🔇 בכל פעם.
-// הקראה קורית רק אחרי לחיצה, אז אין כאן ניגון אוטומטי.
-let soundEnabled = (()=>{ try{ return localStorage.getItem(SOUND_KEY) === "1"; }catch(e){ return false; } })();
+// דלוק כברירת מחדל: המשחק נשען על המילה שנשמעת. רק מבוגר מכבה, באזור שלו,
+// והבחירה נשמרת. הקראה קורית רק אחרי ▶, אז אין כאן ניגון אוטומטי.
+let soundEnabled = (()=>{ try{ return localStorage.getItem(SOUND_KEY) !== "0"; }catch(e){ return true; } })();
 // התעתיק מופיע כברירת מחדל, ונשמר רק כשמורה מכבה אותו.
 const HEBREW_KEY = "hebrew_spelling";
 function readHebrew(){ try{ return localStorage.getItem(childKey(HEBREW_KEY)) !== "0"; }catch(e){ return true; } }
@@ -971,15 +1157,15 @@ const MATCH_KEY = "speech_match_config";
 // התיאורים לא מבטיחים בדיקת הגייה: בדקדוק סגור המנוע מחזיר את מילת היעד
 // בביטחון מלא גם על הגייה שגויה, כך שגם הסף הגבוה מסנן רק חלק מהשגיאות.
 // listenMs: מי שדורש דיוק גבוה גם מדבר בבירור ומהר יותר, ולמתחיל מגיע יותר
-// זמן. why: ברמה המדויקת מסבירים לילד למה זה לא התקבל, אחרת "נסו שוב" נשמע
-// שרירותי.
+// זמן. clearer: ברמה המדויקת ההנחיה אחרי אמירה שלא התקבלה היא "ברור יותר",
+// אחרת "עוד פעם" נשמע שרירותי.
 const PRESETS = [
   { id: "lenient", btn: "btnLevelLenient", badge: "🌱 סלחנית", threshold: 45, listenMs: 4650,
     desc: "סלחנית: למתחילים, לחדר רועש, או לילד שמתוסכל מהר. מקבלת את המילה גם כשההגייה לא מדויקת, ולפעמים גם מילה דומה מהרשימה." },
   { id: "normal",  btn: "btnLevelNormal",  badge: "⭐ רגילה",  threshold: 70, listenMs: 4100,
     desc: "רגילה (ברירת מחדל): המילה הנכונה, כשהיא נשמעת די ברור. דוחה חלק מההגיות השגויות." },
   { id: "strict",  btn: "btnLevelStrict",  badge: "🎯 מדויקת", threshold: 90, listenMs: 3600,
-    why: "בדיוק גבוה נדרשת הגייה ברורה. נסו שוב!",
+    clearer: true,
     desc: "מדויקת: לחדר שקט ולילד שכבר בטוח בעצמו. המילה צריכה להישמע ברור מאוד. תופסת חלק משגיאות ההגייה, לא את כולן, ולפעמים דוחה גם הגייה נכונה." }
 ];
 const DEFAULT_PRESET = PRESETS[1];
@@ -1002,37 +1188,23 @@ function updateMatchUI(){
   for(const p of PRESETS) $(p.btn).classList.toggle("active", p === preset);
 }
 
-// הודעות למשתמש מתחלפות ונעלמות. הטוקן מוודא שרק מי שכתב הודעה מוחק אותה,
-// במקום להשוות את הטקסט שעל המסך כדי לנחש אם היא עדיין שם.
-let noteToken = 0;
-function setNote(msg, ms){
-  $("note").textContent = msg;
-  const mine = ++noteToken;
-  if(ms) setTimeout(()=>clearNote(mine), ms);
-  return mine;
-}
-function clearNote(token){
-  if(token === noteToken) $("note").textContent = "";
-}
-
 function updateSoundUI(){
-  const btn = $("toggleSound");
-  btn.textContent = soundEnabled ? "🔊" : "🔇";
-  btn.classList.toggle("on", soundEnabled);
-  btn.setAttribute("aria-label", soundEnabled ? "כיבוי שמע" : "הפעלת שמע");
-  btn.title = soundEnabled ? "שמע פועל - לחצו לכיבוי" : "שמע מכובה - לחצו להפעלה";
+  $("soundToggle").checked = soundEnabled;
+  renderStatus();
 }
 
 function setSound(on){
   soundEnabled = on;
   try{ localStorage.setItem(SOUND_KEY, on ? "1" : "0"); }catch(e){}
   updateSoundUI();
+  ui();
 }
 
+// המתג שבאזור המבוגר. הוא נפתח רק ממסכי מנוחה, אבל ההחלפה בכל זאת מסודרת
+// גם באמצע תור.
 function toggleSound(){
   if(soundEnabled && "speechSynthesis" in window) speechSynthesis.cancel();
   setSound(!soundEnabled);
-  setNote(soundEnabled ? "השמע הופעל 🔊" : "השמע כובה 🔇", 2000);
   // בלי שמע אין "להבין": המילה עוברת לאמירה, עם הכתב.
   if(!soundEnabled && turn.step === "understand") return toSay();
   // בסוף הסבב המילה האחרונה כבר לא על המסך.
@@ -1064,7 +1236,7 @@ function load(){
 function save(){ try{ localStorage.setItem(childKey("words"), JSON.stringify(words)); }catch(e){} }
 
 function word(){ return words[i].word; }
-// מתקדם בכל הצגה, כדי שהמעבר ש-good() מזמן אחרי ה-🎉 יוותר כשמשהו אחר כבר
+// מתקדם בכל הצגה, כדי שהמעבר ש-good() מזמן אחרי ההצלחה יוותר כשמשהו אחר כבר
 // הציג מילה: ⏭️ של הילד, או מורה שקפצה למילה מהרשימה.
 let shownCount = 0;
 // כמה אמירות של המילה שעל המסך לא התקבלו. מתאפס בכל הצגה (ראו notYet).
@@ -1077,16 +1249,21 @@ let sayMisses = 0;
 // ששמע את המילה רגע לפני היה נרשם כמי שאמר אותה לבד. next() מתחיל תור חדש
 // גם כשהמילה חוזרת. known: הילד כבר הצליח בה לבד, ולכן באמירה היא מוצגת בלי
 // כתב; revealed: הכתב חזר, אחרי אמירה שלא התקבלה או בהצלחה. known נקבע פעם
-// אחת לתור, כדי שהצלחה לא תעלים את הכתב באמצע ה-🎉. peeked: עברו לכתיבה
+// אחת לתור, כדי שהצלחה לא תעלים את הכתב באמצע ההצלחה. peeked: עברו לכתיבה
 // באמצע התור, וראו את המילה באותיות שלה, ולכן אמירה אחר כך לא נשלפה מהתמונה.
 // step: במה התור נמצא (stepFor) — understand עם choices ו-faded, probe, או say.
 // lane: הילד היה במסלול המהיר כשהתור התחיל. first: זו ההופעה הראשונה של המילה
 // בסבב. said: המילה כבר נשמעה בשלב "להבין".
+// busy: המכשיר אומר את המילה, ו-🎤 מחכה שיסיים. awake: התמונות של "להבין"
+// התעוררו, כי המילה נשמעה עד סופה. quiet: כמה חלונות הקשבה נגמרו בלי מילה.
+// cue: הנחיה של רגע, כמו "עוד פעם", עד הפעולה הבאה. demos: כמה פעמים היד
+// הדגימה בתור הזה. layout: איך העיגולים של "להבין" מפוזרים.
 function newTurn(){
   const t = { word: word(), child: childId, heard: false, hinted: false, says: 0, spells: 0, wrong: false, done: false,
               known: isKnown(word()), revealed: false, peeked: false, step: stepFor(word()), lane: laneFast(),
               first: !round.seen.includes(word()), choices: [], faded: [], picks: 0, picked: false, said: false, saidAt: 0,
-              shownAt: performance.now() };
+              shownAt: performance.now(), busy: false, awake: false, quiet: 0, cue: null, demos: 0,
+              layout: Math.floor(Math.random() * 3) };
   if(t.step === "understand") t.choices = choicesFor(t.word);
   return t;
 }
@@ -1106,17 +1283,34 @@ function show(){
   if(!round.seen.includes(word())) round.seen.push(word());
   shownWord = word();
   $("picture").textContent = words[i].emoji;
-  $("picture").className = "";
+  setCard("");
   $("word").textContent = word();
   // מילה שנשמרה לפני שהיה תעתיק, או words.js ישן מהמטמון, פשוט בלי שורה.
   const he = typeof HE_BY_WORD !== "undefined" && HE_BY_WORD[word()] || "";
   $("wordHe").textContent = hebrewEnabled ? he : "";
+  $("pocket").hidden = true;
   renderVeil();
   renderStep();
-  setNote("");
   if(mode === "spell") startSpelling();
   if(fresh && turn.step === "understand") introduce();
+  // הצגה מחדש של מילה שכבר הוכרעה — שינוי ברשימה בחלון אחר, הדלקת התעתיק —
+  // מבטלת את המעבר שההצלחה תזמנה (shownCount), ואין ⏭️ גדול שיוציא ממנה. לכן
+  // היא ממשיכה לבד.
+  if(!fresh && turn.done){
+    const mine = shownCount;
+    setTimeout(() => { if(mine === shownCount) next(); }, GOOD_MS);
+  }
+  // השמע דלוק ואין קול באנגלית: פעם אחת בפתיחה, "אין קול", ואז כרגיל.
+  if(soundEnabled && mode === "say" && !canSpeak() && !noVoiceShown){
+    noVoiceShown = true;
+    const t = turn;
+    t.cue = "novoice";
+    setTimeout(() => { if(t.cue === "novoice"){ t.cue = null; ui(); } }, NO_VOICE_MS);
+  }
+  ui();
 }
+const NO_VOICE_MS = 2500;
+let noVoiceShown = false;
 
 // בכתיבה המילה באנגלית מוסתרת ממילא, והתעתיק נשאר כמו שהיה. ב"להבין" ובבדיקה
 // מהתמונה המילה לא כתובה, כי הכתב הוא התשובה.
@@ -1130,11 +1324,11 @@ function reveal(){
   renderVeil();
 }
 
-// בסוף הסבב ההחלפה נשמרת למילה הבאה, ולא מחזירה את המילה האחרונה למסך.
+// בסוף הסבב, ומחוץ למשחק, ההחלפה נשמרת למילה הבאה ולא מציגה מילה.
 function setHebrew(on){
   hebrewEnabled = on;
   try{ localStorage.setItem(childKey(HEBREW_KEY), on ? "1" : "0"); }catch(e){}
-  if(!ended) show();
+  if(!ended && screen === "game") show();
 }
 
 const EN = "en-US";   // המילה שמתרגלים
@@ -1197,12 +1391,12 @@ function speak(text, lang){
   return u;
 }
 
-// צליל קצר בהצלחה ובניסיון נוסף, מסונתז ב-Web Audio: אין קובץ להוריד
-// ולשמור במטמון.
-// [תדר, השהיה בשניות]. הצלחה: דו-מי-סול עולים. ניסיון נוסף: מי-דו יורדים,
-// שקט יותר, כדי שלא יישמע כמו עונש.
+// צליל קצר בהצלחה, מסונתז ב-Web Audio: אין קובץ להוריד ולשמור במטמון.
+// [תדר, השהיה בשניות]. הצלחה: דו-מי-סול עולים. אין צליל טעות: הרעידה, הכתב
+// שחוזר והמילה באנגלית אומרים "עוד לא" בלי לשמוע כמו עונש.
 const CHEER = { notes: [[1046.5, 0], [1318.5, 0.08], [1568, 0.16]], volume: 0.2 };
-const OOPS = { notes: [[659.25, 0], [523.25, 0.15]], volume: 0.12 };
+// "דינג" רך כשמנוע הזיהוי מוכן באמצע משחק: מכאן יש גם אמירה.
+const READY = { notes: [[1318.5, 0]], volume: 0.08 };
 const CHIME_SECONDS = 0.45;
 
 // הקשר נפרד מזה של המיקרופון, שבכתיבה לא קיים. דפדפן מתיר לשמע להתחיל רק
@@ -1236,10 +1430,21 @@ function chime(sound){
   }
 }
 
+// האחוזים של ההורדה מוצגים רק באזור המבוגר. הילד בינתיים משחק בשומעים ובוחרים.
 function progress(pct, label){
   $("loading").hidden = false;
   $("fill").style.width = pct + "%";
   $("loadtext").textContent = label;
+  renderStatus();
+}
+
+// באזור המבוגר: מה לא בסדר במכשיר, ולידו "נסו שוב". הקטע כולו מוסתר כשהכל תקין.
+function renderStatus(){
+  $("micStatus").hidden = !micBlocked;
+  $("modelStatus").hidden = !modelError;
+  $("modelStatusText").textContent = modelError;
+  $("voiceStatus").hidden = !soundEnabled || !("speechSynthesis" in window) || !!voiceFor(EN);
+  $("deviceStatus").hidden = $("loading").hidden && $("micStatus").hidden && $("modelStatus").hidden && $("voiceStatus").hidden;
 }
 
 async function fetchModel(){
@@ -1285,17 +1490,21 @@ function controlled(){
   });
 }
 
-// ההודעה כשהמנוע לא נטען. ⏭️ מנקה את שורת ההודעה, ובלי סימן נוסף לא היה
-// נשאר על המסך שום רמז לכך. לכן 🎤 מראה ⚠️, ונגיעה בו מציגה אותה שוב.
+// הסיבה המדויקת כשהמנוע לא נטען, לאזור המבוגר. הילד רואה "קראו למבוגר".
 let modelError = "";
+// המיקרופון נחסם: בלי הרשאה אין אמירה, והמשחק ממשיך בשומעים ובוחרים.
+let micBlocked = false;
 
 // המילה שעל המסך לא מתחלפת כשהמנוע מוכן, גם אם עכשיו הייתה מגיעה לה בדיקה
 // מהתמונה: הכתב כבר הוצג, או שהתמונות כבר מתחת לאצבע. ילד חדש שאומר אותה
-// נשאר במסלול המהיר (finish).
+// נשאר במסלול המהיר (finish). המיקרופון כבר פתוח מ-▶, ולכן ה-recognizer
+// נבנה כאן.
 function modelReady(){
   $("loading").hidden = true;
-  $("say").disabled = false;
-  $("sayIcon").textContent = "🎤";
+  if(ctx && !rec) buildRecognizer();
+  renderStatus();
+  if(screen === "game") chime(READY);
+  ui();
 }
 
 async function loadModel(){
@@ -1317,13 +1526,12 @@ async function loadModel(){
     modelReady();
   }catch(err){
     $("loading").hidden = true;
-    modelError = "לא הצלחנו לטעון את מנוע הדיבור. בדקו את model.tar.gz";
-    setNote(modelError);
-    $("say").disabled = false;
-    $("sayIcon").textContent = "⚠️";
-    // קורא מסך לא רואה את ⚠️, ובלי זה היה מכריז על כפתור הקלטה רגיל. בשלב
-    // "להבין" 🎤 ישן ומשמיע את המילה, ואז השם נשאר שלו (renderStep).
-    renderStep();
+    modelError = navigator.onLine === false
+      ? "מנוע הדיבור עוד לא ירד, ואין אינטרנט. התחברו לרשת ונסו שוב."
+      : "לא הצלחנו לטעון את מנוע הדיבור. בדקו את model.tar.gz";
+    renderStatus();
+    // לילד: מסך "קראו למבוגר", עם ▶ שממשיך לשחק בלי לדבר.
+    if(screen === "game") goGrownup();
     console.error(err);
   }
 }
@@ -1423,7 +1631,7 @@ function buildRecognizer(){
   // רק תוצאה סופית מחליטה. תוצאה חלקית היא ניחוש באמצע הדיבור, ועם דקדוק
   // סגור היא כמעט תמיד מילה מהרשימה: "elephant" נשמע בדרך כ-apple ונגמר
   // כ-[unk], ורעש רקע נשמע כ-house. אילו היא הספיקה כדי לזכות, הילד היה
-  // מקבל 🎉 על מילה שגויה לפני שהמנוע מתקן את עצמו.
+  // מקבל הצלחה על מילה שגויה לפני שהמנוע מתקן את עצמו.
   rec.on("result", msg=>{
     if(!active) return;
     processRecognition(msg);
@@ -1521,15 +1729,20 @@ function audioReady(){
 let opening = false;
 
 async function listen(){
-  // בשלב "להבין" 🎤 ישן, ונגיעה בו משמיעה את המילה שוב.
+  // בשלב "להבין" אין 🎤 על המסך. מקלדת או קריאה ישירה רק משמיעות שוב.
   if(turn.step === "understand") return speakStep(true);
-  if(!model){ if(modelError) setNote(modelError); return; }
+  if(!model) return;
   if(active || opening) return;
   if(!audioReady()){
     opening = true;
     const mine = shownCount;
     try{ await ensureAudio(); }
-    catch(err){ setNote("צריך לאשר את המיקרופון."); return; }
+    catch(err){
+      opening = false;
+      micBlocked = true;
+      renderStatus();
+      return goGrownup();
+    }
     finally{ opening = false; }
     // בזמן ההמתנה הדף ירד מהמסך — releaseMic כבר רץ ולא מצא מה לסגור — או
     // שמשהו אחר הוצג: ⏭️, מעבר לכתיבה, קפיצה מהרשימה, סוף הסבב. בכל אלה הנגיעה
@@ -1539,15 +1752,16 @@ async function listen(){
     if(shownCount !== mine || !$("overlay").hidden) return;
   }
 
-  setNote("");
   // הקראה שעוד נשמעת — המילה אחרי אמירה שלא התקבלה, או 🔊 שהילד לחץ רגע
   // לפני — נעצרת, אחרת המיקרופון שומע את הדף אומר את המילה ומזכה בה.
   // echoCancellation לא מבטל את speechSynthesis בכל דפדפן.
   if("speechSynthesis" in window) speechSynthesis.cancel();
   active = true;
+  turn.cue = null;
   $("say").classList.remove("nudge");
   $("say").classList.add("listening");
   timer = setTimeout(closeWindow, listenWindowMs());
+  ui();
 }
 
 // מילה שנאמרה ממש בסוף החלון עוד לא קיבלה תוצאה סופית: המנוע שולח אותה
@@ -1556,14 +1770,27 @@ async function listen(){
 // אמירה שלא התקבלה. אין תשובה תוך FINAL_GRACE_MS — ההקשבה נעצרת בשקט ולא
 // נחשבת ניסיון: ילד שעוד מחפש את המילה, או שדיבר חלש מדי, לא טעה. 🎤 פועם
 // פעם אחת, כדי שיידע שאפשר לנסות שוב.
-const FINAL_GRACE_MS = 500;
+// אין ⏭️ גדול, אז לשתיקה יש סולם משלה, כדי שהילד לא ייתקע: בשתיקה השנייה
+// באותה מילה היד מצביעה על 🔊, והמכשיר לא מדבר — הילד מחליט אם לבקש. בשלישית
+// המילה עוברת להמשך הסבב ובא הכרטיס הבא, בלי לסיים את המסלול המהיר ובלי
+// לרשום ויתור: כל שתיקה כבר נרשמה ביומן.
+const FINAL_GRACE_MS = 500, QUIET_HELP = 2, QUIET_GIVE_UP = 3;
 function closeWindow(){
   if(!active) return;
   if(rec) rec.retrieveFinalResult();
   timer = setTimeout(()=>{
     if(!stopListening()) return;
     recordAttempt(word(), "quiet", null, { tryNo: turn.says + 1 });
+    turn.quiet++;
+    if(turn.quiet >= QUIET_GIVE_UP){
+      requeue(word());
+      turn.done = true;
+      return toPocket();
+    }
+    turn.cue = "quiet";
+    ui();
     nudgeSay();
+    if(turn.quiet === QUIET_HELP) demo(helpTarget());
   }, FINAL_GRACE_MS);
 }
 function nudgeSay(){
@@ -1581,11 +1808,12 @@ function stopListening(){
   // מאפס את המפענח כדי שהניסיון הבא יתחיל נקי. התוצאה שחוזרת מכאן נבלעת כי active כבר כבוי.
   if(rec) rec.retrieveFinalResult();
   $("say").classList.remove("listening");
+  ui();
   return true;
 }
 
 // info: הניקוד ומה שהמנוע שמע, ליומן. אמירה אחרי שהמילה כבר הוכרעה — בזמן
-// ה-🎉, או אחרי מעבר לכתיבה וחזרה — נרשמת ביומן ולא מזיזה שוב את הסולם.
+// ההצלחה, או אחרי מעבר לכתיבה וחזרה — נרשמת ביומן ולא מזיזה שוב את הסולם.
 // בדיקה מהתמונה נגמרת באמירה הראשונה: הצלחה מהתמונה, בלי ששמעו את המילה,
 // משאירה את הילד במסלול המהיר, וכל אמירה אחרת מסיימת אותו (endProbe).
 function finish(ok, info = {}){
@@ -1596,6 +1824,7 @@ function finish(ok, info = {}){
     : ok ? (tryNo === 1 && !turn.heard ? clean : "helped") : (tryNo >= SAY_TRIES ? "failed" : "miss");
   recordAttempt(word(), ok ? "ok" : "no", step, { tryNo, score: info.score, heard: info.heard });
   noteTried(word());
+  round.said = true;
   if(step === "clean" || step === "cleanText") addToRow(word());
   if(ok || step === "failed") turn.done = true;
   if(probe && step === "clean"){
@@ -1608,57 +1837,75 @@ function finish(ok, info = {}){
   ok ? good() : notYet(probe);
 }
 
-// המשוב הוא הצבע, ה-🎉 והצליל, ובהצלחה גם הכתב של מילה שהוצגה בלעדיו. התמונה
-// בשורה למעלה נוספת רק בהצלחה בלי עזרה (addToRow). ההקראה היחידה היא המילה
-// עצמה, באנגלית, אחרי אמירה שלא התקבלה (notYet). ה-🎉 נשאר כשנייה ואז עוברים
-// למילה הבאה; האדום של ניסיון נוסף נשאר מעט יותר, כדי שיספיקו לראות אותו.
+// המשוב הוא הצבע, הקונפטי והצליל, ובהצלחה גם הכתב של מילה שהוצגה בלעדיו.
+// התמונה נשארת. כל הצלחה, לבד או בעזרה, נראית אותו דבר; מה היה לבד רואה רק
+// המבוגר (round.row). ההקראה היחידה היא המילה עצמה, באנגלית. ההצלחה נשארת
+// כשנייה ואז עוברים למילה הבאה; "נחזור לזה" נשאר מעט יותר, כדי שיספיקו לראות.
 const GOOD_MS = 1000, AGAIN_MS = 1300;
 function good(){
   reveal();
-  $("picture").className = "good";
-  $("picture").textContent = "🎉";
+  setCard("good");
+  turn.cue = mode === "spell" ? "wrote" : "good";
   const mine = shownCount;
   chime(CHEER);
+  ui();
   setTimeout(()=>{ if(mine === shownCount) next(); }, GOOD_MS);
 }
-// אמירה שלא התקבלה. בפעם הראשונה "נסו שוב" כמו בכתיבה, הכתב של מילה שהוצגה
-// בלעדיו חוזר, ואחרי הצליל המילה נאמרת באנגלית (speak שותקת כשהשמע כבוי),
-// כדי שהילד ישמע אותה לפני הניסיון הבא; בלי שמע הכתב הוא הדוגמה. ילד שכבר
-// לחץ שוב על 🎤 לא שומע אותה באמצע. בפעם השנייה עוברים למילה אחרת בלי סימן:
-// הרבה מהאמירות שלא מתקבלות הן של המנוע ולא של הילד, ושלישית רק מתסכלת.
-// המילה חוזרת עוד פעם בסבב (requeue). בבדיקה מהתמונה של מילה חדשה אין אדום
-// ואין צליל: הילד לא טעה במילה שלא למד, ומיד מקבל אותה, כתובה ונשמעת.
+// אמירה שלא התקבלה. בפעם הראשונה הכרטיס רועד, בלי צליל טעות, הכתב של מילה
+// שהוצגה בלעדיו חוזר, ואחרי רגע המילה נאמרת באנגלית (speak שותקת כשהשמע
+// כבוי), כדי שהילד ישמע אותה לפני הניסיון הבא; בלי שמע הכתב הוא הדוגמה.
+// 🎤 חוזר רק כשהקול נגמר, וילד שכבר לחץ שוב לא שומע אותה באמצע. בפעם
+// השנייה הכרטיס נופל לכיס, בלי צליל: הרבה מהאמירות שלא מתקבלות הן של המנוע
+// ולא של הילד, ושלישית רק מתסכלת. המילה חוזרת עוד פעם בסבב (requeue).
+// בבדיקה מהתמונה של מילה חדשה אין רעידה: הילד לא טעה במילה שלא למד, והכרטיס
+// נצבע בגוון של "מלמדים", כתוב ונשמע.
 const SAY_TRIES = 2;
 function notYet(probe = false){
   sayMisses++;
-  const mine = shownCount;
+  const mine = shownCount, t = turn;
   if(sayMisses < SAY_TRIES){
-    if(!probe) again(preset.why);
+    if(probe){
+      setCard("teach");
+      t.cue = "teach";
+    } else again(!!preset.clearer);
     reveal();
+    t.busy = canSpeak();
+    ui();
     setTimeout(()=>{
-      if(mine !== shownCount || active) return;
-      speak(word(), EN);
-      if(soundEnabled) turn.heard = true;
+      if(mine !== shownCount || active){ t.busy = false; return ui(); }
+      const u = speak(word(), EN);
+      if(soundEnabled) t.heard = true;
+      afterSpeech(u, () => { t.busy = false; ui(); });
     }, probe ? 0 : CHIME_SECONDS * 1000);
     return;
   }
   requeue(word());
-  setTimeout(()=>{ if(mine === shownCount) next(); }, AGAIN_MS);
+  toPocket();
 }
-// why: הסבר מתחת לתמונה, כשיש מה להסביר. האדום יורד רק אם הוא עדיין של
-// הקריאה הזו: 🎉 שבא מהר אחריו, או אדום נוסף, נשארים לכל הזמן שלהם.
+// הכרטיס רועד פעם אחת. clearer: ברמה המדויקת "ברור יותר" במקום "עוד פעם".
+// הרעידה יורדת רק אם היא עדיין של הקריאה הזו.
 let againCount = 0;
-function again(why = ""){
-  $("picture").className = "again";
-  const note = setNote(why), mine = ++againCount;
-  chime(OOPS);
+function again(clearer = false){
+  setCard("again");
+  turn.cue = clearer ? "clearer" : "again";
+  const mine = ++againCount;
+  ui();
   setTimeout(()=>{
-    if(mine === againCount && $("picture").className === "again") $("picture").className = "";
-    clearNote(note);
+    if(mine === againCount && $("card").className === "again") setCard("");
   }, AGAIN_MS);
 }
+// "נחזור לזה": הכרטיס נופל לכיס, ואחרי רגע בא הבא. שונה בבירור מהצלחה.
+function toPocket(){
+  const mine = shownCount;
+  setCard("fall");
+  $("pocket").hidden = false;
+  turn.cue = "pocket";
+  ui();
+  setTimeout(()=>{ if(mine === shownCount) next(); }, AGAIN_MS);
+}
+function setCard(cls){ $("card").className = cls; }
 // ⏭️ של הילד נרשם ביומן, כדי לדעת על אילו מילים מוותרים. מילה שכבר
-// הוכרעה, כמו ⏭️ בזמן ה-🎉, אינה ויתור.
+// הוכרעה, כמו ⏭️ בזמן ההצלחה, אינה ויתור.
 function skipWord(){
   if(!turn.done) recordAttempt(word(), "skip", null, { tryNo: (mode === "say" ? turn.says : turn.spells) + 1 });
   if(turn.step === "probe") endProbe();
@@ -1687,7 +1934,9 @@ const PACE_WINDOW = 30, PACE_MIN_TRIES = 10, PACE_UP = 0.85, PACE_DOWN = 0.75;
 // חדשות. requeued: מילים שכבר חזרו אחרי שתי אמירות שלא התקבלו. seen: מה
 // שכבר הוצג בסבב, כדי ש"להבין" יהיה רק בפעם הראשונה (stepFor). הסבב רק
 // בזיכרון: טעינה מחדש מתחילה סבב חדש, ושום דבר לא נכתב בטעינה.
-let round = { queue: [], at: -1, row: [], tried: [], fresh: [], requeued: [], seen: [] };
+// said: נשמעה בסבב אמירה אחת לפחות, כדי שהקצב יתעדכן רק מסבב שהיה בו ניסיון
+// (adaptPace), ולא מסבבים של שומעים ובוחרים בלבד.
+let round = { queue: [], at: -1, row: [], tried: [], fresh: [], requeued: [], seen: [], said: false };
 let ended = false;
 
 function wordRecord(w){ return readStore(PROGRESS_KEY).data.w[w]; }
@@ -1802,12 +2051,17 @@ function holdCurrent(){
   if(k >= 0) round.queue.splice(k, 1);
 }
 
-// בונה סבב חדש בתרגול שנבחר, בלי להחליף את המילה שעל המסך.
+// בונה סבב חדש בתרגול שנבחר, בלי להחליף את המילה שעל המסך. כשאין מנוע
+// זיהוי (או מיקרופון) וגם אין קול באנגלית, אי אפשר לא לומר ולא לשמוע, והסבב
+// הוא כתיבה. זה זמני ולא נשמר: הסבב הבא חוזר למה שהמבוגר בחר.
+let modeFallback = false;
 function startRound(){
+  if(modeFallback){ mode = readMode(); modeFallback = false; }
+  if(mode === "say" && listenOnly() && !canSpeak()){ mode = "spell"; modeFallback = true; }
+  renderMode();
   const data = readStore(PROGRESS_KEY).data;
   const built = mode === "say" ? sayRound(data.w, dayNumber(), paceOf(data)) : { queue: spellRound(data.w), fresh: [] };
-  round = { queue: built.queue, at: -1, row: [], tried: [], fresh: built.fresh, requeued: [], seen: [] };
-  renderRow();
+  round = { queue: built.queue, at: -1, row: [], tried: [], fresh: built.fresh, requeued: [], seen: [], said: false };
 }
 
 // המילה הבאה בסבב, או null כשהוא נגמר. כל שינוי ברשימה בונה סבב חדש, כך
@@ -1852,20 +2106,17 @@ function requeue(w){
   round.queue.splice(round.at + RECHECK_GAP, 0, w);
 }
 
+// row: מה שנאמר או נכתב בניסיון הראשון בלי עזרה, לאזור המבוגר. הילד לא רואה
+// את ההבדל.
 function addToRow(w){
-  if(round.row.includes(w)) return;
-  round.row.push(w);
-  renderRow();
+  if(!round.row.includes(w)) round.row.push(w);
 }
 function noteTried(w){
   if(!round.tried.includes(w)) round.tried.push(w);
 }
-function renderRow(){
-  $("roundRow").textContent = round.row.map(emojiFor).join("");
-}
 
 function endRound(){
-  if(mode === "say") adaptPace();
+  if(mode === "say" && round.said) adaptPace();
   showRoundEnd();
 }
 
@@ -1899,27 +2150,34 @@ function adaptPace(){
 // צליל אחד בסוף הסבב, ארוך מזה של מילה אחת.
 const ROUND_CHEER = { notes: [[784, 0], [1046.5, 0.12], [1318.5, 0.24], [1568, 0.36]], volume: 0.16 };
 
-// מסך הסיום: כל המילים שניסו בסבב, הגדולות הן אלה שנאמרו או נכתבו בלי עזרה,
-// ו-✨ על מילה חדשה. בלי מספרים. נגיעה בתמונה אומרת את המילה כשהשמע דלוק,
-// ולא מדליקה אותו. ▶ מתחיל סבב חדש, ו-🧺 מראה את הסל.
-// ▶ יושב בדיוק מתחת ל-🎤 ול-⏭️. נגיעה כפולה, או נגיעה ב-🎤 רגע אחרי שה-🎉
-// התחלף, הייתה מדלגת על המסך הזה בלי שהילד ראה אותו.
+// מסך הסיום: כל המילים שניסו בסבב, כולן באותו גודל, ו-✨ על מילה חדשה. בלי
+// מספרים. נגיעה בתמונה לא משמיעה כלום: השמע דלוק, והיא הייתה אומרת את המילה
+// שפותחת את הסבב הבא, ואז אמירה שלה הייתה נחשבת "לבד". ▶ מתחיל סבב חדש, ו-🧺
+// מראה את הסל. ▶ יושב מתחת ל-🎤 ול-⏭️. נגיעה כפולה, או נגיעה ב-🎤 רגע אחרי
+// שההצלחה התחלפה, הייתה מדלגת על המסך הזה בלי שהילד ראה אותו, ולכן ▶ מופיע
+// רק כשההגנה נגמרת.
 const END_GUARD_MS = 600;
 let endShownAt = -Infinity;
 function showRoundEnd(){
   stopListening();
   // כמו כל הצגה: מעבר שתוזמן קודם לא מחליף את המסך הזה.
-  shownCount++;
+  const mine = ++shownCount;
   ended = true;
   endShownAt = performance.now();
   document.body.classList.add("ended");
   $("roundEnd").hidden = false;
-  $("roundPics").replaceChildren(...round.tried.map(w => picButton(w,
-    (round.row.includes(w) ? " big" : "") + (round.fresh.includes(w) ? " fresh" : ""))));
+  $("roundPics").replaceChildren(...round.tried.map(w => picButton(w, round.fresh.includes(w) ? " fresh" : "")));
+  $("againBtn").hidden = true;
   showEndView("end");
-  setNote("");
+  setTimeout(() => {
+    if(mine !== shownCount || !ended) return;
+    $("againBtn").hidden = false;
+    if($("roundEnd").contains(document.activeElement) || document.activeElement === document.body) showEndView(endViewNow());
+  }, END_GUARD_MS);
   chime(ROUND_CHEER);
+  ui();
 }
+function endViewNow(){ return $("basketView").hidden ? "end" : "basket"; }
 function hideRoundEnd(){
   if(!ended) return;
   ended = false;
@@ -1932,13 +2190,13 @@ function newRound(){
   const keyboard = $("roundEnd").contains(document.activeElement);
   startRound();
   next();
-  if(keyboard) (mode === "say" && !$("say").disabled ? $("say") : $("next")).focus({ preventScroll: true });
+  if(keyboard) (isShown($("say")) ? $("say") : $("next")).focus({ preventScroll: true });
 }
 
 function picButton(w, cls = ""){
-  const b = el("button", "pic-btn" + cls, emojiFor(w));
-  b.type = "button";
+  const b = el("span", "pic-btn" + cls, emojiFor(w));
   b.dataset.word = w;
+  b.setAttribute("role", "img");
   b.setAttribute("aria-label", w);
   return b;
 }
@@ -1966,7 +2224,8 @@ function showEndView(view){
   if(view === "basket") renderBasket();
   $("endView").hidden = view !== "end";
   $("basketView").hidden = view !== "basket";
-  $(view === "end" ? "againBtn" : "basketBack").focus({ preventScroll: true });
+  const focus = view === "basket" ? $("basketBack") : !$("againBtn").hidden ? $("againBtn") : null;
+  if(focus) focus.focus({ preventScroll: true });
 }
 
 // --- להבין, ובדיקה מהתמונה ---
@@ -1980,15 +2239,26 @@ function showEndView(view){
 // ובלי הכתב: מילה מעברית (LOANWORD_SET) לכל ילד, וכל מילה חדשה לילד חדש
 // במסלול המהיר, כמו בספרה. הצלחה היא אמירה מהתמונה, והמילה כבר ידועה. בדיקה
 // שלא הצליחה — אמירה שלא התקבלה, 🔊 או ⏭️ — מסיימת את המסלול המהיר. בדיקה
-// רק כשהמנוע מוכן: לפני כן 🎤 כבוי, וכל נגיעה אחרת הייתה מסיימת את המסלול.
+// רק כשהמנוע מוכן: לפני כן אין 🎤, וכל נגיעה אחרת הייתה מסיימת את המסלול.
+// ורק אחרי FIRST_MODEL_TURNS מילים שהילד כבר אמר: ילד חדש מתחיל ב"אני אומר,
+// אתם אומרים", גם במילה מעברית, ולא בבדיקה שהוא לא יודע שהתשובה בה באנגלית.
+// בלי מנוע זיהוי או בלי מיקרופון (listenOnly) כל מילה היא "להבין", גם מילה
+// שחוזרת או שהילד כבר אומר: זה מה שאפשר לתרגל עד שהמנוע מוכן.
+const FIRST_MODEL_TURNS = 3;
 function stepFor(w){
-  if(mode !== "say" || round.seen.includes(w)) return "say";
+  if(mode !== "say") return "say";
+  if(listenOnly() && canSpeak()) return "understand";
+  if(round.seen.includes(w)) return "say";
   const r = wordRecord(w);
   if(r && r.got !== undefined) return "say";
-  if(model && !(r && r.n) && (LOANWORD_SET.has(w) || laneFast())) return "probe";
+  if(model && !(r && r.n) && (LOANWORD_SET.has(w) || laneFast()) && saidWords() >= FIRST_MODEL_TURNS) return "probe";
   if(!(r && r.u !== undefined) && canSpeak()) return "understand";
   return "say";
 }
+function saidWords(){
+  return Object.values(readStore(PROGRESS_KEY).data.w).filter(r => r && r.n).length;
+}
+function listenOnly(){ return !model || micBlocked; }
 
 // lane בראש ההתקדמות: "fast" במסלול, "off" אחריו. עד האמירה הראשונה הוא לא
 // כתוב, וילד שעוד לא ניסה אף מילה הוא ילד חדש. הוא נכתב רק בניסיון, אף פעם
@@ -2042,20 +2312,19 @@ function choicesFor(target){
   return shuffle([target, ...picked]);
 }
 
+// התמונות "ישנות" (asleep) כל עוד המילה נשמעת, ומתעוררות כשהיא נגמרת.
 function renderStep(){
   const understanding = mode === "say" && turn.step === "understand";
   document.body.classList.toggle("understanding", understanding);
+  document.body.classList.toggle("spelling", mode === "spell");
   $("choices").hidden = !understanding;
-  $("say").classList.toggle("asleep", understanding);
-  // קורא מסך לא רואה ש-🎤 ישן, ובלי זה היה מכריז על הקלטה.
-  $("say").setAttribute("aria-label", understanding ? "השמעת המילה שוב" : modelError || "הקלטת קול - אמירת המילה");
-  $("say").title = understanding ? "השמעת המילה שוב" : "אמירת המילה";
   if(!understanding) return;
+  $("choices").className = "l" + (turn.layout || 0);
   [...$("choices").children].forEach((b, k) => {
-    const w = turn.choices[k], faded = turn.faded.includes(w);
+    const w = turn.choices[k], faded = turn.faded.includes(w), right = turn.picked && w === turn.word;
     b.textContent = emojiFor(w);
     b.dataset.word = w;
-    b.className = "choice" + (faded ? " faded" : "") + (turn.picked && w === turn.word ? " right" : "");
+    b.className = "choice" + (faded ? " faded" : right ? " right" + (turn.flown ? " fly" : "") : !turn.awake ? " asleep" : "");
     b.disabled = faded;
   });
 }
@@ -2079,9 +2348,16 @@ function introduce(){
 const SPEECH_START_MS = 1500;
 let stepSpeech = null;
 function speakStep(byTap){
-  const mine = shownCount, u = speak(word(), EN);
+  const mine = shownCount, u = speak(word(), EN), t = turn;
   if(!u) return;
   stepSpeech = u;
+  t.awake = false;
+  ui();
+  afterSpeech(u, () => {
+    if(u !== stepSpeech || turn !== t || t.step !== "understand") return;
+    t.awake = true;
+    ui();
+  });
   let settled = false;
   const fail = () => {
     if(settled || u !== stepSpeech || mine !== shownCount || turn.step !== "understand") return;
@@ -2127,30 +2403,36 @@ function nudgeButton(id){
   b.classList.add("nudge");
 }
 
-// מ"להבין" לאמירה של אותה מילה, עם הכתב. אחרי בחירה נכונה הכרטיס גדל מהשורה
-// שנבחרה; בלי שמע, או כשהדיבור לא עובד, הוא פשוט מופיע.
+// מ"להבין" לאמירה של אותה מילה, עם הכתב. אחרי בחירה נכונה הכרטיס גדל
+// מהתמונה שנבחרה, והמילה נאמרת שוב — "אני אומר, אתם אומרים" — ו-🎤 מופיע רק
+// כשהיא נגמרת. הילד כבר שמע אותה, אז ההקראה לא משנה מה נרשם. בלי שמע, או
+// כשהדיבור לא עובד, הכרטיס פשוט מופיע.
 function toSay(grow = false){
   turn.step = "say";
   reveal();
   renderStep();
   if(grow){
-    const pic = $("picture");
-    pic.classList.remove("grow");
-    void pic.offsetWidth;
-    pic.classList.add("grow");
+    const card = $("card");
+    card.classList.remove("grow");
+    void card.offsetWidth;
+    card.classList.add("grow");
+    sayWord();
   }
+  ui();
 }
 
-// נגיעה בתמונה לפני שהמילה נשמעה רק משמיעה אותה: בלי שמיעה זה ניחוש. בחירה
-// שגויה: התמונה דוהה, והמילה נשמעת שוב. בלי אדום ובלי צליל — זה שלב של הקשבה,
-// לא מבחן. בחירה נכונה: ירוק, צליל, המילה כתובה, ואחרי רגע אמירה. מי ששמע את
-// המילה ואז אומר אותה חוזר עליה, ולכן האמירה הזו נעזרה (heard).
+// נגיעה בתמונה לפני שהמילה נשמעה רק משמיעה אותה: בלי שמיעה זה ניחוש. נגיעה
+// בתמונה ישנה, בזמן שהמילה נשמעת, רק מזיזה את הגלים בבועה. בחירה שגויה:
+// התמונה דוהה, והמילה נשמעת שוב. בלי רעידה ובלי צליל — זה שלב של הקשבה, לא
+// מבחן. בחירה נכונה: ירוק, צליל, ואחרי רגע אמירה של אותה מילה. מי ששמע את
+// המילה ואז אומר אותה חוזר עליה, ולכן האמירה הזו נעזרה (heard). בלי מנוע זיהוי
+// או מיקרופון אין אמירה: הבחירה הנכונה עפה למעלה ובאה המילה הבאה.
 // נגיעה ממש כשהמילה מתחילה להישמע — השנייה בנגיעה כפולה — תוכננה לפני ששמעו.
 const UNDERSTOOD_MS = 800, HEAR_MS = 400;
 function tapChoice(b){
   if(turn.step !== "understand" || turn.picked || b.disabled) return;
   if(!turn.said) return speakStep(true);
-  if(performance.now() - turn.saidAt < HEAR_MS) return;
+  if(!turn.awake || performance.now() - turn.saidAt < HEAR_MS) return pokeCue();
   const w = b.dataset.word, target = word(), first = !turn.picks;
   turn.picks++;
   if(w !== target){
@@ -2168,7 +2450,14 @@ function tapChoice(b){
   chime(CHEER);
   // לפי התור ולא לפי shownCount: הצגה מחדש של אותה מילה לא משאירה אותו תקוע.
   const t = turn;
-  setTimeout(() => { if(turn === t && t.step === "understand") toSay(true); }, UNDERSTOOD_MS);
+  setTimeout(() => {
+    if(turn !== t || t.step !== "understand") return;
+    if(!listenOnly()) return toSay(true);
+    t.done = t.flown = true;
+    renderStep();
+    ui();
+    setTimeout(() => { if(turn === t) next(); }, GOOD_MS);
+  }, UNDERSTOOD_MS);
 }
 
 // --- כתיבה: בונים את המילה מהאותיות שלה, משמאל לימין ---
@@ -2201,6 +2490,7 @@ function startSpelling(){
     return b;
   }));
   $("hint").disabled = false;
+  turn.cue = null;
 }
 
 function slotList(){ return [...$("slots").children]; }
@@ -2266,6 +2556,7 @@ function checkWord(){
     if(mine !== board) return;
     wrong.forEach(takeOut);
     busy = false;
+    ui();
   }, WRONG_MS);
 }
 
@@ -2286,22 +2577,24 @@ function giveHint(){
   checkWord();
 }
 
+// המתג באזור המבוגר מראה את מה שנבחר, גם כשהסבב הזה הוא כתיבה זמנית.
 function renderMode(){
-  const spell = mode === "spell";
+  const spell = mode === "spell", chosen = modeFallback ? readMode() : mode;
   $("word").hidden = spell;
   $("spell").hidden = !spell;
   $("say").hidden = spell;
   $("hint").hidden = !spell;
-  renderRow();
+  document.body.classList.toggle("spelling", spell);
   for(const b of $("modeSwitch").children){
-    const on = b.dataset.mode === mode;
+    const on = b.dataset.mode === chosen;
     b.classList.toggle("active", on);
     b.setAttribute("aria-checked", on);
   }
 }
 
 function setMode(to){
-  if(to === mode) return;
+  if(to === mode && !modeFallback) return;
+  modeFallback = false;
   // הקשבה שנקטעה במעבר אינה ניסיון שנכשל, אז בלי "נסו שוב".
   stopListening();
   mode = to;
@@ -2335,7 +2628,7 @@ function updateMainWordsSummary(){
   $("panelMeta").textContent = words.length + " מילים בתרגול" + (childId ? " של " + childName() : "") + ". נשמר במכשיר הזה.";
   $("mainWordsCountBadge").textContent = words.length + " מילים";
   $("wordsPreviewEmojis").textContent = words.slice(0, 10).map(w => w.emoji).join(" ") + (words.length > 10 ? " …" : "");
-  $("wordsListMeta").textContent = words.length + " מילים פעילות. לחצו על מילה כדי לתרגל אותה כעת.";
+  $("wordsListMeta").textContent = words.length + " מילים פעילות. המשחק בוחר מהן את המילים של כל סבב.";
   // סופרים במאגר ולא מחסרים אורכים: ברשימה שמורה יכולה להיות מילה שכבר
   // יצאה מהמאגר, והיא לא מורידה ממה שזמין בו.
   const taken = takenSet();
@@ -2357,6 +2650,8 @@ function showSettingsView(tabName, focusSearch = true){
 // nextIndex: המילה שתוצג. null מציג במקומה את המילה הראשונה בסבב החדש. בסוף
 // סבב מסך הסיום נשאר, ו-▶ מתחיל את הסבב מהרשימה החדשה; אחרת מורה שמוחקת
 // מילה, או חלון אחר ששומר את הרשימה, היו מחזירים את המילה האחרונה למסך.
+// מחוץ למשחק — במסך הפתיחה, ובאזור המבוגר שנפתח ממנו — שום מילה לא מוצגת
+// ולא נאמרת: ▶ בונה את הסבב מהרשימה החדשה.
 function applyWords(nextWords, nextIndex, persist = true){
   words = nextWords;
   // המפענח החי צריך את הדקדוק החדש. אין כאן בדיקה שהמודל מכיר את המילה:
@@ -2366,17 +2661,20 @@ function applyWords(nextWords, nextIndex, persist = true){
   if(persist) save();
   if(typeof nextIndex === "number") i = nextIndex;
   if(i >= words.length) i = 0;
-  // רשימה אחרת היא סבב חדש, שנבנה ממנה. בסוף סבב ▶ בונה אותו, והשורה של
-  // הסבב שנגמר נשארת עם מסך הסיום שלו.
-  if(!ended || nextIndex === null) startRound();
-  if(nextIndex === null){
-    shownWord = null;
-    next(!ended);
-  } else if(!ended){
-    holdCurrent();
-    show();
+  if(screen === "game"){
+    // רשימה אחרת היא סבב חדש, שנבנה ממנה. בסוף סבב ▶ בונה אותו, והשורה של
+    // הסבב שנגמר נשארת עם מסך הסיום שלו.
+    if(!ended || nextIndex === null) startRound();
+    if(nextIndex === null){
+      shownWord = null;
+      next(!ended);
+    } else if(!ended){
+      holdCurrent();
+      show();
+    }
   }
   renderPanel();
+  renderDoor();
 }
 
 // האפליקציה המותקנת ולשונית בדפדפן, או שתי לשוניות, חולקות את localStorage.
@@ -2516,12 +2814,11 @@ function opButton(cls, icon, title, label){
 
 function renderList(){
   $("wordList").replaceChildren(...words.map((item, n) => {
-    const li = el("li", n === i ? "current" : "");
+    const li = el("li", "");
     li.dataset.index = n;
 
-    const jump = el("button", "jump");
+    const jump = el("span", "jump");
     jump.append(span("pic", item.emoji), span("w", item.word));
-    if(n === i) jump.appendChild(span("current-tag", "עכשיו בתרגול ⭐"));
 
     const ops = el("div", "ops");
     const del = opButton("del-word-btn", "🗑️", "מחיקת המילה " + item.word, "מחיקת " + item.word);
@@ -2537,8 +2834,17 @@ function renderList(){
 function renderPanel(){
   updateMainWordsSummary();
   renderChildren();
+  renderLastRound();
   if(currentSettingsTab === "words") renderList();
   if(currentSettingsTab === "catalog") renderCatalog();
+}
+
+// לבד ובעזרה רואה רק המבוגר: אצל הילד כל ההצלחות נראות אותו דבר.
+function renderLastRound(){
+  const tried = round.tried, alone = tried.filter(w => round.row.includes(w));
+  $("lastRoundSection").hidden = !tried.length;
+  $("lastRound").textContent = `לבד, בניסיון הראשון: ${alone.map(emojiFor).join(" ") || "—"}. ` +
+    `עם עזרה, בניסיון נוסף, או שלא הצליחו: ${tried.filter(w => !alone.includes(w)).map(emojiFor).join(" ") || "—"}.`;
 }
 
 // --- ילדים: בחירה, הוספה ומחיקה ---
@@ -2638,16 +2944,15 @@ function renderChildren(){
 }
 
 // החלונית מכסה את המסך, אבל לא את הפוקוס של המקלדת: בלי inert, Tab עובר על
-// הכפתורים שמאחוריה, ו-Enter או רווח מפעילים אותם בלי שרואים, למשל את 🎤.
-// לכן כל עוד היא פתוחה הפוקוס בתוכה, ובסגירה הוא חוזר ל-⚙️. במגע ובעכבר
-// אין הבדל: הכיסוי חוסם ממילא, ו-preventScroll משאיר את החלונית באותה גלילה
-// שבה נסגרה.
+// הכפתורים שמאחוריה, ו-Enter או רווח מפעילים אותם בלי שרואים. לכן כל עוד
+// היא פתוחה הפוקוס בתוכה, ובסגירה הוא חוזר ל-🔒. במגע ובעכבר אין הבדל:
+// הכיסוי חוסם ממילא, ו-preventScroll משאיר את החלונית באותה גלילה שבה נסגרה.
 function setBehindInert(on){
   for(const child of document.body.children) if(child !== $("overlay")) child.inert = on;
 }
 
-// מאחורי ההגדרות הילד לא רואה משוב ולא יכול לנסות שוב, ומה שהמיקרופון שומע
-// שם — המורה מדברת, 🔊 ברשימה — אינו ניסיון שלו. עצירה בשקט, כמו כשהדף יורד.
+// נפתחת רק ממסכי מנוחה, דרך 🔒 ושאלת המספר. מה שהמיקרופון שומע מאחוריה —
+// המורה מדברת, 🔊 ברשימה — אינו ניסיון של הילד, ולכן גם כאן ההקשבה נעצרת.
 function openPanel(){
   stopListening();
   $("search").value = "";
@@ -2658,29 +2963,425 @@ function openPanel(){
   $("closePanel").focus({preventScroll: true});
 }
 
+// הסגירה חוזרת למסך הפתיחה, עם השם שנבחר. ▶ מתחיל סבב מההגדרות החדשות.
 function closePanel(){
   $("overlay").hidden = true;
   setBehindInert(false);
   showSettingsView("main");
-  $("openSettings").focus({preventScroll: true});
-  if(!ended && turn.step === "understand" && !turn.said) introduce();
+  goDoor();
+  $("lock").focus({preventScroll: true});
 }
 
-// בשלב "להבין" זו שמיעה חוזרת. בבדיקה מהתמונה זו בקשה ללמוד את המילה: הכתב
-// מופיע, והמסלול המהיר נגמר.
+// 🔊: עזרה, או לשמוע שוב. בשלב "להבין" זו שמיעה חוזרת. אחרת המילה נאמרת, הכתב
+// מופיע גם במילה שהילד כבר אמר, ו-🎤 חוזר כשהקול נגמר; הצלחה אחריה נעזרה.
+// בבדיקה מהתמונה זו בקשה ללמוד את המילה, והמסלול המהיר נגמר. כשאין קול
+// הכפתור הוא 👀: הוא רק מראה את הכתב, ונחשב עזרה כמו 🔊. השמע לא נדלק כאן:
+// רק מבוגר מדליק ומכבה אותו.
 function playCurrentWord(){
-  if(!soundEnabled) setSound(true);
-  turn.heard = true;
-  const btn = $("playWord");
-  btn.classList.add("playing");
-  setTimeout(()=>btn.classList.remove("playing"), 450);
   if(turn.step === "understand") return speakStep(true);
-  if(turn.step === "probe"){
-    endProbe();
-    reveal();
-  }
-  speak(word(), EN);
+  turn.heard = true;
+  if(turn.step === "probe") endProbe();
+  reveal();
+  if(canSpeak()) sayWord();
+  ui();
 }
+
+// --- מה הילד רואה: מסכים, שורת ההנחיה, הציפור ושורת הכפתורים ---
+// הסמלים מצוירים בקו, בלי אימוג'י: אימוג'י הם התמונות של המילים, ו-👂 או ⭐
+// על כפתור היו נראים כמו עוד מילה לתרגל.
+const ICON = {
+  play: '<path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor" stroke="none"/>',
+  speaker: '<path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>',
+  hand: '<path d="M9 11V5a1.5 1.5 0 0 1 3 0v5"/><path d="M12 10V9a1.5 1.5 0 0 1 3 0v2"/><path d="M15 11a1.5 1.5 0 0 1 3 0v3a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4 15a1.5 1.5 0 0 1 2.5-1.6L9 16"/>',
+  mouth: '<path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M9.5 15a3.5 3.5 0 0 0 5 0"/>',
+  ask: '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17.5h.01" stroke="#17302A"/>',
+  thought: '<path d="M7 16a4 4 0 0 1-.6-8A5 5 0 0 1 16 6.5a4 4 0 0 1 1.5 7.7"/><path d="M7 16h9.5"/><circle cx="8" cy="20" r="1"/><circle cx="5" cy="22.5" r=".5"/>',
+  mic: '<path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
+  again: '<path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 21v-5h5"/>',
+  pocket: '<path d="M4 6h16l-1.5 10a5 5 0 0 1-5 4h-3a5 5 0 0 1-5-4z"/><path d="M8 10l4 3 4-3"/>',
+  loud: '<path d="M3 10v4h3l7 5V5L6 10z"/><path d="M16 9a3 3 0 0 1 0 6"/><path d="M19 7l2-1M19 17l2 1M20 12h2"/>',
+  adult: '<circle cx="12" cy="6" r="3"/><path d="M6 21v-4a6 6 0 0 1 12 0v4"/><path d="M3 11h6l-1 4"/>',
+  letters: '<path d="M3 18l4-11 4 11M4.5 14h5"/><path d="M14 11.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM16.5 11v7"/>',
+  flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
+  mute: '<path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M16 9l5 6M21 9l-5 6"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  skip: '<path d="M18 6 10 12l8 6V6z"/><path d="M6 6v12"/>',
+  bulb: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  mutedMic: '<path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/><path d="M3 3l18 18"/>',
+  pointer: '<path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10"/><path d="M12 9.5a1.5 1.5 0 0 1 3 0V11"/><path d="M15 10.5a1.5 1.5 0 0 1 3 0v4a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7l-2.4-3.6a1.5 1.5 0 0 1 2.4-1.8L9 15" fill="#fff"/>'
+};
+function icon(name){
+  return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
+}
+
+// הציפור: גוף אחד, וחלקים שכל תנוחה מציגה (.p-<תנוחה>). היא ציור ולא כפתור:
+// נגיעה מקרית בדמות לא הייתה צריכה להפוך הצלחה לבד ל"בעזרה".
+const BIRD = `<g class="b-all">
+  <ellipse class="wing opt p-wave" cx="88" cy="40" rx="8" ry="16" transform="rotate(30 88 40)"/>
+  <ellipse class="wing opt p-point" cx="14" cy="86" rx="8" ry="17" transform="rotate(50 14 86)"/>
+  <ellipse class="wing opt p-wait p-tilt" cx="12" cy="90" rx="8" ry="16" transform="rotate(-30 12 90)"/>
+  <ellipse class="wing opt p-happy" cx="10" cy="40" rx="8" ry="18" transform="rotate(-35 10 40)"/>
+  <ellipse class="wing opt p-happy" cx="86" cy="40" rx="8" ry="18" transform="rotate(35 86 40)"/>
+  <ellipse class="wing opt p-cheer" cx="88" cy="70" rx="8" ry="16" transform="rotate(-15 88 70)"/>
+  <ellipse cx="48" cy="62" rx="40" ry="40" fill="#6C4CF1"/>
+  <ellipse cx="48" cy="74" rx="24" ry="22" fill="#B7A6FF"/>
+  <ellipse class="opt p-ear" cx="86" cy="46" rx="9" ry="18" fill="#7E62F5" stroke="#17302A" stroke-width="2" transform="rotate(-20 86 46)"/>
+  <g class="opt p-wave p-speak p-point p-wait p-tilt p-ear p-cheer">
+    <circle cx="34" cy="52" r="11" fill="#fff"/><circle cx="62" cy="52" r="11" fill="#fff"/>
+    <circle cx="35" cy="54" r="5" fill="#17302A"/><circle cx="61" cy="54" r="5" fill="#17302A"/>
+  </g>
+  <g class="opt p-happy" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"><path d="M26 54 Q34 44 42 54"/><path d="M54 54 Q62 44 70 54"/></g>
+  <path class="opt p-point p-wait p-tilt p-ear p-cheer" d="M42 64 L54 64 L48 74 Z" fill="#FFB020"/>
+  <g class="opt p-speak" fill="#FFB020"><path d="M41 63 L55 63 L48 68 Z"/><path d="M41 70 L55 70 L48 76 Z"/></g>
+  <path class="opt p-wave p-happy" d="M40 63 Q48 78 56 63 Z" fill="#FFB020"/>
+  <path d="M30 24 Q38 10 46 22" fill="none" stroke="#6C4CF1" stroke-width="6" stroke-linecap="round"/>
+</g>`;
+
+// שורת ההנחיה: סמל ועד שלוש מילים מנוקדות, ותנוחה של הציפור. היא לא הערוץ
+// היחיד: הצבע, היד והקול באנגלית אומרים את אותו הדבר למי שלא קורא.
+const CUES = {
+  door:      ["hand",    "לְשַׂחֵק",                         "wave"],
+  listen:    ["speaker", "הַקְשִׁיבוּ",                       "speak"],
+  pick:      ["hand",    "אֵיזוֹ תְּמוּנָה?",                 "point"],
+  say:       ["mouth",   "אִמְרוּ בְּאַנְגְּלִית",             "wait"],
+  probe:     ["ask",     "יוֹדְעִים? אִמְרוּ בְּאַנְגְּלִית",  "tilt"],
+  recall:    ["thought", "זוֹכְרִים? אִמְרוּ בְּאַנְגְּלִית",  "wait"],
+  listening: ["mic",     "דַּבְּרוּ עַכְשָׁו",                 "ear"],
+  good:      ["check",   "אֲמַרְתֶּם!",                       "happy"],
+  wrote:     ["check",   "כְּתַבְתֶּם!",                      "happy"],
+  again:     ["again",   "עוֹד פַּעַם",                       "cheer"],
+  clearer:   ["again",   "בְּרוּר יוֹתֵר",                    "cheer"],
+  teach:     ["mouth",   "עַכְשָׁו אַתֶּם",                   "wait"],
+  pocket:    ["pocket",  "נַחֲזֹר לָזֶה",                     "cheer"],
+  quiet:     ["loud",    "לֹא שָׁמַעְתִּי",                    "cheer"],
+  grownup:   ["adult",   "קִרְאוּ לִמְבֻגָּר",                 "wait"],
+  spell:     ["letters", "בְּנוּ אֶת הַמִּלָּה",               "wait"],
+  end:       ["flag",    "סִיַּמְנוּ!",                       "happy"],
+  novoice:   ["mute",    "אֵין קוֹל",                         "wait"]
+};
+
+let screen = "door";
+function setScreen(s){
+  screen = s;
+  document.body.dataset.screen = s;
+  ui();
+}
+
+// ההנחיה של הרגע הזה, מתוך המצב. הנחיה של תוצאה (turn.cue) נשארת עד הפעולה הבאה.
+function cueNow(){
+  if(screen === "door") return starting && startingSlow ? "grownup" : "door";
+  if(screen === "grownup") return "grownup";
+  if(ended) return "end";
+  if(active) return "listening";
+  if(turn.busy) return "listen";
+  if(turn.cue) return turn.cue;
+  if(mode === "spell") return "spell";
+  if(turn.step === "understand") return turn.awake ? "pick" : "listen";
+  if(turn.step === "probe") return "probe";
+  return turn.known && !turn.revealed ? "recall" : "say";
+}
+function renderCue(){
+  const state = cueNow(), [ico, text, pose] = CUES[state];
+  const cue = screen === "game" ? $("cue") : document.querySelector(`#${screen} .cue`);
+  if(cue.dataset.cue !== state || !cue.firstChild){
+    cue.dataset.cue = state;
+    cue.innerHTML = icon(ico);
+    cue.append(span("", text));
+  }
+  for(const b of document.querySelectorAll(".bird")) if(b.closest(".screen") === cue.closest(".screen")) b.dataset.pose = pose;
+}
+// נגיעה בתמונה ישנה: הבועה פועמת, ושום דבר אחר לא קורה.
+function pokeCue(){
+  const cue = $("cue");
+  cue.classList.remove("poke");
+  void cue.offsetWidth;
+  cue.classList.add("poke");
+}
+
+// 🎤 רק כשאפשר להקשיב. 🔊 ו-⏭️ רק כשהילד יכול לפעול: לא בזמן שהמכשיר מדבר,
+// מקשיב, חוגג או מחליף כרטיס, כך ששום לחיצה לא נבלעת בשקט. כשאין קול, 🔊
+// הופך ל-👀 בכרטיס בלי כתב, ובכרטיס עם כתב אין לו מה להוסיף.
+function renderDock(){
+  if(screen !== "game" || ended) return;
+  const understanding = mode === "say" && turn.step === "understand";
+  const calm = !!turn.word && !active && !turn.busy && !turn.done && !(understanding && !turn.awake);
+  const away = (id, on) => $(id).classList.toggle("away", on);
+  $("say").hidden = mode === "spell" || understanding || listenOnly();
+  away("say", !calm && !active);
+  const voice = canSpeak(), textHidden = $("word").classList.contains("veiled") || turn.step === "probe";
+  const help = understanding || mode === "spell" ? voice : voice || textHidden;
+  away("playWord", !calm || !help);
+  const probe = turn.step === "probe" && mode === "say";
+  const helpIcon = voice ? "speaker" : "eye";
+  if($("playWord").dataset.look !== helpIcon + probe){
+    $("playWord").dataset.look = helpIcon + probe;
+    $("playWord").innerHTML = icon(helpIcon);
+    if(probe) $("playWord").append(span("lbl", "לֹא יוֹדְעִים?"));
+    $("playWord").setAttribute("aria-label", probe ? "לא יודעים? לשמוע את המילה" : voice ? "השמעת המילה" : "להראות את המילה");
+  }
+  away("next", !calm);
+  away("hint", !calm || busy);
+}
+function isShown(el){ return el.checkVisibility() && !el.classList.contains("away"); }
+
+// ❓ על בדיקה של מילה חדשה, 💭 על מילה שהילד כבר אמר לבד. שני תגים שונים,
+// כדי ש"אולי חדשה" ו"כבר אמרתם" לא ייראו אותו דבר.
+function renderBadge(){
+  const kind = mode !== "say" || turn.revealed ? "" : turn.step === "probe" ? "probe" : turn.known && turn.step === "say" ? "recall" : "";
+  if($("badge").className === kind) return;
+  $("badge").className = kind;
+  $("badge").innerHTML = kind === "probe" ? "?" : kind === "recall" ? icon("thought") : "";
+}
+
+function ui(){
+  renderStep();
+  renderBadge();
+  renderCue();
+  renderDock();
+  armIdle();
+}
+
+// --- היד שמדגימה ---
+// יד שקופה מראה את הפעולה על הדבר שאפשר ללחוץ עליו: בפעם הראשונה שכל מצב
+// מופיע בהפעלה, ואחרי המתנה בלי מגע, עד DEMO_MAX פעמים בתור. היא אף פעם לא
+// לוחצת באמת ולא מראה תשובה. בשלב הבחירה היא עוברת מעל כל התמונות, והמכשיר
+// אומר את המילה שוב; בכרטיס אמירה המכשיר לא אומר אותה מעצמו, כדי שהצלחה לבד
+// תישאר לבד. ההמתנה לא מקדמת את המשחק ולא נרשמת.
+const DEMO_FIRST_MS = 700, DEMO_MAX = 3;
+const IDLE_MS = { door: 3000, grownup: 3000, pick: 6000, say: 6000, recall: 6000, again: 6000, clearer: 6000,
+                  teach: 6000, quiet: 6000, probe: 8000 };
+const demoSeen = new Set();
+let idleTimer = null, idleState = "", screenDemos = 0;
+function armIdle(){
+  const state = cueNow(), wait = IDLE_MS[state];
+  if(state === idleState && idleTimer) return;
+  clearTimeout(idleTimer);
+  idleTimer = null;
+  idleState = state;
+  if(!wait || !$("overlay").hidden || !$("gate").hidden) return;
+  const first = !demoSeen.has(state);
+  idleTimer = setTimeout(() => {
+    idleTimer = null;
+    if(cueNow() !== state) return;
+    const count = screen === "game" ? turn.demos : screenDemos;
+    if(count >= DEMO_MAX) return;
+    demoSeen.add(state);
+    if(screen === "game") turn.demos++; else screenDemos++;
+    if(state === "pick"){
+      if(!first) speakStep(false);
+      demoOver([...$("choices").children].filter(b => !b.disabled));
+    } else demo(state === "probe" && !first ? $("playWord") : demoTarget());
+    idleState = "";
+    armIdle();
+  }, first ? DEMO_FIRST_MS : wait);
+}
+function demoTarget(){
+  if(screen === "door") return $("play");
+  if(screen === "grownup") return $("resume");
+  return isShown($("say")) ? $("say") : $("next");
+}
+function helpTarget(){ return isShown($("playWord")) ? $("playWord") : $("say"); }
+function demo(target){
+  if(!target || !target.checkVisibility()) return;
+  const r = target.getBoundingClientRect(), hand = $("hand");
+  hand.style.left = (r.left + r.width / 2 - 14) + "px";
+  hand.style.top = (r.top + r.height / 2 - 8) + "px";
+  hand.classList.remove("tap");
+  void hand.offsetWidth;
+  hand.classList.add("tap");
+}
+function demoOver(targets){
+  targets.forEach((t, k) => setTimeout(() => { if(cueNow() === "pick") demo(t); }, k * 700));
+}
+document.addEventListener("pointerdown", () => {
+  $("hand").classList.remove("tap");
+  if(idleTimer){ idleState = ""; armIdle(); }
+}, true);
+
+// --- המכשיר מדבר, ו-🎤 מחכה ---
+// הקראה שנגמרה (end), או שלא התחילה, או שהדפדפן לא מודיע על סופה: אחרי
+// SPEECH_START_MS בלי התחלה, או WORD_END_MS אחרי שהתחילה, ממשיכים. u ריק
+// (שמע כבוי, אין קול) ממשיך מיד.
+const WORD_END_MS = 1500;
+function afterSpeech(u, fn){
+  if(!u) return fn();
+  let done = false, timer = setTimeout(finish, SPEECH_START_MS);
+  function finish(){
+    if(done) return;
+    done = true;
+    clearTimeout(timer);
+    fn();
+  }
+  u.addEventListener("start", () => { clearTimeout(timer); timer = setTimeout(finish, WORD_END_MS); });
+  u.addEventListener("end", finish);
+  u.addEventListener("error", finish);
+}
+// המילה נאמרת, ו-🎤 וההנחיה מחכים שתיגמר: אי אפשר לקטוע אותה, והמיקרופון לא
+// שומע את המכשיר.
+function sayWord(){
+  const t = turn, u = speak(word(), EN);
+  if(!u) return;
+  t.busy = true;
+  ui();
+  afterSpeech(u, () => { t.busy = false; ui(); });
+}
+
+// --- מסך הפתיחה, וכניסה למשחק ---
+// ▶ מפעיל את הקול ואת הצלילים בתוך הנגיעה עצמה — אחריה, אחרי המתנה, הדפדפן
+// כבר לא מתיר — ומבקש את המיקרופון, כדי שהבקשה לא תקפוץ באמצע מילה. אם
+// אחרי MIC_ASK_MS אין תשובה, ההנחיה אומרת לקרוא למבוגר. אחר כך מחכים עד
+// VOICES_GRACE_MS לרשימת הקולות, שבחלק מהדפדפנים מגיעה באיחור.
+const MIC_ASK_MS = 1500;
+let starting = false, startingSlow = false;
+async function startGame(){
+  if(starting || screen !== "door") return;
+  starting = true;
+  primeSound();
+  document.body.classList.add("starting");
+  const slow = setTimeout(() => { startingSlow = true; ui(); }, MIC_ASK_MS);
+  try{
+    if(!micBlocked) await ensureAudio();
+  }catch(e){
+    micBlocked = true;
+    renderStatus();
+  }
+  clearTimeout(slow);
+  if(!voices.length && "speechSynthesis" in window)
+    await new Promise(r => setTimeout(r, VOICES_GRACE_MS));
+  starting = startingSlow = false;
+  document.body.classList.remove("starting");
+  if(screen !== "door") return;
+  if(micBlocked || modelError) return goGrownup();
+  enterGame();
+}
+// הכניסה למשחק מוסיפה רשומה להיסטוריה, כדי ש"חזור" של המערכת יחזיר למסך
+// הפתיחה ולא יסגור את האפליקציה. היציאה מהמשחק בדרך אחרת מורידה אותה
+// (history.back), וה-popstate שבא אחריה, באיחור, אינו "חזור" של הילד. כניסה
+// חדשה לפני שהוא הגיע מוסיפה את הרשומה רק אחריו.
+let backPending = false, pushAfterBack = false;
+function pushGame(){ try{ history.pushState({ game: true }, ""); }catch(e){} }
+function enterGame(){
+  setScreen("game");
+  if(backPending) pushAfterBack = true;
+  else pushGame();
+  roundShownAt = performance.now();
+  startRound();
+  next();
+}
+// הקראה ריקה ושקטה בתוך הנגיעה, כדי שבאייפון גם ההקראות הבאות, שלא באות
+// מנגיעה, יישמעו. הקשר של הצלילים מתעורר במאזין ה-click הכללי.
+function primeSound(){
+  if(!soundEnabled || !("speechSynthesis" in window)) return;
+  try{
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+// חזרה למסך הפתיחה: "חזור" של המערכת, החזקה בפינה, או סגירת אזור המבוגר. הסבב
+// ננטש, והתור שלא נגמר לא נרשם: ▶ מתחיל סבב חדש.
+function leaveGame(){
+  stopListening();
+  if("speechSynthesis" in window) speechSynthesis.cancel();
+  shownCount++;
+  hideRoundEnd();
+  turn = { word: null };
+  shownWord = null;
+}
+function goDoor(){
+  if(screen === "game") leaveGame();
+  screenDemos = 0;
+  renderDoor();
+  setScreen("door");
+  if(history.state && history.state.game && !backPending){
+    backPending = true;
+    try{ history.back(); }catch(e){ backPending = false; }
+  }
+}
+// מיקרופון חסום, או מנוע שלא נטען: אף פעם לא מסך קפוא. ▶ ממשיך לשחק בלי לדבר,
+// והסיבה המדויקת כתובה באזור המבוגר.
+function goGrownup(){
+  if(screen === "game") leaveGame();
+  screenDemos = 0;
+  setScreen("grownup");
+}
+function renderDoor(){ $("childName").textContent = childName(); }
+
+// --- כניסת מבוגר ---
+// לחיצה ארוכה על 🔒, ואחריה מספר שכתוב באנגלית, במקלדת ספרות ועם מספר אחר
+// בכל פעם. ילד שלא קורא אנגלית לא יפתור, ותשובה שגויה חוזרת בשקט. Enter או
+// רווח על 🔒 (click בלי נגיעה, detail 0) פותחים את השאלה מהמקלדת.
+const LOCK_HOLD_MS = 2000, EXIT_HOLD_MS = 3000;
+const ONES = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+function numberWord(n){ return TENS[Math.floor(n / 10)] + (n % 10 ? "-" + ONES[n % 10] : ""); }
+let gateNumber = 0;
+function openGate(){
+  gateNumber = 21 + Math.floor(Math.random() * 79);
+  if(gateNumber % 10 === 0) gateNumber++;
+  $("gateWord").textContent = numberWord(gateNumber);
+  $("gateEntry").textContent = "";
+  $("gate").hidden = false;
+  $("gateKeys").querySelector("button").focus({ preventScroll: true });
+  armIdle();
+}
+function closeGate(){
+  $("gate").hidden = true;
+  armIdle();
+}
+function gateKey(d){
+  const entry = $("gateEntry");
+  entry.textContent += d;
+  if(entry.textContent.length < String(gateNumber).length) return;
+  const ok = Number(entry.textContent) === gateNumber;
+  closeGate();
+  if(ok) openPanel();
+  else $("lock").focus({ preventScroll: true });
+}
+$("gateKeys").replaceChildren(...[1, 2, 3, 4, 5, 6, 7, 8, 9, "", 0, ""].map(d => {
+  if(d === "") return el("span", "");
+  const b = el("button", "", String(d));
+  b.type = "button";
+  b.dataset.digit = d;
+  return b;
+}));
+$("gateKeys").addEventListener("click", e => {
+  const b = e.target.closest("[data-digit]");
+  if(b) gateKey(b.dataset.digit);
+});
+$("gateClose").addEventListener("click", () => { closeGate(); $("lock").focus({ preventScroll: true }); });
+
+// לחיצה ארוכה: טיימר מהנגיעה, שנופל אם האצבע זזה החוצה או מורמת לפני הזמן.
+function holdButton(el, ms, done, onHold){
+  let timer = null;
+  const stop = () => { clearTimeout(timer); timer = null; if(onHold) onHold(false); };
+  el.addEventListener("pointerdown", e => {
+    if(e.button !== 0) return;
+    stop();
+    if(onHold) onHold(true);
+    timer = setTimeout(() => { timer = null; if(onHold) onHold(false); done(); }, ms);
+  });
+  for(const type of ["pointerup", "pointerleave", "pointercancel"]) el.addEventListener(type, stop);
+  el.addEventListener("contextmenu", e => e.preventDefault());
+}
+holdButton($("lock"), LOCK_HOLD_MS, openGate, on => $("lock").classList.toggle("holding", on));
+$("lock").addEventListener("click", e => { if(e.detail === 0) openGate(); });
+holdButton($("exit"), EXIT_HOLD_MS, () => { if(screen === "game") goDoor(); });
+window.addEventListener("popstate", () => {
+  if(backPending){
+    backPending = false;
+    if(pushAfterBack){ pushAfterBack = false; pushGame(); }
+    return;
+  }
+  if(screen !== "door") goDoor();
+});
+$("play").addEventListener("click", startGame);
+$("resume").addEventListener("click", () => {
+  if(screen === "grownup") enterGame();
+});
 
 $("say").addEventListener("animationend", ()=> $("say").classList.remove("nudge"));
 $("playWord").addEventListener("animationend", ()=> $("playWord").classList.remove("nudge"));
@@ -2689,8 +3390,6 @@ $("choices").addEventListener("click", e => {
   if(b) tapChoice(b);
 });
 $("playWord").addEventListener("click", playCurrentWord);
-$("picture").addEventListener("click", playCurrentWord);
-$("toggleSound").addEventListener("click", toggleSound);
 // ההקשבה מתחילה בנגיעה ולא בהרמת האצבע, כך שכפתור לחוץ כבר מקשיב, וילד
 // שמחזיק את האצבע בזמן שהוא מדבר נשמע. אבל נגיעה במסך מגע עוד לא מתירה לדף
 // לפתוח שמע — רק הרמת האצבע — ולכן כשצריך לפתוח את המיקרופון, בפעם
@@ -2712,8 +3411,9 @@ $("say").addEventListener("click", e=>{
 $("next").addEventListener("click", skipWord);
 $("hint").addEventListener("click", giveHint);
 // ▶ ו-🧺 מתעלמים מנגיעה ברגע שמסך הסיום מופיע (ראו END_GUARD_MS), והכפתורים
-// של הסבב החדש — ⏭️, 💡, 🎤 — מתעלמים מנגיעה ברגע שאחרי ▶, שיושב מעליהם:
-// נגיעה כפולה ב-▶ הייתה מדלגת על המילה הראשונה בסבב לפני שהילד ראה אותה.
+// של הסבב החדש — ⏭️, 💡, 🎤 — מתעלמים מנגיעה ברגע שאחרי ▶, של מסך הפתיחה או
+// של סוף הסבב, שיושב מעליהם: נגיעה כפולה ב-▶ הייתה מדלגת על המילה הראשונה
+// בסבב לפני שהילד ראה אותה.
 let roundShownAt = -Infinity;
 const endSettled = () => performance.now() - endShownAt >= END_GUARD_MS;
 $("againBtn").addEventListener("click", () => {
@@ -2727,12 +3427,6 @@ for(const type of ["pointerdown", "click"])
     if(performance.now() - roundShownAt < END_GUARD_MS){ e.stopPropagation(); e.preventDefault(); }
   }, true);
 $("basketBack").addEventListener("click", () => showEndView("end"));
-// תמונה במסך הסיום או בסל אומרת את המילה רק כשהשמע כבר דלוק.
-$("roundEnd").addEventListener("click", e => {
-  const b = e.target.closest(".pic-btn");
-  if(b) speak(b.dataset.word, EN);
-});
-$("openSettings").addEventListener("click", openPanel);
 
 $("modeSwitch").addEventListener("click", e=>{
   const b = e.target.closest("[data-mode]");
@@ -2782,20 +3476,14 @@ $("wordList").addEventListener("click", e=>{
     speak(words[n].word, EN);
     if(n === i && soundEnabled) turn.heard = true;
   }
-  // מסוף הסבב קופצים לסבב חדש, שהמילה שנבחרה פותחת.
-  else if(e.target.closest(".jump")){
-    i = n;
-    if(ended){
-      startRound();
-      holdCurrent();
-    }
-    show();
-    closePanel();
-  }
 });
 
 $("overlay").addEventListener("click", e=>{ if(e.target.id === "overlay") closePanel(); });
-document.addEventListener("keydown", e=>{ if(e.key === "Escape" && !$("overlay").hidden) closePanel(); });
+document.addEventListener("keydown", e=>{
+  if(e.key !== "Escape") return;
+  if(!$("gate").hidden){ closeGate(); $("lock").focus({ preventScroll: true }); }
+  else if(!$("overlay").hidden) closePanel();
+});
 $("search").addEventListener("input", renderCatalog);
 
 function onChip(row, apply){
@@ -2817,6 +3505,16 @@ for(const p of PRESETS){
 }
 
 $("hebrewToggle").addEventListener("change", e=>setHebrew(e.target.checked));
+$("soundToggle").addEventListener("change", e=>{ if(e.target.checked !== soundEnabled) toggleSound(); });
+$("retryMic").addEventListener("click", async () => {
+  try{ await ensureAudio(); micBlocked = false; }catch(e){ micBlocked = true; }
+  renderStatus();
+});
+$("retryModel").addEventListener("click", () => {
+  modelError = "";
+  renderStatus();
+  loadModel();
+});
 
 $("childChips").addEventListener("click", e=>{
   const b = e.target.closest(".chip");
@@ -2876,13 +3574,18 @@ if(navigator.storage && navigator.storage.persist){
   navigator.storage.persist().catch(()=>{});
 }
 
+for(const b of document.querySelectorAll(".bird")) b.innerHTML = BIRD;
+for(const [id, name] of [["play", "play"], ["resume", "play"], ["againBtn", "play"], ["lock", "lock"], ["sayIcon", "mic"],
+                         ["next", "skip"], ["hint", "bulb"], ["adultArt", "adult"], ["mutedMicArt", "mutedMic"], ["hand", "pointer"]])
+  $(id).innerHTML = icon(name);
+// הסבב הראשון נבנה רק ב-▶: עד אז שום מילה לא מוצגת ולא נאמרת, והמנוע יורד
+// ברקע.
 renderMode();
-startRound();
-next();
-if(childId) setNote(`שלום ${childName()}! 👋`, 3000);
 updateSoundUI();
 updateMatchUI();
 $("hebrewToggle").checked = hebrewEnabled;
+renderDoor();
+setScreen("door");
 loadModel();
 </script>
 </body>
