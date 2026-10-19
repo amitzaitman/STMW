@@ -105,7 +105,10 @@ async function main(){
       if(typeof showRoundEnd !== "function") return;
       window.realShowRoundEnd = showRoundEnd;
       showRoundEnd = () => newRound();
-      window.realStep = { laneFast, canSpeak, listenOnly, loanwords: [...LOANWORD_SET] };
+      window.realStep = { laneFast, canSpeak, listenOnly, mixedSpellDue, loanwords: [...LOANWORD_SET] };
+      // ובמצב המעורב, שהוא ברירת המחדל, המשחק לא משלב סבב כתיבה מעצמו. קבוצת
+      // "מעורב" מחזירה את זה.
+      mixedSpellDue = () => false;
       laneFast = () => false;
       canSpeak = () => false;
       listenOnly = () => false;
@@ -233,7 +236,7 @@ async function main(){
     called.screen === "grownup" && called.resume && called.lock && !called.text.includes("model"), called);
   check("בלי מנוע ובלי קול באנגלית — ממשיכים בסבב כתיבה זמני, שלא נשמר",
     resumed.screen === "game" && resumed.mode === "spell" && resumed.spell && !resumed.say && resumed.saved === null
-      && resumed.switchShows === "say", resumed);
+      && resumed.switchShows === "mixed", resumed);
   check("באזור המבוגר כתובה הסיבה המדויקת", status.shown && status.text === stuck.error, { status, stuck });
 
   // --------------------------------------------------------------
@@ -2009,57 +2012,75 @@ async function main(){
     veil.peekVeiled && !!veil.moon && JSON.stringify(veil.moon.ok) === "[399]" && String(veil.moonFlags).includes("p")
       && !!veil.book && JSON.stringify(veil.book.ok) === "[399]", veil);
 
-  // מסך הסיום: מה שניסו בסבב, בלי מספרים, ו-▶ שמתחיל סבב חדש. ⏭️ על המילה
+  // מסך הסיום: מה שניסו בסבב, כמדבקות שוות, בלי מספרים ובלי כוכבים, ו-▶ שמתחיל
+  // סבב חדש. מילה שנכנסה לסל בסבב הזה קופצת אליו, כתמונה בלבד. ⏭️ על המילה
   // האחרונה מסיים את הסבב כמו הצלחה.
   await page.setViewportSize({ width: 360, height: 640 });
   const ending = await page.evaluate(async ([P, L]) => {
-    const realChime = chime, chimes = [];
+    const realChime = chime, chimes = [], synth = speechSynthesis, spoken = [], realSound = soundEnabled;
     chime = sound => { chimes.push(sound); return realChime(sound); };
+    synth.speak = u => spoken.push(u.text);
     const visible = id => $(id).checkVisibility();
+    const ok2 = { met: 1, seen: 9, box: 3, due: 20, ok: [5, 9], n: 4, k: 3, got: 1 };
     try{
-      localStorage.removeItem(P); localStorage.removeItem(L);
+      setSound(true);
+      // dog כבר בסל כשהסבב התחיל; lion נכנס אליו בסבב הזה; sax, שיצאה מהמאגר, בלי תמונה.
+      localStorage.setItem(P, JSON.stringify({ v: 1, w: { dog: ok2 } }));
+      localStorage.removeItem(L);
       const tried = ["dog", "cat", "sun", "lion", "book", "ship", "tea", "ball"];
-      round = { queue: ["fish"], at: -1, row: tried.slice(0, 5), tried, fresh: ["sun"], requeued: [], seen: [] };
+      round = { queue: ["fish"], at: -1, row: tried.slice(0, 5), tried, fresh: ["sun"], requeued: [], seen: [],
+                basket: ["dog"], pocketed: [] };
       shownWord = null;
       next();
+      localStorage.setItem(P, JSON.stringify({ v: 1, w: { dog: ok2, lion: { ...ok2, wrote: 7 }, sax: ok2 } }));
       // ההצלחה מזמנת מעבר, ו-⏭️ בזמנה מסיים את הסבב לפניו. ▶ גלוי מסוף הסבב הקודם.
       $("againBtn").hidden = false;
       good();
       skipWord();
-      // ▶ מופיע רק כשההגנה מנגיעה כפולה נגמרת.
+      // ▶ מופיע רק כשההגנה מנגיעה כפולה נגמרת, והאנימציה כבר נגמרה עד אז.
       const early = { play: visible("againBtn"), focus: document.activeElement.id };
+      const anim = [...document.querySelectorAll("#roundEnd .pic")]
+        .map(p => parseFloat(getComputedStyle(p).animationDelay) * 1000 + parseFloat(getComputedStyle(p).animationDuration) * 1000);
       await new Promise(r => setTimeout(r, END_GUARD_MS + 50));
-      const box = r => ({ top: r.top, bottom: r.bottom, left: r.left, right: r.right });
+      $("roundPics").children[0].click();
       const end = $("roundEnd").getBoundingClientRect();
       const out = {
         early, ended, end: visible("roundEnd"), say: visible("say"), picture: visible("picture"), next: visible("next"),
-        pics: [...$("roundPics").children].map(b => b.dataset.word + (b.classList.contains("big") ? "+" : "")
-          + (b.classList.contains("fresh") ? "*" : "")),
-        sizes: [...new Set([...$("roundPics").children].map(b => getComputedStyle(b).fontSize))],
-        lock: visible("lock"), play: visible("againBtn"),
+        pics: [...$("roundPics").children].map(b => b.dataset.word),
+        sizes: [...new Set([...$("roundPics").children].map(b => getComputedStyle(b).width))],
+        intoBasket: [...$("endBasketNew").children].map(b => b.textContent),
+        lock: visible("lock"), play: visible("againBtn"), animEnds: Math.max(...anim), guard: END_GUARD_MS,
         focus: document.activeElement.id,
         text: $("roundEnd").innerText,
-        inView: [end, $("againBtn").getBoundingClientRect(), $("basketBtn").getBoundingClientRect(),
-                 ...[...$("roundPics").children].map(b => b.getBoundingClientRect())]
+        inView: [end, $("againBtn").getBoundingClientRect(), ...[...$("roundPics").children].map(b => b.getBoundingClientRect())]
           .every(r => r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth),
-        box: box(end)
+        buttons: [...$("roundEnd").querySelectorAll("button")].filter(b => b.checkVisibility()).map(b => b.id)
       };
-      // והמעבר שה-🎉 זימן לא מחזיר מילה ולא מסיים את הסבב פעם שנייה.
+      // והמעבר שההצלחה זימנה לא מחזיר מילה ולא מסיים את הסבב פעם שנייה.
       await new Promise(r => setTimeout(r, GOOD_MS + 200));
       out.stillEnded = ended;
       out.chimes = chimes.filter(c => c === ROUND_CHEER).length;
+      out.spoken = spoken.slice();
       return out;
-    } finally { chime = realChime; }
+    } finally {
+      chime = realChime;
+      setSound(realSound);
+      delete synth.speak;
+      localStorage.removeItem(P);
+    }
   }, [P, L]);
   check("בסוף הסבב — מסך סיום במקום התמונה והכפתורים",
     ending.ended && ending.end && !ending.say && !ending.picture && !ending.next && ending.stillEnded, ending);
-  check("במסך הסיום כל מה שניסו, כולן באותו גודל, ו-✨ על מילה חדשה",
-    ending.pics.join() === "dog,cat,sun*,lion,book,ship,tea,ball" && ending.sizes.length === 1, ending);
-  check("▶ מופיע רק כשההגנה מנגיעה כפולה נגמרת, ו-🔒 בפינה",
-    !ending.early.play && ending.play && ending.lock, ending);
-  check("צליל אחד בסוף הסבב, והפוקוס על ▶", ending.chimes === 1 && ending.focus === "againBtn", ending);
-  check("אין מספרים במסך הסיום ובשורה", !/[0-9]/.test(ending.text), ending.text);
-  check("בטלפון בגובה 640 מסך הסיום, ▶ ו-🧺 על המסך", ending.inView, ending);
+  check("במסך הסיום כל מה שניסו, כמדבקות באותו גודל, בלי כוכבים ובלי ✨",
+    ending.pics.join() === "dog,cat,sun,lion,book,ship,tea,ball" && ending.sizes.length === 1 && !/[✨⭐]/.test(ending.text), ending);
+  check("מילה שנכנסה לסל בסבב הזה קופצת אליו, כתמונה בלבד",
+    ending.intoBasket.join() === "🦁" && !/lion/.test(ending.text), ending);
+  check("▶ מופיע רק כשההגנה מנגיעה כפולה נגמרת, אחרי האנימציה, ו-🔒 בפינה",
+    !ending.early.play && ending.play && ending.lock && ending.animEnds <= ending.guard, ending);
+  check("צליל אחד בסוף הסבב, שום מילה לא נאמרת, והפוקוס על ▶",
+    ending.chimes === 1 && ending.spoken.length === 0 && ending.focus === "againBtn", ending);
+  check("אין מספרים במסך הסיום, ואין בו כפתור מלבד ▶", !/[0-9]/.test(ending.text) && ending.buttons.join() === "againBtn", ending);
+  check("בטלפון בגובה 640 מסך הסיום ו-▶ על המסך", ending.inView, ending);
 
   // ההגדרות מעל מסך הסיום: Tab לא מגיע אליו.
   const endInert = await page.evaluate(async () => {
@@ -2075,46 +2096,55 @@ async function main(){
   check("מסך הסיום לא נגיש במקלדת כשההגדרות פתוחות, והסגירה חוזרת למסך הפתיחה",
     endInert.inert && !endInert.after && endInert.screen === "door", endInert);
 
-  // הסל: מילים שהילד אמר לבד מהתמונה בשני ימים שונים. מילה שחזרה לתרגול
-  // נשארת בו, ונגיעה אומרת את המילה רק כשהשמע דלוק.
+  // הסל: מילים שהילד אמר לבד מהתמונה בשני ימים שונים, גם אחרי שחזרו לתרגול או
+  // יצאו מהמאגר. לילד, במסך הפתיחה, רק תמונות, בלי כתב ובלי קול; למבוגר עם
+  // המילה באנגלית, ו-✏️ ליד מה שגם נכתב.
   const basket = await page.evaluate(async P => {
-    const synth = speechSynthesis, spoken = [], realSound = soundEnabled;
+    const synth = speechSynthesis, spoken = [], realSound = soundEnabled, set = w => localStorage.setItem(P, JSON.stringify({ v: 1, w }));
     synth.speak = u => spoken.push(u.text);
     try{
-      $("basketBtn").click();
-      const empty = { shown: !$("basketEmpty").hidden, items: $("basketPics").children.length };
-      $("basketBack").click();
-      localStorage.setItem(P, JSON.stringify({ v: 1, w: {
-        dog: { met: 1, seen: 9, box: 3, due: 20, ok: [5, 9], n: 4, k: 3, got: 1 },
-        lion: { met: 1, seen: 12, box: 0, due: 13, ok: [6, 8], n: 6, k: 2, got: 2, wrote: 7 },
-        sun: { met: 1, seen: 9, box: 1, due: 10, ok: [9], n: 2, k: 1, got: 9 },
-        cat: { met: 1, seen: 9, box: 1, due: 10, ok: [], n: 1, k: 1, got: 9 },
-        sax: { met: 1, seen: 4, box: 2, due: 6, ok: [3, 4], n: 2, k: 2, got: 3 } } }));
-      $("basketBtn").click();
-      const out = { empty, items: [...$("basketPics").children].map(b => b.innerText.replace(/\s+/g, " ").trim()),
-                    focus: document.activeElement.id, endHidden: $("endView").hidden };
-      setSound(false);
-      $("basketPics").children[0].click();
-      out.mutedSpoke = spoken.length;
-      out.mutedKept = !soundEnabled;
       setSound(true);
-      $("basketPics").children[0].click();
-      out.spoken = spoken.slice();
-      $("basketBack").click();
-      out.back = !$("endView").hidden && $("basketView").hidden && document.activeElement.id === "againBtn";
-      return out;
+      localStorage.removeItem(P);
+      goDoor();
+      const empty = { door: $("doorBasket").classList.contains("empty"), pics: $("doorBasketPics").children.length };
+      openPanel();
+      empty.adult = !$("basketEmpty").hidden && $("basketPics").children.length === 0;
+      closePanel();
+      set({ dog: { met: 1, seen: 9, box: 3, due: 20, ok: [5, 9], n: 4, k: 3, got: 1 },
+            sax: { met: 1, seen: 4, box: 2, due: 6, ok: [3, 4], n: 2, k: 2, got: 3 },
+            sun: { met: 1, seen: 9, box: 1, due: 10, ok: [9], n: 2, k: 1, got: 9 } });
+      renderDoor();
+      set({ dog: { met: 1, seen: 9, box: 3, due: 20, ok: [5, 9], n: 4, k: 3, got: 1 },
+            lion: { met: 1, seen: 12, box: 0, due: 13, ok: [6, 8], n: 6, k: 2, got: 2, wrote: 7 },
+            sun: { met: 1, seen: 9, box: 1, due: 10, ok: [9], n: 2, k: 1, got: 9 },
+            cat: { met: 1, seen: 9, box: 1, due: 10, ok: [], n: 1, k: 1, got: 9 },
+            sax: { met: 1, seen: 4, box: 2, due: 6, ok: [3, 4], n: 2, k: 2, got: 3 } });
+      renderDoor();
+      const door = { pics: [...$("doorBasketPics").children].map(b => b.textContent + (b.classList.contains("new") ? "*" : "")),
+                     text: $("doorBasket").innerText.trim(), empty: $("doorBasket").classList.contains("empty"),
+                     tappable: getComputedStyle($("doorBasket")).pointerEvents };
+      $("doorBasketPics").children[0].click();
+      door.spoken = spoken.length;
+      openPanel();
+      const adult = [...$("basketPics").children].map(b => b.innerText.replace(/\s+/g, " ").trim());
+      closePanel();
+      return { empty, door, adult };
     } finally {
       setSound(realSound);
       delete synth.speak;
       localStorage.removeItem(P);
+      enterGame();
+      roundTest.end();
+      await roundTest.wait(END_GUARD_MS + 50);
     }
   }, P);
-  check("סל ריק אומר מה ייכנס אליו", basket.empty.shown && basket.empty.items === 0, basket);
-  check("בסל: מה שנאמר בשני ימים שונים, עם המילה באנגלית, גם אחרי שחזר לתרגול או יצא מהמאגר, ו-✏️ למה שגם נכתב",
-    basket.items.join("|") === "🐶 dog|🦁 lion ✏️|sax" && basket.endHidden && basket.focus === "basketBack", basket);
-  check("נגיעה בתמונה בסל לא אומרת כלום, גם כשהשמע דלוק",
-    basket.mutedSpoke === 0 && basket.mutedKept && basket.spoken.length === 0, basket);
-  check("חזרה מהסל למסך הסיום", basket.back, basket);
+  check("סל ריק: במסך הפתיחה רק קווי מתאר, ולמבוגר מה ייכנס אליו",
+    basket.empty.door && basket.empty.pics === 0 && basket.empty.adult, basket);
+  check("במסך הפתיחה הסל הוא תמונות בלבד, בלי כתב, ובלי מה שאין לו תמונה; תמונה חדשה מנצנצת",
+    basket.door.pics.join() === "🐶,🦁*" && !/[a-z]/i.test(basket.door.text) && !basket.door.empty, basket);
+  check("אי אפשר ללחוץ על הסל, והוא לא משמיע כלום", basket.door.tappable === "none" && basket.door.spoken === 0, basket);
+  check("באזור המבוגר: הסל עם המילים באנגלית, ו-✏️ למה שגם נכתב",
+    basket.adult.join("|") === "🐶 dog|🦁 lion ✏️|sax", basket);
 
   const again = await page.evaluate(() => {
     $("againBtn").click();
@@ -2147,13 +2177,10 @@ async function main(){
     await roundTest.wait(END_GUARD_MS + 50);
     $("next").click();
     const moved = word() !== first || ended;
-    roundTest.end();
-    $("basketBtn").click();
-    return { kept, moved, endView: !$("endView").hidden, basket: !$("basketView").hidden };
+    return { kept, moved };
   });
   check("נגיעה שנייה מיד אחרי ▶ לא מדלגת על המילה הראשונה בסבב, ואחר כך ⏭️ עובד",
     tapAfterPlay.kept && tapAfterPlay.moved, tapAfterPlay);
-  check("🧺 שנלחץ מיד כשמסך הסיום מופיע לא מחליף אותו", tapAfterPlay.endView && !tapAfterPlay.basket, tapAfterPlay);
   // וגם ▶ של מסך הפתיחה: נגיעה כפולה בו לא מדלגת על המילה הראשונה. הדף נפתח
   // בהקשר נפרד, בלי מה שהבדיקות כאן מכבות.
   const earlyCtx = await browser.newContext({ serviceWorkers: "block" });
@@ -3231,6 +3258,133 @@ async function main(){
   });
   check("שמע דלוק בלי קול באנגלית — \"אין קול\" פעם אחת", noVoice.first === "novoice" && noVoice.second !== "novoice", noVoice);
 
+  // מצב מעורב, ברירת המחדל: המשחק משלב סבב כתיבה כל SPELL_EVERY סבבים, רק אחרי
+  // שהילד כבר אומר SPELL_AFTER_KNOWN מילים, ובו רק מילים שהוא אומר.
+  const mixedRounds = await page.evaluate(() => {
+    const realDue = mixedSpellDue, d = dayNumber();
+    mixedSpellDue = realStep.mixedSpellDue;
+    const known = list => Object.fromEntries(list.map(w => [w, { met: d - 9, seen: d - 2, box: 2, due: d + 5, ok: [d - 3], n: 3, k: 2, got: d - 5 }]));
+    const rounds = n => Array.from({ length: n }, () => { newRound(); return mode + ":" + [...new Set(round.queue)].sort().join("/"); });
+    try{
+      setMode("mixed");
+      const fresh = { chosen: chosenMode, saved: localStorage.getItem("practice_mode") };
+      localStorage.setItem("say-the-word-progress", JSON.stringify({ v: 1, lane: "off", w: known(["dog", "cat"]) }));
+      roundsSinceSpell = 0;
+      const few = rounds(4).map(r => r.split(":")[0]);
+      localStorage.setItem("say-the-word-progress", JSON.stringify({ v: 1, lane: "off", w: known(["dog", "cat", "sun"]) }));
+      roundsSinceSpell = 0;
+      const enough = rounds(6);
+      const switchShows = document.querySelector('#modeSwitch [aria-checked="true"]').dataset.mode;
+      setMode("say");
+      roundsSinceSpell = 0;
+      const sayOnly = rounds(4).map(r => r.split(":")[0]);
+      setMode("spell");
+      newRound();
+      const spellOnly = { mode, size: new Set(round.queue).size };
+      return { fresh, few, enough, switchShows, sayOnly, spellOnly };
+    } finally {
+      mixedSpellDue = realDue;
+      setMode("say");
+      localStorage.removeItem("say-the-word-progress");
+    }
+  });
+  check("מעורב כשהילד אומר פחות משלוש מילים — רק סבבי אמירה", mixedRounds.few.every(m => m === "say"), mixedRounds);
+  check("מעורב — כל סבב שלישי כתיבה, ובו רק המילים שהילד כבר אומר, גם אם הסבב קצר",
+    mixedRounds.enough.map(r => r.split(":")[0]).join() === "say,say,spell,say,say,spell"
+      && mixedRounds.enough[2] === "spell:cat/dog/sun" && mixedRounds.switchShows === "mixed", mixedRounds);
+  check("\"רק אומרים\" לא משלב כתיבה, ו\"רק כותבים\" מתמלא גם במילים אחרות",
+    mixedRounds.sayOnly.every(m => m === "say") && mixedRounds.spellOnly.mode === "spell" && mixedRounds.spellOnly.size > 3, mixedRounds);
+
+  // כתיבה: המשבצת הבאה זוהרת, חץ מראה את כיוון הכתיבה, המילה נאמרת כשהיא
+  // מופיעה, תקתוק רך על כל אות, ואחרי מילה שגויה המילה נשמעת שוב.
+  const spelling = await page.evaluate(async () => {
+    const out = {};
+    setMode("spell");
+    try{
+      uTest.spoken = []; uTest.chimes = [];
+      turn.word = null;
+      i = words.findIndex(w => w.word === "cake");
+      show();
+      out.entry = { spoken: uTest.spoken.slice(), arrow: $("spellArrow").checkVisibility(), during: $("cue").dataset.cue,
+                    next: slotList().findIndex(s => s.classList.contains("next")), he: uTest.seen("wordHe") };
+      await uTest.wait(100);
+      out.entry.cue = $("cue").dataset.cue;
+      const target = word();
+      [...$("bank").children].find(t => !t.disabled && t.dataset.letter === target[0]).click();
+      out.afterOne = { next: slotList().findIndex(s => s.classList.contains("next")), tick: uTest.chimes.includes(TICK) };
+      uTest.spoken = [];
+      for(const ch of [...target.slice(1)].reverse()) [...$("bank").children].find(t => !t.disabled && t.dataset.letter === ch).click();
+      out.wrong = { spoken: uTest.spoken.slice(), card: $("card").className };
+      await uTest.wait(100);
+      out.wrong.cue = $("cue").dataset.cue;
+      await uTest.wait(WRONG_MS + 200);
+      out.backTo = slotList().findIndex(s => s.classList.contains("next"));
+      out.hint = $("hint").checkVisibility() && !$("hint").disabled;
+      return out;
+    } finally { setMode("say"); }
+  });
+  check("כתיבה: המילה נאמרת כשהיא מופיעה, חץ לכיוון הכתיבה, התעתיק נשאר, והמשבצת הראשונה זוהרת",
+    JSON.stringify(spelling.entry.spoken) === '["cake"]' && spelling.entry.arrow && spelling.entry.during === "listen" && spelling.entry.cue === "spell"
+      && spelling.entry.next === 0 && spelling.entry.he, spelling);
+  check("אות שהונחה — תקתוק רך, והזוהר עובר למשבצת הבאה", spelling.afterOne.tick && spelling.afterOne.next === 1, spelling);
+  check("מילה שגויה — רעידה, \"עוד פעם\", המילה נשמעת שוב, הזוהר על המשבצת הריקה הראשונה, ו-💡 נשאר",
+    spelling.wrong.card === "again" && spelling.wrong.cue === "again" && JSON.stringify(spelling.wrong.spoken) === '["cake"]'
+      && spelling.backTo === 1 && spelling.hint, spelling);
+
+  // מילה שנפלה לכיס חוזרת ממנו בהמשך הסבב; מילה שהילד כבר אומר חוזרת בלי כתב.
+  const popped = await page.evaluate(async () => {
+    const d = dayNumber();
+    localStorage.setItem("say-the-word-progress", JSON.stringify({ v: 1, lane: "off", w: {
+      cat: { met: d - 9, seen: d - 2, box: 2, due: d, ok: [d - 3], n: 3, k: 2, got: d - 5 } } }));
+    round = { queue: ["cat", "sun", "lion", "book", "car"], at: -1, row: [], tried: [], fresh: [], requeued: [],
+              seen: ["cat", "sun", "lion", "book", "car"], said: false, pocketed: [] };
+    shownWord = null;
+    next();
+    for(let k = 0; k < 2; k++){ await uTest.say("zzz"); await uTest.wait(AGAIN_MS + 150); }
+    const out = { after: word(), pocketed: round.pocketed.slice() };
+    next(); next();
+    out.back = { word: word(), card: $("card").className, pocket: !$("pocket").hidden, text: uTest.seen("word"),
+                 cue: $("cue").dataset.cue };
+    next();
+    out.later = { card: $("card").className, pocket: !$("pocket").hidden };
+    return out;
+  });
+  check("מילה שנפלה לכיס קופצת ממנו כשהיא חוזרת, ומילה שהילד אומר חוזרת בלי כתב",
+    popped.after === "sun" && popped.pocketed.join() === "cat" && popped.back.word === "cat" && popped.back.card === "pop"
+      && popped.back.pocket && !popped.back.text && popped.back.cue === "recall" && popped.later.card === "" && !popped.later.pocket, popped);
+
+  // שורת נקודות דקה: נקודה לכל מילה בסבב, מה שעבר, מה שעכשיו ומה שנשאר.
+  const dots = await page.evaluate(() => {
+    round = { queue: ["dog", "sun", "lion", "book"], at: -1, row: [], tried: [], fresh: [], requeued: [], seen: [], said: false, pocketed: [] };
+    shownWord = null;
+    next(); next();
+    const out = { classes: [...$("dots").children].map(d => d.className || "-").join(), text: $("dots").textContent,
+                  hidden: $("dots").getAttribute("aria-hidden"), tappable: $("dots").querySelector("button") };
+    return out;
+  });
+  check("שורת נקודות: כמה מילים נשארו בסבב, בלי תמונות ובלי מספרים",
+    dots.classes === "done,now,-,-" && dots.text === "" && dots.hidden === "true" && !dots.tappable, dots);
+
+  // הטבעות סביב 🎤 זזות עם הקול שהמיקרופון שומע. המיקרופון המזויף של כרומיום
+  // משמיע צפצוף, ולכן העוצמה גדולה מאפס בזמן ההקשבה, וחוזרת לאפס אחריה.
+  const rings = await page.evaluate(async () => {
+    const realProcess = processRecognition;
+    processRecognition = () => {};
+    try{
+      uTest.show("dog", true);
+      await ensureAudio();
+      await listen();
+      let during = 0;
+      for(let k = 0; k < 40; k++){
+        await uTest.wait(20);
+        during = Math.max(during, parseFloat($("say").style.getPropertyValue("--level")) || 0);
+      }
+      stopListening();
+      return { during, after: parseFloat($("say").style.getPropertyValue("--level")) };
+    } finally { processRecognition = realProcess; }
+  });
+  check("בזמן ההקשבה הטבעות זזות עם הקול, ואחריה נעצרות", rings.during > 0 && rings.after === 0, rings);
+
   // מקלדת, ומסך של טלפון: התמונות בגובה של אצבע, על המסך, והתחתונה רחוקה מ-⏭️.
   await page.setViewportSize({ width: 360, height: 640 });
   const reachChoices = await page.evaluate(() => {
@@ -3282,8 +3436,16 @@ async function main(){
   const doorCtx = await browser.newContext({ serviceWorkers: "block", permissions: ["microphone"] });
   const doorPage = await doorCtx.newPage();
   await doorPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
-  const atDoor = await doorPage.evaluate(() => ({ screen, mic: !!micStream, word: $("word").textContent,
-    buttons: [...document.querySelectorAll("button")].filter(b => b.checkVisibility()).map(b => b.id) }));
+  const atDoor = await doorPage.evaluate(async () => {
+    const taps = [];
+    new MutationObserver(() => { if($("hand").classList.contains("tap")) taps.push(Math.round(performance.now())); })
+      .observe($("hand"), { attributes: true });
+    await new Promise(r => setTimeout(r, DEMO_FIRST_MS + IDLE_MS.door + 400));
+    const r = $("play").getBoundingClientRect(), h = $("hand");
+    return { screen, mic: !!micStream, word: $("word").textContent, taps: taps.length, still: h.classList.contains("tap"),
+      onPlay: Math.abs(parseFloat(h.style.left) + 14 - (r.left + r.width / 2)) < 2,
+      buttons: [...document.querySelectorAll("button")].filter(b => b.checkVisibility()).map(b => b.id) };
+  });
   await doorPage.click("#play", { force: true });
   await doorPage.waitForFunction(() => screen === "game", null, { timeout: 5000 }).catch(() => {});
   const pressed = await doorPage.evaluate(() => ({ screen, mic: micLive(), word: word(), back: history.state }));
@@ -3302,6 +3464,8 @@ async function main(){
   await doorCtx.close();
   check("מסך הפתיחה: רק ▶ ו-🔒, בלי מילה ובלי מיקרופון",
     atDoor.screen === "door" && !atDoor.mic && atDoor.word === "" && atDoor.buttons.join() === "lock,play", atDoor);
+  check("במסך הפתיחה היד מדגימה לחיצה על ▶, בפעם הראשונה ואחרי המתנה",
+    atDoor.taps >= 2 && atDoor.still && atDoor.onPlay, atDoor);
   check("▶ פותח את המיקרופון ואז את המילה הראשונה", pressed.screen === "game" && pressed.mic && !!pressed.word
     && !!pressed.back && pressed.back.game, pressed);
   check("\"חזור\" מחזיר למסך הפתיחה, בלי לרשום את התור שלא נגמר", backed.screen === "door" && backed.log === null, backed);
@@ -3429,9 +3593,10 @@ async function main(){
   const cleanPage = await cleanDevice.newPage();
   await cleanPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
   const soundDefault = await cleanPage.evaluate(() => ({ on: soundEnabled, saved: localStorage.getItem("sound_enabled"),
-    toggle: $("soundToggle").checked }));
+    toggle: $("soundToggle").checked, practice: chosenMode, practiceSaved: localStorage.getItem("practice_mode") }));
   await cleanDevice.close();
   check("במכשיר חדש השמע דלוק, ולא נכתב כלום", soundDefault.on && soundDefault.saved === null && soundDefault.toggle, soundDefault);
+  check("במכשיר חדש סוג התרגול מעורב, ולא נכתב כלום", soundDefault.practice === "mixed" && soundDefault.practiceSaved === null, soundDefault);
   // המתג באזור המבוגר, והבחירה נשמרת בין פתיחות.
   await openSettings();
   const soundOn = await page.evaluate(() => soundEnabled);

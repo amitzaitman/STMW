@@ -57,6 +57,11 @@
   }
   body[data-screen="door"] #lock, body[data-screen="grownup"] #lock, body.ended #lock{display:flex}
   body.ended #game .guide{padding-inline-end:52px}
+  #dots{display:flex; gap:6px; justify-content:center; flex-wrap:wrap; min-height:10px; flex:0 0 auto; direction:rtl}
+  #dots i{width:10px; height:10px; border-radius:50%; background:var(--line)}
+  #dots i.done{background:var(--act-soft)}
+  #dots i.now{background:var(--act)}
+  body.ended #dots{visibility:hidden}
   #lock.holding{opacity:1; color:var(--act)}
   /* בפינה העליונה של המשחק: החזקה של 3 שניות חוזרת למסך הפתיחה. באייפון אין
      כפתור "חזור". */
@@ -137,6 +142,8 @@
   #card.again{animation:shake .4s}
   #card.teach{background:var(--teach)}
   #card.fall{animation:fall .6s ease-in forwards}
+  #card.pop{animation:pop .6s ease-out}
+  @keyframes pop{from{transform:translateY(40%) scale(.3); opacity:0}}
   @keyframes fall{to{transform:translateY(40%) scale(.3); opacity:0}}
   @keyframes shake{20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(5px)}}
   /* קונפטי מעל התמונה, שנשארת. */
@@ -156,7 +163,7 @@
 
   /* "נחזור לזה": כיס רך שהכרטיס נופל לתוכו. הוא ציור ולא כפתור: בלי מסגרת,
      בלי צל ובלי חץ, ואי אפשר ללחוץ עליו. */
-  #pocket{position:absolute; bottom:4px; left:50%; transform:translateX(-50%); width:120px; height:64px; pointer-events:none; color:var(--act-soft)}
+  #pocket{position:absolute; bottom:4px; left:50%; transform:translateX(-50%); width:140px; height:76px; pointer-events:none; color:var(--act-soft)}
   #pocket[hidden]{display:none}
 
   /* שומעים ובוחרים: כל תמונה בעיגול, והעיגולים מפוזרים על הבמה ולא בטור:
@@ -203,6 +210,8 @@
     display:flex; align-items:center; justify-content:center;
   }
   .slot.filled{border-style:solid; border-color:var(--ink); cursor:pointer}
+  .slot.next{border-style:solid; border-color:var(--act); box-shadow:0 0 0 4px var(--act-soft)}
+  #spellArrow{font-size:26px; color:var(--muted); line-height:1; margin-top:-4px}
   .slot.hinted{border-style:solid; border-color:#2B6CB0; color:#2B6CB0; background:#EBF8FF}
   .slot.right{border-style:solid; border-color:var(--ok); color:var(--ok); background:#F0FFF4}
   .slot.wrong{border-color:#C05621; color:#C05621; background:#FFF4E5; animation:shake .3s}
@@ -241,7 +250,10 @@
   }
   #say:active:not(.listening){transform:translateY(4px); box-shadow:0 2px 0 var(--ink)}
   /* מקשיב: טורקיז, גם תחת האצבע, כי ההקשבה ממשיכה. */
-  #say.listening{background:var(--turq); border-color:#0E7C72; box-shadow:0 0 0 10px rgba(20,184,166,.25), 0 0 0 22px rgba(20,184,166,.12)}
+  #say{--level:0}
+  #say.listening{background:var(--turq); border-color:#0E7C72;
+    box-shadow:0 0 0 calc(6px + var(--level) * 14px) rgba(20,184,166,.28), 0 0 0 calc(14px + var(--level) * 26px) rgba(20,184,166,.13);
+    transition:box-shadow .08s linear}
   #say.appear .ico{animation:pulse .3s 2 alternate ease-in-out}
   /* פעימה אחת אחרי חלון הקשבה שנגמר בלי מילה. */
   #say.nudge{animation:bounce .35s 2 alternate ease-in-out}
@@ -263,32 +275,34 @@
   }
   #roundEnd[hidden]{display:none}
   body.ended #card, body.ended #choices, body.ended #spell, body.ended #buttons, body.ended #pocket{display:none}
-  .end-view{flex:1; display:flex; flex-direction:column; align-items:center; gap:14px; width:100%}
-  .end-view[hidden]{display:none}
-  #roundPics{display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px}
-  .pic-btn{
-    position:relative; border:0; background:transparent; padding:4px; line-height:1;
-    font-size:44px; border-radius:14px; -webkit-tap-highlight-color:transparent; cursor:default;
-  }
-  /* ✨ על מילה שפגשו לראשונה בסבב הזה. */
-  .pic-btn.fresh::after{content:"✨"; position:absolute; top:-2px; left:-4px; font-size:18px}
-  #endActions{display:flex; gap:12px; width:100%; margin-top:auto; direction:ltr}
+  #roundPics{display:flex; flex-wrap:wrap; justify-content:center; align-content:flex-start; gap:10px; flex:1}
+  .pic{line-height:1; font-size:44px; display:inline-flex; align-items:center; justify-content:center}
+  /* המדבקות נכנסות אחת אחרי השנייה, כולן באותו גודל. */
+  .pic.sticker{background:#fff; border:3px solid var(--line); border-radius:20px; width:76px; height:76px; animation:stick .25s ease-out backwards}
+  @keyframes stick{from{transform:scale(.3) rotate(-12deg); opacity:0}}
+  #endActions{display:flex; width:100%; margin-top:auto}
   #endActions button{
-    height:88px; border-radius:28px; box-shadow:0 5px 0 var(--ink); font-size:40px;
+    flex:1; height:88px; border-radius:28px; box-shadow:0 5px 0 var(--ink); font-size:40px;
     display:flex; align-items:center; justify-content:center; padding:0;
   }
   #endActions button:active{transform:translateY(3px); box-shadow:0 1px 0 var(--ink)}
   #endActions button[hidden]{display:none}
-  #basketBtn{flex:1; background:#fff; border-color:var(--line) !important; box-shadow:none !important; color:var(--muted)}
-  #againBtn{flex:2; background:var(--act); color:#fff}
-  .basket-head{display:flex; align-items:center; justify-content:space-between; width:100%}
-  .basket-head h2{margin:0; font-size:22px}
-  #basketPics{
-    width:100%; display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:6px;
-  }
-  #basketPics .pic-btn{display:flex; flex-direction:column; align-items:center; gap:4px; font-size:30px}
+  #againBtn{background:var(--act); color:#fff}
+  /* הסל: ציור ולא כפתור. במסך הפתיחה כל מה שנאסף, ובסוף הסבב מה שנכנס עכשיו. */
+  .basket{display:flex; flex-direction:column; align-items:center; gap:4px; pointer-events:none}
+  .basket[hidden]{display:none}
+  .basket-art{font-size:56px; color:#C08A3E; line-height:1}
+  .basket-pics{display:flex; flex-wrap:wrap; justify-content:center; gap:2px; max-width:100%}
+  .basket-pics .pic{font-size:28px}
+  #doorBasket{margin-bottom:8px; max-height:24dvh; overflow:hidden}
+  #doorBasket.empty .basket-art{color:var(--line)}
+  .pic.new{animation:twinkle .7s .4s 2 alternate ease-in-out}
+  @keyframes twinkle{to{transform:scale(1.35)}}
+  .pic.into{animation:into .3s ease-in backwards}
+  @keyframes into{from{transform:translateY(-140px) scale(1.6); opacity:0}}
+  #basketPics{width:100%; display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:6px}
+  #basketPics .pic{display:flex; flex-direction:column; align-items:center; gap:4px; font-size:30px}
   #basketPics .w{font-size:13px; font-weight:700; color:var(--ink); direction:ltr}
-  #basketEmpty{text-align:center}
   #basketEmpty[hidden]{display:none}
 
   /* שאלת המספר לפני ההגדרות: מספר כתוב באנגלית, שילד שלא קורא אנגלית לא יפתור. */
@@ -317,7 +331,7 @@
     .small{height:64px}
   }
   @media (prefers-reduced-motion: reduce){
-    .big-play, .cue .ico, #card.again, #card.fall, #card.grow, .confetti i, #say.nudge, #say.appear .ico,
+    #card.pop, .big-play, .cue .ico, .pic.sticker, .pic.new, .pic.into, #card.again, #card.fall, #card.grow, .confetti i, #say.nudge, #say.appear .ico,
     #playWord.nudge .ico, .bird .b-all, #hand.tap, .cue.poke{animation:none !important}
     .choice.fly{transition:none}
   }
@@ -649,6 +663,10 @@
     <svg class="bird" viewBox="0 0 96 104" data-pose="wave" aria-hidden="true"></svg>
   </div>
   <button id="play" class="big-play" type="button" aria-label="לשחק"></button>
+  <div id="doorBasket" class="basket" aria-hidden="true">
+    <span class="basket-art"></span>
+    <div id="doorBasketPics" class="basket-pics"></div>
+  </div>
 </section>
 
 <section id="game" class="screen" aria-label="משחק">
@@ -656,6 +674,8 @@
     <svg class="bird" id="bird" viewBox="0 0 96 104" data-pose="wait" aria-hidden="true"></svg>
     <div id="cue" class="cue" aria-live="polite"></div>
   </div>
+  <!-- כמה מילים נשארו בסבב: נקודות, בלי תמונות ובלי מספרים, ואי אפשר ללחוץ עליהן. -->
+  <div id="dots" aria-hidden="true"></div>
   <div id="stage">
     <div id="card">
       <span id="badge" aria-hidden="true"></span>
@@ -672,30 +692,22 @@
     </div>
     <div id="spell" hidden>
       <div id="slots"></div>
+      <!-- כיוון הכתיבה: אנגלית נכתבת משמאל לימין, הפוך מעברית. -->
+      <div id="spellArrow" aria-hidden="true"></div>
       <div id="bank" role="group" aria-label="האותיות של המילה"></div>
     </div>
     <svg id="pocket" viewBox="0 0 120 64" aria-hidden="true" hidden>
-      <path d="M8 10 Q60 22 112 10 L104 50 Q60 66 16 50 Z" fill="currentColor" opacity=".55"/>
-      <path d="M14 18 Q60 30 106 18" fill="none" stroke="#6C4CF1" stroke-width="2" stroke-dasharray="5 5" opacity=".6"/>
+      <path d="M8 10 Q60 22 112 10 L104 50 Q60 66 16 50 Z" fill="currentColor"/>
+      <path d="M14 18 Q60 30 106 18" fill="none" stroke="#6C4CF1" stroke-width="2.5" stroke-dasharray="5 5"/>
     </svg>
     <section id="roundEnd" hidden aria-label="סוף הסבב">
-      <div id="endView" class="end-view">
-        <div id="roundPics" role="group" aria-label="המילים של הסבב"></div>
-        <div id="endActions">
-          <button id="basketBtn" type="button" aria-label="הסל: המילים שכבר יודעים להגיד" title="הסל">🧺</button>
-          <button id="againBtn" type="button" aria-label="עוד סבב" title="עוד סבב" hidden></button>
-        </div>
+      <div id="roundPics" role="group" aria-label="המילים של הסבב"></div>
+      <div id="endBasket" class="basket" aria-hidden="true" hidden>
+        <span class="basket-art"></span>
+        <div id="endBasketNew" class="basket-pics"></div>
       </div>
-      <div id="basketView" class="end-view" hidden>
-        <div class="basket-head">
-          <button id="basketBack" type="button" class="panel-back-btn" title="חזרה לסוף הסבב">
-            <span>➔</span>
-            <span>חזרה</span>
-          </button>
-          <h2>🧺</h2>
-        </div>
-        <p id="basketEmpty" class="match-desc" hidden>כאן ייאספו המילים שתגידו נכון מהתמונה, בשני ימים שונים.</p>
-        <div id="basketPics" role="group" aria-label="המילים בסל"></div>
+      <div id="endActions">
+        <button id="againBtn" type="button" aria-label="עוד סבב" title="עוד סבב" hidden></button>
       </div>
     </section>
   </div>
@@ -774,6 +786,15 @@
         <p id="lastRound"></p>
       </div>
 
+      <div class="match-section">
+        <div class="match-title-wrap">
+          <span class="match-icon">🧺</span>
+          <span class="match-title">הסל</span>
+        </div>
+        <p id="basketEmpty" class="match-desc" hidden>כאן ייאספו המילים שהילד אומר נכון מהתמונה, בשני ימים שונים.</p>
+        <div id="basketPics" role="group" aria-label="המילים בסל"></div>
+      </div>
+
       <!-- כפתור גישה לחלון רשימת המילים הקיימות -->
       <button id="openWordsViewBtn" type="button" class="settings-words-card" data-goto="words" aria-label="מעבר לרשימת המילים שבתרגול">
         <span class="words-card-icon">📝</span>
@@ -834,6 +855,7 @@
           <span class="match-title">סוג התרגול</span>
         </div>
         <div id="modeSwitch" role="radiogroup" aria-label="סוג התרגול">
+          <button type="button" role="radio" data-mode="mixed" title="המשחק משלב בעצמו סבב כתיבה, כל סבב שלישי, במילים שהילד כבר אומר">🔀 מעורב</button>
           <button type="button" role="radio" data-mode="say" title="אומרים את המילה בקול">🎤 אומרים</button>
           <button type="button" role="radio" data-mode="spell" title="כותבים את המילה מאותיות">🔤 כותבים</button>
         </div>
@@ -1141,10 +1163,16 @@ let soundEnabled = (()=>{ try{ return localStorage.getItem(SOUND_KEY) !== "0"; }
 const HEBREW_KEY = "hebrew_spelling";
 function readHebrew(){ try{ return localStorage.getItem(childKey(HEBREW_KEY)) !== "0"; }catch(e){ return true; } }
 let hebrewEnabled = readHebrew();
-// "say" — אומרים את המילה למיקרופון. "spell" — כותבים אותה מבנק האותיות שלה.
+// מה שהמבוגר בחר (chosenMode): "say" — אומרים את המילה למיקרופון. "spell" —
+// כותבים אותה מבנק האותיות שלה. "mixed", ברירת המחדל — המשחק משלב בעצמו סבב
+// כתיבה (pickMode). mode הוא התרגול של הסבב שעל המסך: "say" או "spell".
 const MODE_KEY = "practice_mode";
-function readMode(){ try{ return localStorage.getItem(childKey(MODE_KEY)) === "spell" ? "spell" : "say"; }catch(e){ return "say"; } }
-let mode = readMode();
+function readMode(){
+  try{ const m = localStorage.getItem(childKey(MODE_KEY)); return m === "spell" || m === "say" ? m : "mixed"; }
+  catch(e){ return "mixed"; }
+}
+let chosenMode = readMode();
+let mode = chosenMode === "spell" ? "spell" : "say";
 
 // --- רמת ההתאמה לדיבור הילד: אחת משלוש ---
 // אין כיוון עדין באמצע: מול הקלטות עם ציוני הגייה של מומחים, 30 עד 60
@@ -1289,10 +1317,23 @@ function show(){
   const he = typeof HE_BY_WORD !== "undefined" && HE_BY_WORD[word()] || "";
   $("wordHe").textContent = hebrewEnabled ? he : "";
   $("pocket").hidden = true;
+  // מילה שנפלה לכיס וחוזרת עכשיו קופצת ממנו החוצה. מילה שהילד כבר אומר חוזרת
+  // בלי כתב (💭), כמו תמיד: הצלחה כזו היא שוב שליפה מהתמונה.
+  const pocketed = round.pocketed || (round.pocketed = []), back = pocketed.indexOf(word());
+  if(fresh && back >= 0){
+    pocketed.splice(back, 1);
+    $("pocket").hidden = false;
+    setCard("pop");
+    const mine = shownCount;
+    setTimeout(() => { if(mine === shownCount){ $("pocket").hidden = true; if($("card").className === "pop") setCard(""); } }, POP_MS);
+  }
   renderVeil();
   renderStep();
   if(mode === "spell") startSpelling();
   if(fresh && turn.step === "understand") introduce();
+  // בכתיבה המילה נאמרת כשהיא מופיעה, כהכתבה. היא לא עזרה: כתיבה נקייה לא
+  // תלויה בשמיעה.
+  if(fresh && mode === "spell" && canSpeak()){ turn.heard = true; sayWord(); }
   // הצגה מחדש של מילה שכבר הוכרעה — שינוי ברשימה בחלון אחר, הדלקת התעתיק —
   // מבטלת את המעבר שההצלחה תזמנה (shownCount), ואין ⏭️ גדול שיוציא ממנה. לכן
   // היא ממשיכה לבד.
@@ -1309,7 +1350,7 @@ function show(){
   }
   ui();
 }
-const NO_VOICE_MS = 2500;
+const NO_VOICE_MS = 2500, POP_MS = 700;
 let noVoiceShown = false;
 
 // בכתיבה המילה באנגלית מוסתרת ממילא, והתעתיק נשאר כמו שהיה. ב"להבין" ובבדיקה
@@ -1395,6 +1436,8 @@ function speak(text, lang){
 // [תדר, השהיה בשניות]. הצלחה: דו-מי-סול עולים. אין צליל טעות: הרעידה, הכתב
 // שחוזר והמילה באנגלית אומרים "עוד לא" בלי לשמוע כמו עונש.
 const CHEER = { notes: [[1046.5, 0], [1318.5, 0.08], [1568, 0.16]], volume: 0.2 };
+// תקתוק רך כשהילד מניח אות.
+const TICK = { notes: [[1760, 0]], volume: 0.05 };
 // "דינג" רך כשמנוע הזיהוי מוכן באמצע משחק: מכאן יש גם אמירה.
 const READY = { notes: [[1318.5, 0]], volume: 0.08 };
 const CHIME_SECONDS = 0.45;
@@ -1663,6 +1706,19 @@ function processRecognition(msg){
   finish(best >= preset.threshold, { score: best, heard: tokens.map(t => t.word).join(" ") });
 }
 
+// הטבעות סביב 🎤 בזמן ההקשבה זזות עם עוצמת הקול (RMS) של מה שהמיקרופון שומע,
+// כדי שהילד יראה שהוא נשמע. מאותו צומת שכבר מעביר את האודיו למפענח, בלי
+// צומת נוסף. LEVEL_GAIN: דיבור רגיל של ילד ממלא בערך את הטבעות. LEVEL_DECAY:
+// הטבעות יורדות בהדרגה בין הברות, ולא מהבהבות. ניחושים, לכוונון במכשיר.
+const LEVEL_GAIN = 6, LEVEL_DECAY = 0.8;
+let micLevel = 0;
+function showLevel(samples){
+  let sum = 0;
+  for(let k = 0; k < samples.length; k++) sum += samples[k] * samples[k];
+  micLevel = Math.max(Math.min(1, Math.sqrt(sum / samples.length) * LEVEL_GAIN), micLevel * LEVEL_DECAY);
+  $("say").style.setProperty("--level", micLevel.toFixed(2));
+}
+
 // מסלול שנגמר — הרשאה שבוטלה, מיקרופון שנותק — לא חוזר לחיים, וזרם שאין
 // בו מסלול חי מקליט שקט.
 function micLive(){
@@ -1678,6 +1734,7 @@ async function ensureAudio(){
     procNode.onaudioprocess = e=>{
       // המפענח מקבל אודיו רק בזמן ניסיון. בשאר הזמן שום דבר לא מעובד.
       if(rec && active){ try{ rec.acceptWaveform(e.inputBuffer); }catch(err){} }
+      if(active) showLevel(e.inputBuffer.getChannelData(0));
     };
     sinkNode = ctx.createGain();
     sinkNode.gain.value = 0;
@@ -1808,6 +1865,8 @@ function stopListening(){
   // מאפס את המפענח כדי שהניסיון הבא יתחיל נקי. התוצאה שחוזרת מכאן נבלעת כי active כבר כבוי.
   if(rec) rec.retrieveFinalResult();
   $("say").classList.remove("listening");
+  micLevel = 0;
+  $("say").style.setProperty("--level", "0");
   ui();
   return true;
 }
@@ -2039,9 +2098,33 @@ function sayRound(w, day, pace){
   return { queue, fresh };
 }
 
-function spellRound(w){
+// known: סבב כתיבה שהמשחק שילב בעצמו, ובו רק מילים שהילד כבר אומר, גם אם
+// הסבב יוצא קצר: ילד לא מתבקש לכתוב מילה שעוד לא אמר. סבב כתיבה שהמבוגר
+// בחר מתמלא גם במילים אחרות.
+function spellRound(w, known = false){
   const tier = x => w[x] && w[x].wrote === undefined ? (w[x].got !== undefined ? 0 : 1) : 2;
-  return shuffle([...new Set(words.map(x => x.word))]).sort((a, b) => tier(a) - tier(b)).slice(0, ROUND_SIZE);
+  return shuffle([...new Set(words.map(x => x.word))]).filter(x => !known || (w[x] && w[x].got !== undefined))
+    .sort((a, b) => tier(a) - tier(b)).slice(0, ROUND_SIZE);
+}
+
+// במצב מעורב: כל SPELL_EVERY סבבים אחד הוא כתיבה, ורק אחרי שהילד כבר אומר
+// SPELL_AFTER_KNOWN מילים. הספירה בזיכרון בלבד, לכל ילד, ומתחילה מחדש בכל
+// פתיחה. ניחושים, לכוונון מהיומן.
+const SPELL_EVERY = 3, SPELL_AFTER_KNOWN = 3;
+let roundsSinceSpell = 0, mixedSpellRound = false;
+function knownWords(){
+  const w = readStore(PROGRESS_KEY).data.w;
+  return [...new Set(words.map(x => x.word))].filter(x => w[x] && w[x].got !== undefined);
+}
+function mixedSpellDue(){
+  return roundsSinceSpell >= SPELL_EVERY - 1 && knownWords().length >= SPELL_AFTER_KNOWN;
+}
+// התרגול של הסבב הבא, בכל מעבר לסבב: כניסה למשחק ו-▶ בסוף סבב. שינוי ברשימה
+// או בילד בונה מחדש את אותו סבב ולא מקדם את הספירה.
+function pickMode(){
+  mixedSpellRound = chosenMode === "mixed" && mixedSpellDue();
+  mode = mixedSpellRound ? "spell" : chosenMode === "spell" ? "spell" : "say";
+  roundsSinceSpell = mode === "spell" ? 0 : roundsSinceSpell + 1;
 }
 
 // המילה שעל המסך כשסבב נבנה תופסת בו את המקום שלה, כדי שלא תחזור מיד: מילה
@@ -2051,17 +2134,21 @@ function holdCurrent(){
   if(k >= 0) round.queue.splice(k, 1);
 }
 
-// בונה סבב חדש בתרגול שנבחר, בלי להחליף את המילה שעל המסך. כשאין מנוע
+// בונה סבב חדש בתרגול שעל המסך, בלי להחליף את המילה שעל המסך. כשאין מנוע
 // זיהוי (או מיקרופון) וגם אין קול באנגלית, אי אפשר לא לומר ולא לשמוע, והסבב
-// הוא כתיבה. זה זמני ולא נשמר: הסבב הבא חוזר למה שהמבוגר בחר.
-let modeFallback = false;
+// הוא כתיבה. זה זמני ולא נשמר: הסבב הבא חוזר למה שהמבוגר בחר (pickMode).
+// basket: מה שכבר היה בסל כשהסבב התחיל, כדי שסוף הסבב יראה מה נכנס אליו.
+// pocketed: מילים שנפלו לכיס וחוזרות בהמשך הסבב.
 function startRound(){
-  if(modeFallback){ mode = readMode(); modeFallback = false; }
-  if(mode === "say" && listenOnly() && !canSpeak()){ mode = "spell"; modeFallback = true; }
+  if(mode === "say" && listenOnly() && !canSpeak()) mode = "spell";
   renderMode();
   const data = readStore(PROGRESS_KEY).data;
-  const built = mode === "say" ? sayRound(data.w, dayNumber(), paceOf(data)) : { queue: spellRound(data.w), fresh: [] };
-  round = { queue: built.queue, at: -1, row: [], tried: [], fresh: built.fresh, requeued: [], seen: [], said: false };
+  const mixedSpell = mode === "spell" && mixedSpellRound;
+  const built = mode === "say" ? sayRound(data.w, dayNumber(), paceOf(data)) : { queue: spellRound(data.w, mixedSpell), fresh: [] };
+  // סבב כתיבה משולב בלי אף מילה שהילד אומר (מילה נמחקה מהרשימה): אמירה במקומו.
+  if(!built.queue.length && mixedSpell){ mixedSpellRound = false; mode = "say"; return startRound(); }
+  round = { queue: built.queue, at: -1, row: [], tried: [], fresh: built.fresh, requeued: [], seen: [], said: false,
+            basket: basketWords().map(b => b.word), pocketed: [] };
 }
 
 // המילה הבאה בסבב, או null כשהוא נגמר. כל שינוי ברשימה בונה סבב חדש, כך
@@ -2099,11 +2186,13 @@ function next(keepTurn = false){
 // מילה שלא התקבלה פעמיים חוזרת פעם אחת, RECHECK_GAP מקומות אחרי זו שעל
 // המסך. כשנשארו פחות מילים בסבב היא לא חוזרת בו: הסולם מחזיר אותה מחר.
 function requeue(w){
+  if(!round.pocketed) round.pocketed = [];
   if(round.requeued.includes(w)) return;
   round.requeued.push(w);
-  if(round.queue.some((x, k) => k > round.at && x === w)) return;
+  if(round.queue.some((x, k) => k > round.at && x === w)) return round.pocketed.push(w);
   if(round.queue.length < round.at + RECHECK_GAP) return;
   round.queue.splice(round.at + RECHECK_GAP, 0, w);
+  round.pocketed.push(w);
 }
 
 // row: מה שנאמר או נכתב בניסיון הראשון בלי עזרה, לאזור המבוגר. הילד לא רואה
@@ -2150,13 +2239,15 @@ function adaptPace(){
 // צליל אחד בסוף הסבב, ארוך מזה של מילה אחת.
 const ROUND_CHEER = { notes: [[784, 0], [1046.5, 0.12], [1318.5, 0.24], [1568, 0.36]], volume: 0.16 };
 
-// מסך הסיום: כל המילים שניסו בסבב, כולן באותו גודל, ו-✨ על מילה חדשה. בלי
-// מספרים. נגיעה בתמונה לא משמיעה כלום: השמע דלוק, והיא הייתה אומרת את המילה
-// שפותחת את הסבב הבא, ואז אמירה שלה הייתה נחשבת "לבד". ▶ מתחיל סבב חדש, ו-🧺
-// מראה את הסל. ▶ יושב מתחת ל-🎤 ול-⏭️. נגיעה כפולה, או נגיעה ב-🎤 רגע אחרי
-// שההצלחה התחלפה, הייתה מדלגת על המסך הזה בלי שהילד ראה אותו, ולכן ▶ מופיע
-// רק כשההגנה נגמרת.
-const END_GUARD_MS = 600;
+// מסך הסיום: התמונות של מה שניסו בסבב נכנסות אחת אחרי השנייה כמדבקות שוות,
+// בלי כוכבים, בלי גדול/קטן ובלי מספרים. מילה שנכנסה לסל בסבב הזה קופצת אליו,
+// כתמונה בלבד. נגיעה במדבקה לא משמיעה כלום, ושום מילה לא נאמרת כאן: השמע דלוק,
+// והיא הייתה מגלה את המילה שפותחת את הסבב הבא, ואז אמירה שלה הייתה נחשבת
+// "לבד". ▶ יושב מתחת ל-🎤 ול-⏭️. נגיעה כפולה, או נגיעה ב-🎤 רגע אחרי שההצלחה
+// התחלפה, הייתה מדלגת על המסך הזה בלי שהילד ראה אותו, ולכן ▶ מופיע רק כשההגנה
+// נגמרת. המדבקות נכנסות במשך STICKERS_MS, ומה שנכנס לסל קופץ אחריהן (משך
+// .into ב-CSS), כך שהכל נגמר עד END_GUARD_MS.
+const END_GUARD_MS = 600, STICKERS_MS = 300;
 let endShownAt = -Infinity;
 function showRoundEnd(){
   stopListening();
@@ -2166,18 +2257,29 @@ function showRoundEnd(){
   endShownAt = performance.now();
   document.body.classList.add("ended");
   $("roundEnd").hidden = false;
-  $("roundPics").replaceChildren(...round.tried.map(w => picButton(w, round.fresh.includes(w) ? " fresh" : "")));
+  const step = STICKERS_MS / Math.max(1, round.tried.length);
+  $("roundPics").replaceChildren(...round.tried.map((w, k) => {
+    const b = picture(w, "sticker");
+    b.style.animationDelay = Math.round(k * step) + "ms";
+    return b;
+  }));
+  const before = round.basket || [], fresh = basketWords().map(b => b.word).filter(w => !before.includes(w) && emojiFor(w));
+  $("endBasket").hidden = !fresh.length;
+  $("endBasketNew").replaceChildren(...fresh.map(w => {
+    const b = picture(w, "into");
+    b.style.animationDelay = STICKERS_MS + "ms";
+    return b;
+  }));
   $("againBtn").hidden = true;
-  showEndView("end");
   setTimeout(() => {
     if(mine !== shownCount || !ended) return;
     $("againBtn").hidden = false;
-    if($("roundEnd").contains(document.activeElement) || document.activeElement === document.body) showEndView(endViewNow());
+    if($("roundEnd").contains(document.activeElement) || document.activeElement === document.body)
+      $("againBtn").focus({ preventScroll: true });
   }, END_GUARD_MS);
   chime(ROUND_CHEER);
   ui();
 }
-function endViewNow(){ return $("basketView").hidden ? "end" : "basket"; }
 function hideRoundEnd(){
   if(!ended) return;
   ended = false;
@@ -2188,13 +2290,15 @@ function hideRoundEnd(){
 // אחרת הפוקוס נופל לגוף הדף עם הכפתור שהוסתר.
 function newRound(){
   const keyboard = $("roundEnd").contains(document.activeElement);
+  pickMode();
   startRound();
   next();
   if(keyboard) (isShown($("say")) ? $("say") : $("next")).focus({ preventScroll: true });
 }
 
-function picButton(w, cls = ""){
-  const b = el("span", "pic-btn" + cls, emojiFor(w));
+// תמונה של מילה, ולא פקד: אין עליה מה ללחוץ.
+function picture(w, cls = ""){
+  const b = el("span", "pic" + (cls ? " " + cls : ""), emojiFor(w));
   b.dataset.word = w;
   b.setAttribute("role", "img");
   b.setAttribute("aria-label", w);
@@ -2202,8 +2306,9 @@ function picButton(w, cls = ""){
 }
 
 // הסל: כל מילה שהילד אמר לבד מהתמונה בשני ימים שונים, החדשות קודם. מה שנכנס
-// לסל נשאר בו, גם כשהמילה חוזרת לתרגול, וגם אם יצאה מהרשימה; מילה שיצאה גם
-// מהמאגר, כמו sax, מופיעה בלי תמונה, רק באנגלית. ✏️ ליד מילה שגם כתב.
+// לסל נשאר בו, גם כשהמילה חוזרת לתרגול, וגם אם יצאה מהרשימה. לילד, במסך
+// הפתיחה, רק התמונות; מילה שיצאה גם מהמאגר, כמו sax, ואין לה תמונה, לא מופיעה
+// שם. למבוגר המילים באנגלית, ✏️ ליד מילה שהילד גם כתב.
 function basketWords(){
   const w = readStore(PROGRESS_KEY).data.w;
   return Object.keys(w).filter(x => w[x] && Array.isArray(w[x].ok) && w[x].ok.length >= 2)
@@ -2213,19 +2318,20 @@ function basketWords(){
 function renderBasket(){
   const items = basketWords();
   $("basketPics").replaceChildren(...items.map(({ word: w, wrote }) => {
-    const b = picButton(w);
+    const b = picture(w);
     b.append(span("w", w + (wrote ? " ✏️" : "")));
     return b;
   }));
   $("basketEmpty").hidden = items.length > 0;
 }
-
-function showEndView(view){
-  if(view === "basket") renderBasket();
-  $("endView").hidden = view !== "end";
-  $("basketView").hidden = view !== "basket";
-  const focus = view === "basket" ? $("basketBack") : !$("againBtn").hidden ? $("againBtn") : null;
-  if(focus) focus.focus({ preventScroll: true });
+// במסך הפתיחה: הסל בלי כתב ובלי קול, ואי אפשר ללחוץ עליו. סל ריק הוא רק קווי
+// מתאר. תמונה שנכנסה מאז הפעם הקודמת שמסך הפתיחה הוצג מנצנצת פעם אחת.
+let doorBasketSeen = null;
+function renderDoorBasket(){
+  const items = basketWords().map(b => b.word).filter(emojiFor);
+  $("doorBasket").classList.toggle("empty", !items.length);
+  $("doorBasketPics").replaceChildren(...items.map(w => picture(w, doorBasketSeen && !doorBasketSeen.includes(w) ? "new" : "")));
+  doorBasketSeen = items;
 }
 
 // --- להבין, ובדיקה מהתמונה ---
@@ -2491,9 +2597,15 @@ function startSpelling(){
   }));
   $("hint").disabled = false;
   turn.cue = null;
+  markNext();
 }
 
 function slotList(){ return [...$("slots").children]; }
+// המשבצת הבאה זוהרת: שם תנחת האות שהילד ילחץ עליה.
+function markNext(){
+  const slots = slotList(), at = slots.find(s => !s.tile);
+  for(const s of slots) s.classList.toggle("next", s === at && !busy);
+}
 
 // המשבצת זוכרת איזו אות מהבנק יושבת בה, כדי להחזיר בדיוק אותה.
 function put(tile, slot, cls){
@@ -2509,6 +2621,7 @@ function takeOut(slot){
   slot.tile = null;
   slot.textContent = "";
   slot.className = "slot";
+  markNext();
 }
 
 // כל אות נכנסת, גם לא נכונה. אילו רק הנכונה נכנסה, היה מספיק ללחוץ על
@@ -2518,6 +2631,8 @@ function tapTile(tile){
   const slot = slotList().find(s => !s.tile);
   if(busy || !slot) return;
   put(tile, slot, "filled");
+  chime(TICK);
+  markNext();
   checkWord();
 }
 
@@ -2551,11 +2666,15 @@ function checkWord(){
   for(const s of slots) if(s.classList.contains("filled") && !wrong.includes(s)) s.className = "slot right";
   for(const s of wrong) s.classList.add("wrong");
   again();
+  markNext();
+  // המילה נשמעת שוב, כמו באמירה, לפני הניסיון הבא.
+  sayWord();
   const mine = board;
   setTimeout(()=>{
     if(mine !== board) return;
-    wrong.forEach(takeOut);
     busy = false;
+    wrong.forEach(takeOut);
+    markNext();
     ui();
   }, WRONG_MS);
 }
@@ -2574,12 +2693,13 @@ function giveHint(){
   const tile = inBank();
   put(tile, slots[k], "hinted");
   turn.hinted = true;
+  markNext();
   checkWord();
 }
 
-// המתג באזור המבוגר מראה את מה שנבחר, גם כשהסבב הזה הוא כתיבה זמנית.
+// המתג באזור המבוגר מראה את מה שנבחר, גם כשהסבב הזה הוא כתיבה זמנית או משולבת.
 function renderMode(){
-  const spell = mode === "spell", chosen = modeFallback ? readMode() : mode;
+  const spell = mode === "spell", chosen = chosenMode;
   $("word").hidden = spell;
   $("spell").hidden = !spell;
   $("say").hidden = spell;
@@ -2593,12 +2713,16 @@ function renderMode(){
 }
 
 function setMode(to){
-  if(to === mode && !modeFallback) return;
-  modeFallback = false;
+  const practice = to === "spell" ? "spell" : "say";
+  if(to === chosenMode && practice === mode) return;
   // הקשבה שנקטעה במעבר אינה ניסיון שנכשל, אז בלי "נסו שוב".
   stopListening();
-  mode = to;
-  try{ localStorage.setItem(childKey(MODE_KEY), mode); }catch(e){}
+  chosenMode = to;
+  mixedSpellRound = false;
+  try{ localStorage.setItem(childKey(MODE_KEY), to); }catch(e){}
+  renderMode();
+  if(practice === mode) return;
+  mode = practice;
   // בכתיבה רואים את המילה באותיות שלה, ומעבר לכל כיוון אומר שהתור הזה היה שם.
   // "להבין" והבדיקה מהתמונה כבר לא שייכים לתור כזה, והוא ממשיך באמירה.
   turn.peeked = true;
@@ -2835,6 +2959,7 @@ function renderPanel(){
   updateMainWordsSummary();
   renderChildren();
   renderLastRound();
+  renderBasket();
   if(currentSettingsTab === "words") renderList();
   if(currentSettingsTab === "catalog") renderCatalog();
 }
@@ -2858,7 +2983,7 @@ function childName(){
 // מתחיל עם המילים שאחר כבר יודע.
 function profileValues(){
   return { words: JSON.stringify(words), [MATCH_KEY]: preset.id,
-           [HEBREW_KEY]: hebrewEnabled ? "1" : "0", [MODE_KEY]: mode };
+           [HEBREW_KEY]: hebrewEnabled ? "1" : "0", [MODE_KEY]: chosenMode };
 }
 
 // במקום, בלי לטעון את הדף מחדש: טעינה באמצע ההורדה הראשונה של המודל
@@ -2872,7 +2997,10 @@ function switchChild(id, remember = true){
   $("hebrewToggle").checked = hebrewEnabled;
   preset = readPreset();
   updateMatchUI();
-  mode = readMode();
+  chosenMode = readMode();
+  mode = chosenMode === "spell" ? "spell" : "say";
+  roundsSinceSpell = 0;
+  mixedSpellRound = false;
   renderMode();
   // הסבב, והשורה שלו, של הילד החדש: מההתקדמות שלו, ומתחיל במילה הראשונה בו.
   applyWords(load() || DEFAULT_WORDS.slice(), null, false);   // גם מרנדר
@@ -3008,6 +3136,8 @@ const ICON = {
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   skip: '<path d="M18 6 10 12l8 6V6z"/><path d="M6 6v12"/>',
   bulb: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>',
+  arrow: '<path d="M4 12h15"/><path d="M14 7l5 5-5 5"/>',
+  basket: '<path d="M3 10h18l-2.2 10H5.2z"/><path d="M8 10l4-6 4 6"/><path d="M8 14v2.5M12 14v2.5M16 14v2.5"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   mutedMic: '<path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/><path d="M3 3l18 18"/>',
   pointer: '<path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10"/><path d="M12 9.5a1.5 1.5 0 0 1 3 0V11"/><path d="M15 10.5a1.5 1.5 0 0 1 3 0v4a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7l-2.4-3.6a1.5 1.5 0 0 1 2.4-1.8L9 15" fill="#fff"/>'
@@ -3135,8 +3265,16 @@ function renderBadge(){
   $("badge").innerHTML = kind === "probe" ? "?" : kind === "recall" ? icon("thought") : "";
 }
 
+function renderDots(){
+  if(screen !== "game") return;
+  const n = round.queue.length, at = round.at, dots = $("dots");
+  if(dots.childElementCount !== n) dots.replaceChildren(...Array.from({ length: n }, () => document.createElement("i")));
+  [...dots.children].forEach((d, k) => d.className = k < at ? "done" : k === at ? "now" : "");
+}
+
 function ui(){
   renderStep();
+  renderDots();
   renderBadge();
   renderCue();
   renderDock();
@@ -3151,12 +3289,14 @@ function ui(){
 // תישאר לבד. ההמתנה לא מקדמת את המשחק ולא נרשמת.
 const DEMO_FIRST_MS = 700, DEMO_MAX = 3;
 const IDLE_MS = { door: 3000, grownup: 3000, pick: 6000, say: 6000, recall: 6000, again: 6000, clearer: 6000,
-                  teach: 6000, quiet: 6000, probe: 8000 };
+                  teach: 6000, quiet: 6000, probe: 8000, spell: 8000 };
 const demoSeen = new Set();
 let idleTimer = null, idleState = "", screenDemos = 0;
 function armIdle(){
   const state = cueNow(), wait = IDLE_MS[state];
   if(state === idleState && idleTimer) return;
+  // הדגמה של מצב קודם לא נשארת על מסך אחר.
+  if(state !== idleState) $("hand").classList.remove("tap");
   clearTimeout(idleTimer);
   idleTimer = null;
   idleState = state;
@@ -3171,9 +3311,13 @@ function armIdle(){
     if(screen === "game") turn.demos++; else screenDemos++;
     if(state === "pick"){
       if(!first) speakStep(false);
-      demoOver([...$("choices").children].filter(b => !b.disabled));
+      demoOver([...$("choices").children].filter(b => !b.disabled), state);
+    } else if(state === "spell"){
+      // בכתיבה: המשבצת הזוהרת, ואז אות שאינה הנכונה — היד לא מגלה את התשובה.
+      const next = slotList().find(s => !s.tile), want = next && word()[slotList().indexOf(next)];
+      const tiles = [...$("bank").children].filter(t => !t.disabled);
+      demoOver([next, tiles.find(t => t.dataset.letter !== want) || tiles[0]], state);
     } else demo(state === "probe" && !first ? $("playWord") : demoTarget());
-    idleState = "";
     armIdle();
   }, first ? DEMO_FIRST_MS : wait);
 }
@@ -3192,8 +3336,8 @@ function demo(target){
   void hand.offsetWidth;
   hand.classList.add("tap");
 }
-function demoOver(targets){
-  targets.forEach((t, k) => setTimeout(() => { if(cueNow() === "pick") demo(t); }, k * 700));
+function demoOver(targets, state){
+  targets.forEach((t, k) => setTimeout(() => { if(cueNow() === state) demo(t); }, k * 700));
 }
 document.addEventListener("pointerdown", () => {
   $("hand").classList.remove("tap");
@@ -3264,6 +3408,7 @@ let backPending = false, pushAfterBack = false;
 function pushGame(){ try{ history.pushState({ game: true }, ""); }catch(e){} }
 function enterGame(){
   setScreen("game");
+  pickMode();
   if(backPending) pushAfterBack = true;
   else pushGame();
   roundShownAt = performance.now();
@@ -3308,7 +3453,10 @@ function goGrownup(){
   screenDemos = 0;
   setScreen("grownup");
 }
-function renderDoor(){ $("childName").textContent = childName(); }
+function renderDoor(){
+  $("childName").textContent = childName();
+  renderDoorBasket();
+}
 
 // --- כניסת מבוגר ---
 // לחיצה ארוכה על 🔒, ואחריה מספר שכתוב באנגלית, במקלדת ספרות ועם מספר אחר
@@ -3421,12 +3569,10 @@ $("againBtn").addEventListener("click", () => {
   roundShownAt = performance.now();
   newRound();
 });
-$("basketBtn").addEventListener("click", () => { if(endSettled()) showEndView("basket"); });
 for(const type of ["pointerdown", "click"])
   $("buttons").addEventListener(type, e => {
     if(performance.now() - roundShownAt < END_GUARD_MS){ e.stopPropagation(); e.preventDefault(); }
   }, true);
-$("basketBack").addEventListener("click", () => showEndView("end"));
 
 $("modeSwitch").addEventListener("click", e=>{
   const b = e.target.closest("[data-mode]");
@@ -3576,8 +3722,9 @@ if(navigator.storage && navigator.storage.persist){
 
 for(const b of document.querySelectorAll(".bird")) b.innerHTML = BIRD;
 for(const [id, name] of [["play", "play"], ["resume", "play"], ["againBtn", "play"], ["lock", "lock"], ["sayIcon", "mic"],
-                         ["next", "skip"], ["hint", "bulb"], ["adultArt", "adult"], ["mutedMicArt", "mutedMic"], ["hand", "pointer"]])
+                         ["next", "skip"], ["hint", "bulb"], ["adultArt", "adult"], ["mutedMicArt", "mutedMic"], ["hand", "pointer"], ["spellArrow", "arrow"]])
   $(id).innerHTML = icon(name);
+for(const b of document.querySelectorAll(".basket-art")) b.innerHTML = icon("basket");
 // הסבב הראשון נבנה רק ב-▶: עד אז שום מילה לא מוצגת ולא נאמרת, והמנוע יורד
 // ברקע.
 renderMode();
