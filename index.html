@@ -49,20 +49,23 @@
 
   /* 🔒 קטן וחיוור, רק במסכי מנוחה: פתיחה, סוף סבב וקראו למבוגר. נגיעה רגילה
      בו לא עושה כלום; לחיצה ארוכה פותחת את שאלת המספר. */
-  #lock{
+  #lock, #refresh{
     position:fixed; top:max(8px, env(safe-area-inset-top)); left:8px; z-index:5;
     width:64px; height:64px; border:0; background:transparent; color:#7FA89A; opacity:.6;
     display:none; align-items:center; justify-content:center; font-size:22px; padding:0;
     -webkit-tap-highlight-color:transparent;
   }
   body[data-screen="door"] #lock, body[data-screen="grownup"] #lock, body.ended #lock{display:flex}
+  /* בפינה השנייה של מסך הפתיחה, באותו סגנון: לחיצה ארוכה טוענת את הגרסה האחרונה. */
+  #refresh{left:auto; right:8px}
+  body[data-screen="door"] #refresh{display:flex}
   body.ended #game .guide{padding-inline-end:52px}
   #dots{display:flex; gap:6px; justify-content:center; flex-wrap:wrap; min-height:10px; flex:0 0 auto; direction:rtl}
   #dots i{width:10px; height:10px; border-radius:50%; background:var(--line)}
   #dots i.done{background:var(--act-soft)}
   #dots i.now{background:var(--act)}
   body.ended #dots{visibility:hidden}
-  #lock.holding{opacity:1; color:var(--act)}
+  #lock.holding, #refresh.holding{opacity:1; color:var(--act)}
   /* בפינה העליונה של המשחק: החזקה של 3 שניות חוזרת למסך הפתיחה. באייפון אין
      כפתור "חזור". */
   #exit{position:fixed; top:0; right:0; width:64px; height:64px; z-index:4; display:none}
@@ -654,6 +657,7 @@
 <body data-screen="door">
 
 <button id="lock" type="button" aria-label="למבוגרים: לחיצה ארוכה" title="למבוגרים: לחיצה ארוכה"></button>
+<button id="refresh" type="button" aria-label="עדכון: לחיצה ארוכה" title="עדכון: לחיצה ארוכה"></button>
 <div id="exit" aria-hidden="true"></div>
 
 <section id="door" class="screen" aria-label="פתיחה">
@@ -3518,6 +3522,14 @@ function holdButton(el, ms, done, onHold){
 holdButton($("lock"), LOCK_HOLD_MS, openGate, on => $("lock").classList.toggle("holding", on));
 $("lock").addEventListener("click", e => { if(e.detail === 0) openGate(); });
 holdButton($("exit"), EXIT_HOLD_MS, () => { if(screen === "game") goDoor(); });
+
+// לחיצה ארוכה על 🔄 במסך הפתיחה טוענת את הגרסה האחרונה שפורסמה. פתיחה רגילה
+// של האפליקציה מקבלת את הדף ממטמון ה-HTTP של הדפדפן, ש-GitHub Pages מרשה
+// לשמור כמה דקות, גם דרך ה-service worker. reload מבקש מהשרת לאשר אותו מחדש.
+// בלי רשת ה-service worker עונה מהמטמון שלו.
+function refreshApp(){ location.reload(); }
+holdButton($("refresh"), LOCK_HOLD_MS, refreshApp, on => $("refresh").classList.toggle("holding", on));
+$("refresh").addEventListener("click", e => { if(e.detail === 0) refreshApp(); });
 window.addEventListener("popstate", () => {
   if(backPending){
     backPending = false;
@@ -3721,7 +3733,7 @@ if(navigator.storage && navigator.storage.persist){
 }
 
 for(const b of document.querySelectorAll(".bird")) b.innerHTML = BIRD;
-for(const [id, name] of [["play", "play"], ["resume", "play"], ["againBtn", "play"], ["lock", "lock"], ["sayIcon", "mic"],
+for(const [id, name] of [["play", "play"], ["resume", "play"], ["againBtn", "play"], ["lock", "lock"], ["refresh", "again"], ["sayIcon", "mic"],
                          ["next", "skip"], ["hint", "bulb"], ["adultArt", "adult"], ["mutedMicArt", "mutedMic"], ["hand", "pointer"], ["spellArrow", "arrow"]])
   $(id).innerHTML = icon(name);
 for(const b of document.querySelectorAll(".basket-art")) b.innerHTML = icon("basket");

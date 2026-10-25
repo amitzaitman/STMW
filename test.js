@@ -3462,8 +3462,8 @@ async function main(){
   await doorPage.waitForFunction(() => screen !== "door", null, { timeout: 5000 }).catch(() => {});
   const blocked = await doorPage.evaluate(() => ({ screen, status: (openPanel(), $("micStatus").checkVisibility()) }));
   await doorCtx.close();
-  check("מסך הפתיחה: רק ▶ ו-🔒, בלי מילה ובלי מיקרופון",
-    atDoor.screen === "door" && !atDoor.mic && atDoor.word === "" && atDoor.buttons.join() === "lock,play", atDoor);
+  check("מסך הפתיחה: רק ▶, 🔒 ו-🔄, בלי מילה ובלי מיקרופון",
+    atDoor.screen === "door" && !atDoor.mic && atDoor.word === "" && atDoor.buttons.join() === "lock,refresh,play", atDoor);
   check("במסך הפתיחה היד מדגימה לחיצה על ▶, בפעם הראשונה ואחרי המתנה",
     atDoor.taps >= 2 && atDoor.still && atDoor.onPlay, atDoor);
   check("▶ פותח את המיקרופון ואז את המילה הראשונה", pressed.screen === "game" && pressed.mic && !!pressed.word
@@ -3506,6 +3506,62 @@ async function main(){
   check("תשובה שגויה סוגרת בשקט, בלי הגדרות", !wrongAnswer.gate && !wrongAnswer.panel && wrongAnswer.screen === "door", wrongAnswer);
   check("תשובה נכונה פותחת את ההגדרות", !rightAnswer.gate && rightAnswer.panel, rightAnswer);
   check("המספרים באנגלית", numbers.join() === "twenty-one,thirty,fifty-three,ninety-nine", numbers);
+
+  // --------------------------------------------------------------
+  group("עדכון");
+  // GitHub Pages מרשה לדפדפן לשמור את הדף כמה דקות, ופתיחה רגילה מקבלת את
+  // העותק הזה. כאן שרת עם אותה כותרת, ודף שמשתנה אחרי שה-service worker כבר
+  // שולט: 🔄 צריך להביא את החדש, וגם בלי רשת לעלות מהמטמון ולא לדף שגיאה.
+  let build = 1;
+  const pages = staticServer();
+  const serveFile = pages.listeners("request")[0];
+  pages.removeAllListeners("request");
+  pages.on("request", (req, res) => {
+    const head = res.writeHead;
+    res.writeHead = (status, headers) => head.call(res, status, { ...headers, "Cache-Control": "max-age=600" });
+    if(decodeURIComponent(req.url.split("?")[0]).replace(/^\/+/, "") !== "") return serveFile(req, res);
+    const html = fs.readFileSync(path.join(DIR, "index.html"), "utf8")
+      .replace("<head>", `<head><meta name="build" content="${build}">`);
+    res.writeHead(200, { "Content-Type": TYPES[".html"] });
+    res.end(html);
+  });
+  await new Promise(r => pages.listen(0, "127.0.0.1", r));
+  const pagesBase = `http://127.0.0.1:${pages.address().port}/`;
+  const updCtx = await browser.newContext({ permissions: ["microphone"] });
+  const upd = await updCtx.newPage();
+  const builtAs = () => upd.evaluate(() => document.querySelector('meta[name="build"]').content);
+  const holdRefresh = async ms => {
+    const box = await upd.locator("#refresh").boundingBox();
+    await upd.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await upd.mouse.down();
+    await upd.waitForTimeout(ms);
+    await upd.mouse.up();
+  };
+  await upd.goto(pagesBase, { waitUntil: "domcontentloaded" });
+  await upd.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 30000 });
+  build = 2;
+  await upd.goto(pagesBase, { waitUntil: "domcontentloaded" });
+  const reopenedBuild = await builtAs();
+  await holdRefresh(800);
+  await upd.waitForTimeout(500);
+  const tappedBuild = await builtAs();
+  const reloaded = upd.waitForEvent("load", { timeout: 10000 }).catch(() => null);
+  await holdRefresh(2200);
+  await reloaded;
+  const refreshed = { build: await builtAs(), screen: await upd.evaluate(() => screen) };
+  await updCtx.setOffline(true);
+  const offlineLoad = upd.waitForEvent("load", { timeout: 10000 }).catch(() => null);
+  await holdRefresh(2200);
+  await offlineLoad;
+  const offline = await upd.evaluate(() => ({ pairs: typeof PAIRS === "undefined" ? 0 : PAIRS.length,
+    build: (document.querySelector('meta[name="build"]') || {}).content }));
+  await updCtx.close();
+  pages.closeAllConnections();
+  await new Promise(r => pages.close(r));
+  check("נגיעה קצרה ב-🔄 לא טוענת מחדש", tappedBuild === "1", tappedBuild);
+  check("החזקה על 🔄 מביאה את הגרסה החדשה, כשפתיחה רגילה עוד מקבלת את הישנה",
+    reopenedBuild === "1" && refreshed.build === "2" && refreshed.screen === "door", { reopenedBuild, ...refreshed });
+  check("🔄 בלי רשת עולה מהמטמון", offline.pairs > 0 && offline.build === "2", offline);
 
   // --------------------------------------------------------------
   group("כפתור ההקשבה");
