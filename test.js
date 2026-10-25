@@ -3444,7 +3444,7 @@ async function main(){
     const r = $("play").getBoundingClientRect(), h = $("hand");
     return { screen, mic: !!micStream, word: $("word").textContent, taps: taps.length, still: h.classList.contains("tap"),
       onPlay: Math.abs(parseFloat(h.style.left) + 14 - (r.left + r.width / 2)) < 2,
-      buttons: [...document.querySelectorAll("button")].filter(b => b.checkVisibility()).map(b => b.id) };
+      buttons: [...document.querySelectorAll("button")].filter(b => b.checkVisibility()).map(b => b.id || b.dataset.mode) };
   });
   await doorPage.click("#play", { force: true });
   await doorPage.waitForFunction(() => screen === "game", null, { timeout: 5000 }).catch(() => {});
@@ -3462,8 +3462,9 @@ async function main(){
   await doorPage.waitForFunction(() => screen !== "door", null, { timeout: 5000 }).catch(() => {});
   const blocked = await doorPage.evaluate(() => ({ screen, status: (openPanel(), $("micStatus").checkVisibility()) }));
   await doorCtx.close();
-  check("מסך הפתיחה: רק ▶, 🔒 ו-🔄, בלי מילה ובלי מיקרופון",
-    atDoor.screen === "door" && !atDoor.mic && atDoor.word === "" && atDoor.buttons.join() === "lock,refresh,play", atDoor);
+  check("מסך הפתיחה: רק ▶, 🔒, 🔄 וסוג התרגול, בלי מילה ובלי מיקרופון",
+    atDoor.screen === "door" && !atDoor.mic && atDoor.word === ""
+    && atDoor.buttons.join() === "lock,refresh,play,mixed,say,spell", atDoor);
   check("במסך הפתיחה היד מדגימה לחיצה על ▶, בפעם הראשונה ואחרי המתנה",
     atDoor.taps >= 2 && atDoor.still && atDoor.onPlay, atDoor);
   check("▶ פותח את המיקרופון ואז את המילה הראשונה", pressed.screen === "game" && pressed.mic && !!pressed.word
@@ -3562,6 +3563,58 @@ async function main(){
   check("החזקה על 🔄 מביאה את הגרסה החדשה, כשפתיחה רגילה עוד מקבלת את הישנה",
     reopenedBuild === "1" && refreshed.build === "2" && refreshed.screen === "door", { reopenedBuild, ...refreshed });
   check("🔄 בלי רשת עולה מהמטמון", offline.pairs > 0 && offline.build === "2", offline);
+
+  // --------------------------------------------------------------
+  group("🏠 וסוג התרגול במסך הפתיחה");
+  // שניהם בלחיצה ארוכה, כמו 🔒, כדי שנגיעה מקרית של ילד לא תוציא מהמשחק ולא
+  // תחליף את התרגול.
+  const holdOn = async (selector, ms) => {
+    const box = await page.locator(selector).boundingBox();
+    if(!box) return;   // כבר לא על המסך: הבדיקה שאחריה תיכשל ותראה למה
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(ms);
+    await page.mouse.up();
+  };
+  // בסוף סבב 🔒 מופיע מתחת ל-🏠, ושניהם לא מכסים את הבועה.
+  const corners = await page.evaluate(() => {
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    document.body.classList.add("ended");
+    const home = $("home").getBoundingClientRect(), lock = $("lock").getBoundingClientRect(),
+          cue = $("cue").getBoundingClientRect();
+    document.body.classList.remove("ended");
+    return { both: home.width > 0 && lock.width > 0, overlap: hit(home, lock), lockBelow: lock.top >= home.bottom,
+             onCue: hit(home, cue) || hit(lock, cue) };
+  });
+  const homeBox = await page.locator("#home").boundingBox();
+  await page.mouse.click(homeBox.x + homeBox.width / 2, homeBox.y + homeBox.height / 2);
+  const homeTapped = await page.evaluate(() => screen);
+  await holdOn("#home", 800);
+  const homeEarly = await page.evaluate(() => screen);
+  await holdOn("#home", 2200);
+  const homeHeld = await page.evaluate(() => ({ screen, home: $("home").checkVisibility() }));
+  const startMode = await page.evaluate(() => chosenMode);
+  const target = startMode === "say" ? "spell" : "say";
+  const segment = `#doorMode [data-mode="${target}"]`;
+  await page.click(segment);
+  const segmentTapped = await page.evaluate(() => chosenMode);
+  await holdOn(segment, 2200);
+  const segmentHeld = await page.evaluate(() => ({ chosen: chosenMode, screen, word: turn.word,
+    door: document.querySelector('#doorMode [aria-checked="true"]').dataset.mode,
+    adult: document.querySelector('#modeSwitch [aria-checked="true"]').dataset.mode }));
+  await page.evaluate(() => enterGame());
+  const playedMode = await page.evaluate(() => mode);
+  await page.evaluate(m => setMode(m), startMode);
+  check("נגיעה קצרה ב-🏠 לא יוצאת מהמשחק, ורק החזקה של שתי שניות חוזרת למסך הפתיחה",
+    homeTapped === "game" && homeEarly === "game" && homeHeld.screen === "door" && !homeHeld.home,
+    { homeTapped, homeEarly, homeHeld });
+  check("בסוף סבב 🔒 מתחת ל-🏠, ושניהם לא על הבועה",
+    corners.both && !corners.overlap && corners.lockBelow && !corners.onCue, corners);
+  check("נגיעה קצרה בסוג התרגול לא מחליפה אותו", segmentTapped === startMode, { startMode, segmentTapped });
+  check("החזקה על סוג התרגול בוחרת אותו גם באזור המבוגר, בלי להציג מילה מאחורי מסך הפתיחה",
+    segmentHeld.chosen === target && segmentHeld.door === target && segmentHeld.adult === target
+    && segmentHeld.screen === "door" && segmentHeld.word === null, { target, ...segmentHeld });
+  check("▶ אחרי הבחירה משחק בתרגול שנבחר", playedMode === target, { target, playedMode });
 
   // --------------------------------------------------------------
   group("כפתור ההקשבה");

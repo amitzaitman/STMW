@@ -49,7 +49,7 @@
 
   /* 🔒 קטן וחיוור, רק במסכי מנוחה: פתיחה, סוף סבב וקראו למבוגר. נגיעה רגילה
      בו לא עושה כלום; לחיצה ארוכה פותחת את שאלת המספר. */
-  #lock, #refresh{
+  #lock, #refresh, #home{
     position:fixed; top:max(8px, env(safe-area-inset-top)); left:8px; z-index:5;
     width:64px; height:64px; border:0; background:transparent; color:#7FA89A; opacity:.6;
     display:none; align-items:center; justify-content:center; font-size:22px; padding:0;
@@ -59,17 +59,27 @@
   /* בפינה השנייה של מסך הפתיחה, באותו סגנון: לחיצה ארוכה טוענת את הגרסה האחרונה. */
   #refresh{left:auto; right:8px}
   body[data-screen="door"] #refresh{display:flex}
-  body.ended #game .guide{padding-inline-end:52px}
+  /* 🏠 בפינה של המשחק, באותו סגנון: לחיצה ארוכה חוזרת למסך הפתיחה. באייפון אין
+     כפתור "חזור". בסוף סבב 🔒 יושב מתחתיו. */
+  body[data-screen="game"] #home{display:flex}
+  body.ended #lock{top:calc(max(8px, env(safe-area-inset-top)) + 64px)}
+  #game .guide{padding-inline-end:52px}
   #dots{display:flex; gap:6px; justify-content:center; flex-wrap:wrap; min-height:10px; flex:0 0 auto; direction:rtl}
   #dots i{width:10px; height:10px; border-radius:50%; background:var(--line)}
   #dots i.done{background:var(--act-soft)}
   #dots i.now{background:var(--act)}
   body.ended #dots{visibility:hidden}
-  #lock.holding, #refresh.holding{opacity:1; color:var(--act)}
-  /* בפינה העליונה של המשחק: החזקה של 3 שניות חוזרת למסך הפתיחה. באייפון אין
-     כפתור "חזור". */
-  #exit{position:fixed; top:0; right:0; width:64px; height:64px; z-index:4; display:none}
-  body[data-screen="game"] #exit{display:block}
+  #lock.holding, #refresh.holding, #home.holding{opacity:1; color:var(--act)}
+  /* סוג התרגול במסך הפתיחה, חיוור כמו 🔒: מעורב, אומרים, כותבים. נגיעה רגילה
+     לא עושה כלום, ולחיצה ארוכה בוחרת, כדי שילד לא יחליף בטעות. */
+  #doorMode{display:flex; gap:4px; flex:0 0 auto}
+  #doorMode button{
+    width:64px; height:64px; border:0; border-radius:18px; background:transparent; color:#7FA89A; opacity:.6;
+    display:flex; align-items:center; justify-content:center; font-size:26px; padding:0;
+    -webkit-tap-highlight-color:transparent;
+  }
+  #doorMode button.active{opacity:1; color:var(--ink); background:var(--line)}
+  #doorMode button.holding{opacity:1; color:var(--act)}
 
   /* הציפור ובועת הדיבור. הבועה היא שורת ההנחיה: סמל ועד 3 מילים מנוקדות. אי
      אפשר ללחוץ עליה, והיא אף פעם לא בצבע של "ללחוץ". */
@@ -658,7 +668,7 @@
 
 <button id="lock" type="button" aria-label="למבוגרים: לחיצה ארוכה" title="למבוגרים: לחיצה ארוכה"></button>
 <button id="refresh" type="button" aria-label="עדכון: לחיצה ארוכה" title="עדכון: לחיצה ארוכה"></button>
-<div id="exit" aria-hidden="true"></div>
+<button id="home" type="button" aria-label="למסך הפתיחה: לחיצה ארוכה" title="למסך הפתיחה: לחיצה ארוכה"></button>
 
 <section id="door" class="screen" aria-label="פתיחה">
   <div class="door-top"><div id="childName"></div></div>
@@ -667,6 +677,11 @@
     <svg class="bird" viewBox="0 0 96 104" data-pose="wave" aria-hidden="true"></svg>
   </div>
   <button id="play" class="big-play" type="button" aria-label="לשחק"></button>
+  <div id="doorMode" role="radiogroup" aria-label="סוג התרגול: לחיצה ארוכה">
+    <button type="button" role="radio" data-mode="mixed" aria-label="מעורב" title="מעורב: לחיצה ארוכה"></button>
+    <button type="button" role="radio" data-mode="say" aria-label="אומרים" title="אומרים: לחיצה ארוכה"></button>
+    <button type="button" role="radio" data-mode="spell" aria-label="כותבים" title="כותבים: לחיצה ארוכה"></button>
+  </div>
   <div id="doorBasket" class="basket" aria-hidden="true">
     <span class="basket-art"></span>
     <div id="doorBasketPics" class="basket-pics"></div>
@@ -2709,7 +2724,7 @@ function renderMode(){
   $("say").hidden = spell;
   $("hint").hidden = !spell;
   document.body.classList.toggle("spelling", spell);
-  for(const b of $("modeSwitch").children){
+  for(const b of [...$("modeSwitch").children, ...$("doorMode").children]){
     const on = b.dataset.mode === chosen;
     b.classList.toggle("active", on);
     b.setAttribute("aria-checked", on);
@@ -2725,6 +2740,9 @@ function setMode(to){
   mixedSpellRound = false;
   try{ localStorage.setItem(childKey(MODE_KEY), to); }catch(e){}
   renderMode();
+  // מחוץ למשחק (מסך הפתיחה, קראו למבוגר) רק שומרים את הבחירה, ו-▶ בונה את
+  // הסבב לפיה. בלי זה הסבב נבנה כאן, והמילה הראשונה שלו נאמרת מאחורי מסך הפתיחה.
+  if(screen !== "game") return;
   if(practice === mode) return;
   mode = practice;
   // בכתיבה רואים את המילה באותיות שלה, ומעבר לכל כיוון אומר שהתור הזה היה שם.
@@ -3143,6 +3161,8 @@ const ICON = {
   arrow: '<path d="M4 12h15"/><path d="M14 7l5 5-5 5"/>',
   basket: '<path d="M3 10h18l-2.2 10H5.2z"/><path d="M8 10l4-6 4 6"/><path d="M8 14v2.5M12 14v2.5M16 14v2.5"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/>',
+  mixed: '<path d="M3 7h3c2 0 3 1 4 2.5l4 5c1 1.5 2 2.5 4 2.5h3"/><path d="M3 17h3c1.4 0 2.3-.5 3.1-1.3M14.9 8.3C15.7 7.5 16.6 7 18 7h3"/><path d="M18 4l3 3-3 3M18 14l3 3-3 3"/>',
   mutedMic: '<path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/><path d="M3 3l18 18"/>',
   pointer: '<path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10"/><path d="M12 9.5a1.5 1.5 0 0 1 3 0V11"/><path d="M15 10.5a1.5 1.5 0 0 1 3 0v4a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7l-2.4-3.6a1.5 1.5 0 0 1 2.4-1.8L9 15" fill="#fff"/>'
 };
@@ -3430,7 +3450,7 @@ function primeSound(){
   }catch(e){}
 }
 
-// חזרה למסך הפתיחה: "חזור" של המערכת, החזקה בפינה, או סגירת אזור המבוגר. הסבב
+// חזרה למסך הפתיחה: "חזור" של המערכת, החזקה על 🏠, או סגירת אזור המבוגר. הסבב
 // ננטש, והתור שלא נגמר לא נרשם: ▶ מתחיל סבב חדש.
 function leaveGame(){
   stopListening();
@@ -3466,7 +3486,7 @@ function renderDoor(){
 // לחיצה ארוכה על 🔒, ואחריה מספר שכתוב באנגלית, במקלדת ספרות ועם מספר אחר
 // בכל פעם. ילד שלא קורא אנגלית לא יפתור, ותשובה שגויה חוזרת בשקט. Enter או
 // רווח על 🔒 (click בלי נגיעה, detail 0) פותחים את השאלה מהמקלדת.
-const LOCK_HOLD_MS = 2000, EXIT_HOLD_MS = 3000;
+const LOCK_HOLD_MS = 2000;
 const ONES = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
 function numberWord(n){ return TENS[Math.floor(n / 10)] + (n % 10 ? "-" + ONES[n % 10] : ""); }
@@ -3521,7 +3541,14 @@ function holdButton(el, ms, done, onHold){
 }
 holdButton($("lock"), LOCK_HOLD_MS, openGate, on => $("lock").classList.toggle("holding", on));
 $("lock").addEventListener("click", e => { if(e.detail === 0) openGate(); });
-holdButton($("exit"), EXIT_HOLD_MS, () => { if(screen === "game") goDoor(); });
+const goHome = () => { if(screen === "game") goDoor(); };
+holdButton($("home"), LOCK_HOLD_MS, goHome, on => $("home").classList.toggle("holding", on));
+$("home").addEventListener("click", e => { if(e.detail === 0) goHome(); });
+// סוג התרגול במסך הפתיחה: לחיצה ארוכה על אחת האפשרויות, כמו 🔒.
+for(const b of $("doorMode").children){
+  holdButton(b, LOCK_HOLD_MS, () => setMode(b.dataset.mode), on => b.classList.toggle("holding", on));
+  b.addEventListener("click", e => { if(e.detail === 0) setMode(b.dataset.mode); });
+}
 
 // לחיצה ארוכה על 🔄 במסך הפתיחה טוענת את הגרסה האחרונה שפורסמה. פתיחה רגילה
 // של האפליקציה מקבלת את הדף ממטמון ה-HTTP של הדפדפן, ש-GitHub Pages מרשה
@@ -3733,10 +3760,11 @@ if(navigator.storage && navigator.storage.persist){
 }
 
 for(const b of document.querySelectorAll(".bird")) b.innerHTML = BIRD;
-for(const [id, name] of [["play", "play"], ["resume", "play"], ["againBtn", "play"], ["lock", "lock"], ["refresh", "again"], ["sayIcon", "mic"],
+for(const [id, name] of [["play", "play"], ["resume", "play"], ["againBtn", "play"], ["lock", "lock"], ["refresh", "again"], ["home", "home"], ["sayIcon", "mic"],
                          ["next", "skip"], ["hint", "bulb"], ["adultArt", "adult"], ["mutedMicArt", "mutedMic"], ["hand", "pointer"], ["spellArrow", "arrow"]])
   $(id).innerHTML = icon(name);
 for(const b of document.querySelectorAll(".basket-art")) b.innerHTML = icon("basket");
+for(const b of $("doorMode").children) b.innerHTML = icon({ mixed: "mixed", say: "mic", spell: "letters" }[b.dataset.mode]);
 // הסבב הראשון נבנה רק ב-▶: עד אז שום מילה לא מוצגת ולא נאמרת, והמנוע יורד
 // ברקע.
 renderMode();
