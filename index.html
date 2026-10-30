@@ -408,6 +408,7 @@
   #panel h2{margin:0; font-size:22px; font-weight:800}
   #panelMeta{font-size:13px; color:#8B93AD; margin:4px 0 0}
   #closePanel{width:40px; height:40px}
+  .match-section[hidden]{display:none}
   .match-section{
     background:#F2F7FF; border:3px solid #1B2140; border-radius:20px;
     padding:12px 14px; display:flex; flex-direction:column; gap:8px;
@@ -1580,8 +1581,12 @@ function renderStatus(){
 // ה-worker שלו שומר תחת /vosk ואת הכתובת כשכל תו שאינו אות הופך ל-_.
 const VOSK_DB = "/vosk", VOSK_STORE = "FILE_DATA";
 const EXTRACTED_KEY = VOSK_DB + "/" + MODEL_URL.replace(/\W/g, "_") + "/extracted.ok";
+// מסד שלא עונה (באג ידוע בספארי) לא תוקע את הטעינה: אחרי IDB_WAIT_MS ממשיכים
+// כאילו אין עותק מחולץ, ובמקרה הגרוע המודל יורד שוב.
+const IDB_WAIT_MS = 5000;
 function modelExtracted(){
   return new Promise(done => {
+    setTimeout(() => done(false), IDB_WAIT_MS);
     try{
       const req = indexedDB.open(VOSK_DB);
       // אין מסד עדיין: לא יוצרים אותו כאן. Vosk יוצר אותו בגרסה שלו.
@@ -1873,7 +1878,7 @@ const TAP_WORKLET = `registerProcessor("tap", class extends AudioWorkletProcesso
   }
 });`;
 let graph = null;
-function buildGraph(){
+async function buildGraph(){
   ctx = new (window.AudioContext || window.webkitAudioContext)();
   sinkNode = ctx.createGain();
   sinkNode.gain.value = 0;
@@ -1882,14 +1887,14 @@ function buildGraph(){
     procNode = ctx.createScriptProcessor(TAP_SIZE, 1, 1);
     procNode.onaudioprocess = e => hear(e.inputBuffer.getChannelData(0));
     procNode.connect(sinkNode);
-    return Promise.resolve();
+    return;
   }
   const url = URL.createObjectURL(new Blob([TAP_WORKLET], { type: "text/javascript" }));
-  return ctx.audioWorklet.addModule(url).then(() => {
-    procNode = new AudioWorkletNode(ctx, "tap", { channelCount: 1, channelCountMode: "explicit" });
-    procNode.port.onmessage = e => hear(e.data);
-    procNode.connect(sinkNode);
-  }).finally(() => URL.revokeObjectURL(url));
+  try{ await ctx.audioWorklet.addModule(url); }
+  finally{ URL.revokeObjectURL(url); }
+  procNode = new AudioWorkletNode(ctx, "tap", { channelCount: 1, channelCountMode: "explicit" });
+  procNode.port.onmessage = e => hear(e.data);
+  procNode.connect(sinkNode);
 }
 
 async function ensureAudio(){
@@ -1898,21 +1903,28 @@ async function ensureAudio(){
   // נבנה נבנה מחדש בניסיון הבא.
   if(!graph) graph = buildGraph().catch(err => {
     graph = null;
-    try{ ctx.close(); }catch(e){}
+    try{ ctx.close().catch(() => {}); }catch(e){}
     ctx = procNode = sinkNode = null;
     throw err;
   });
   await graph;
   await ctx.resume();
+  // שתי קריאות בבת אחת — הכנת המכשיר ו-▶ — מחכות לאותה פתיחה. אחרת נפתחים
+  // שני זרמים, ואחד מהם נשאר מקליט בלי אף אחד שיסגור אותו.
   if(!micLive()){
-    releaseMic();
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1}
-    });
-    srcNode = ctx.createMediaStreamSource(micStream);
-    srcNode.connect(procNode);
+    if(!micOpening) micOpening = openMic().finally(() => { micOpening = null; });
+    await micOpening;
   }
   if(!rec) buildRecognizer();
+}
+let micOpening = null;
+async function openMic(){
+  releaseMic();
+  micStream = await navigator.mediaDevices.getUserMedia({
+    audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1}
+  });
+  srcNode = ctx.createMediaStreamSource(micStream);
+  srcNode.connect(procNode);
 }
 
 
@@ -3630,15 +3642,23 @@ function renderDoor(){
 }
 
 // --- הכנת המכשיר ---
-// מכשיר חדש לגמרי, שלא נשמר בו כלום, נפתח במסך הכנה למבוגר ולא במסך הפתיחה:
-// מנוע הדיבור יורד מול המבוגר, המבוגר מאשר את המיקרופון ושומע את הקול, ולומד
-// איפה ההגדרות. מכשיר שכבר שיחקו בו, או ששינו בו הגדרה, לא רואה אותו; באזור
-// המבוגר "בדיקת המכשיר" מחזיר אליו. "סיימנו" נשמר במכשיר, גם בלי שאף שלב נעשה.
+// מכשיר חדש נפתח במסך הכנה למבוגר ולא במסך הפתיחה: מנוע הדיבור יורד מול
+// המבוגר, המבוגר מאשר את המיקרופון ושומע את הקול, ולומד איפה ההגדרות. באזור
+// המבוגר "בדיקת המכשיר" מחזיר אליו.
+// SETUP_KEY: "0" ההכנה הוצגה ועוד לא נגמרה, והיא חוזרת עד "סיימנו", שכותב "1"
+// גם בלי שאף שלב נעשה. מכשיר בלי SETUP_KEY חדש רק אם אין בו אף מפתח אחר של
+// האפליקציה, ורק אם ה-service worker עוד לא שולט בדף: אחרת האפליקציה כבר
+// נפתחה בו, בגרסה שלפני ההכנה, ואולי כבר הוכן לכיתה ומחכה לילד.
 const SETUP_KEY = "say-the-word-setup";
-function freshDevice(){
+function setupDue(){
   try{
-    return [SETUP_KEY, CHILDREN_KEY, "words", PROGRESS_KEY, LOG_KEY, SOUND_KEY, MODE_KEY, MATCH_KEY, HEBREW_KEY]
-      .every(k => localStorage.getItem(k) === null);
+    const done = localStorage.getItem(SETUP_KEY);
+    if(done !== null) return done === "0";
+    if("serviceWorker" in navigator && navigator.serviceWorker.controller) return false;
+    if([CHILDREN_KEY, "words", PROGRESS_KEY, LOG_KEY, SOUND_KEY, MODE_KEY, MATCH_KEY, HEBREW_KEY]
+      .some(k => localStorage.getItem(k) !== null)) return false;
+    localStorage.setItem(SETUP_KEY, "0");
+    return true;
   }catch(e){ return false; }
 }
 // "בלי אינטרנט" רק כשה-service worker כבר שולט בדף: הוא שמר את שאר הקבצים.
@@ -3669,7 +3689,8 @@ async function setupMic(){
   b.disabled = true;
   try{
     await ensureAudio();
-    releaseMic();
+    // ▶ שנלחץ בינתיים כבר משתמש במיקרופון.
+    if(screen === "setup") releaseMic();
     micBlocked = false;
     setupLine("setupMic", "✓ המיקרופון מאושר.", "ok");
     b.hidden = true;
@@ -3680,21 +3701,27 @@ async function setupMic(){
   b.disabled = false;
   renderStatus();
 }
-// קול שלא מתחיל תוך SPEECH_START_MS אומר שאין קול באנגלית שעובד.
+// כמו canSpeak: יש קולות ואף אחד לא באנגלית — המכשיר היה מקריא בקול אחר,
+// והמשחק לא ידבר. קול שלא מתחיל תוך SPEECH_START_MS גם אומר שאין קול שעובד.
+// רק הבדיקה האחרונה כותבת: טיימר של לחיצה קודמת לא דורס אותה.
 const SETUP_PHRASE = "Hello! Let's play.";
+const NO_VOICE = "אין במכשיר קול באנגלית שעובד. המשחק יעבוד, רק בלי השמיעה של המילים.";
+let voiceCheck = 0;
 function setupVoice(){
-  if(!("speechSynthesis" in window)) return setupLine("setupVoice", "הדפדפן הזה לא מדבר. המשחק יעבוד בלי השמיעה של המילים.", "bad");
+  const mine = ++voiceCheck;
+  if(!("speechSynthesis" in window)) return setupLine("setupVoice", NO_VOICE, "bad");
   if(!soundEnabled) return setupLine("setupVoice", "השמע כבוי. מדליקים אותו בהגדרות, תחת \"שמע במכשיר\".", "bad");
   refreshVoices();
+  if(voices.length && !voiceFor(EN)) return setupLine("setupVoice", NO_VOICE, "bad");
   const u = speak(SETUP_PHRASE, EN);
   let started = false;
   setupLine("setupVoice", "…");
   u.addEventListener("start", () => {
     started = true;
-    setupLine("setupVoice", "שמעתם \"Hello! Let's play\"? אם לא, הגבירו את עוצמת הקול ונסו שוב.");
+    if(mine === voiceCheck) setupLine("setupVoice", "שמעתם \"Hello! Let's play\"? אם לא, הגבירו את עוצמת הקול ונסו שוב.");
   });
   setTimeout(() => {
-    if(!started) setupLine("setupVoice", "לא נשמע קול באנגלית. המשחק יעבוד, רק בלי השמיעה של המילים.", "bad");
+    if(!started && mine === voiceCheck) setupLine("setupVoice", NO_VOICE, "bad");
   }, SPEECH_START_MS);
 }
 function finishSetup(){
@@ -3993,7 +4020,8 @@ async function installApp(){
 installBtn.addEventListener("click", installApp);
 $("setupInstallBtn").addEventListener("click", installApp);
 
-// מבקש מהדפדפן לא למחוק את המטמון (המודל, 29MB) כשנגמר מקום. בלי חלון אישור;
+// מבקש מהדפדפן לא למחוק את מה שנשמר במכשיר, ובעיקר את מנוע הדיבור המחולץ
+// ב-IndexedDB, כשנגמר מקום. בלי חלון אישור;
 // אם הדפדפן מסרב, פשוט ממשיכים.
 if(navigator.storage && navigator.storage.persist){
   navigator.storage.persist().catch(()=>{});
@@ -4012,7 +4040,7 @@ updateSoundUI();
 updateMatchUI();
 $("hebrewToggle").checked = hebrewEnabled;
 renderDoor();
-setScreen(freshDevice() ? "setup" : "door");
+setScreen(setupDue() ? "setup" : "door");
 loadModel();
 </script>
 </body>

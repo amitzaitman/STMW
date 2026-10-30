@@ -687,13 +687,20 @@ async function main(){
   const freshRow = await rowAfter("fresh");
   check("סבב חדש מתחיל בלי מה שנרשם בקודם", freshRow.row === freshRow.emoji && freshRow.fresh === "", freshRow);
   // ובאזור המבוגר: מה לבד ומה לא, מהסבב האחרון.
+  // נראה או לא לפי ה-CSS, ולא רק לפי התכונה hidden: הכרטיס מגדיר display משלו.
   const adultRow = await page.evaluate(() => {
+    const saved = { tried: round.tried, row: round.row };
+    round.tried = []; round.row = [];
+    renderLastRound();
+    const empty = getComputedStyle($("lastRoundSection")).display;
     round.tried = ["dog", "cat"]; round.row = ["dog"];
     renderLastRound();
-    return { text: $("lastRound").textContent, shown: !$("lastRoundSection").hidden };
+    const out = { text: $("lastRound").textContent, empty, shown: getComputedStyle($("lastRoundSection")).display };
+    Object.assign(round, saved);
+    return out;
   });
-  check("באזור המבוגר: מה נאמר לבד ומה בעזרה בסבב האחרון",
-    adultRow.shown && /לבד[^.]*🐶/.test(adultRow.text) && /עזרה[^.]*🐱/.test(adultRow.text), adultRow);
+  check("באזור המבוגר: מה נאמר לבד ומה בעזרה בסבב האחרון, ובלי סבב אין כלום",
+    adultRow.shown !== "none" && adultRow.empty === "none" && /לבד[^.]*🐶/.test(adultRow.text) && /עזרה[^.]*🐱/.test(adultRow.text), adultRow);
 
   // בטלפון קטן שורת הכפתורים על המסך, גם בכתיבה עם מילה ארוכה, ולא מתחת לכרטיס.
   const viewport = page.viewportSize();
@@ -3771,19 +3778,41 @@ async function main(){
   await setupPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
   const setupStart = await setupPage.evaluate(() => ({ screen, saved: localStorage.getItem("say-the-word-setup"),
     shown: $("setup").checkVisibility(), door: $("door").checkVisibility(), lock: $("lock").checkVisibility() }));
-  check("מכשיר חדש נפתח בהכנת המכשיר, ולא נכתב כלום",
-    setupStart.screen === "setup" && setupStart.shown && !setupStart.door && !setupStart.lock && setupStart.saved === null, setupStart);
+  check("מכשיר חדש נפתח בהכנת המכשיר, ונכתב רק שהיא התחילה",
+    setupStart.screen === "setup" && setupStart.shown && !setupStart.door && !setupStart.lock && setupStart.saved === "0", setupStart);
+  // אזור שמוסתר (hidden) באמת לא נראה, גם כשהוא כרטיס עם display משלו.
+  const setupInstallShown = await setupPage.evaluate(() => ({ prompt: deferredPrompt !== null, ios: isIOS, shown: $("setupInstall").checkVisibility() }));
+  check("התקנה בהכנה מופיעה רק כשהדפדפן מציע אותה",
+    setupInstallShown.shown === (setupInstallShown.prompt || setupInstallShown.ios), setupInstallShown);
   await setupPage.waitForFunction(() => model !== null, null, { timeout: 60000 });
   const setupModel = await setupPage.evaluate(() => ({ text: $("setupModel").textContent, bar: $("setupBar").checkVisibility(),
     offline: !!navigator.serviceWorker.controller }));
   check("כשמנוע הדיבור במכשיר זה כתוב, בלי פס",
     setupModel.text.startsWith("✓") && !setupModel.bar && setupModel.text.includes("בלי אינטרנט") === setupModel.offline, setupModel);
+  // כל זרם שנפתח נספר, כי micStream === null לבדו לא אומר שהמיקרופון נסגר.
+  await setupPage.evaluate(() => {
+    const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    window.opened = [];
+    navigator.mediaDevices.getUserMedia = async c => { const st = await real(c); opened.push(st); return st; };
+  });
   await setupPage.click("#setupMicBtn");
   await setupPage.waitForFunction(() => $("setupMic").classList.contains("ok") || $("setupMic").classList.contains("bad"), null, { timeout: 5000 }).catch(() => {});
   const setupMicState = await setupPage.evaluate(() => ({ text: $("setupMic").textContent, ok: $("setupMic").classList.contains("ok"),
-    open: !!micStream, button: $("setupMicBtn").checkVisibility() }));
+    streams: opened.length, live: opened.flatMap(st => st.getTracks()).filter(t => t.readyState === "live").length,
+    button: $("setupMicBtn").checkVisibility() }));
   check("אישור המיקרופון בהכנה — מאושר, והמיקרופון נסגר עד ▶",
-    setupMicState.ok && !setupMicState.open && !setupMicState.button, setupMicState);
+    setupMicState.ok && setupMicState.streams === 1 && setupMicState.live === 0 && !setupMicState.button, setupMicState);
+  // אישור בהכנה ו-▶ כמעט יחד: מיקרופון אחד, ולא שניים שאחד מהם מקליט בלי בעלים.
+  const twoOpens = await setupPage.evaluate(async () => {
+    const before = opened.length;
+    await Promise.all([ensureAudio(), ensureAudio()]);
+    const out = { streams: opened.length - before, live: micLive() };
+    releaseMic();
+    out.leftLive = opened.flatMap(st => st.getTracks()).filter(t => t.readyState === "live").length;
+    return out;
+  });
+  check("שתי פתיחות של המיקרופון בבת אחת פותחות זרם אחד",
+    twoOpens.streams === 1 && twoOpens.live && twoOpens.leftLive === 0, twoOpens);
   // בכרומיום של הבדיקות אין קול באנגלית: ההקראה לא מתחילה, וזה כתוב.
   await setupPage.click("#setupVoiceBtn");
   await setupPage.waitForTimeout(1800);
@@ -3812,6 +3841,18 @@ async function main(){
   const usedScreen = await usedPage.evaluate(() => ({ screen, saved: localStorage.getItem("say-the-word-setup") }));
   await usedCtx.close();
   check("מכשיר שכבר שיחקו בו נפתח במסך הפתיחה, בלי הכנה", usedScreen.screen === "door" && usedScreen.saved === null, usedScreen);
+  // מכשיר שהוכן לכיתה בגרסה שלפני ההכנה: הורידו בו את המודל ואף ילד עוד לא
+  // שיחק, אז אין בו אף מפתח. ה-service worker כבר שולט בדף, וזה הסימן.
+  const preparedCtx = await browser.newContext({ setup: true });
+  const preparedPage = await preparedCtx.newPage();
+  await preparedPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  await preparedPage.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 30000 });
+  await preparedPage.evaluate(() => localStorage.clear());
+  await preparedPage.reload({ waitUntil: "domcontentloaded" });
+  const preparedScreen = await preparedPage.evaluate(() => ({ screen, saved: localStorage.getItem("say-the-word-setup") }));
+  await preparedCtx.close();
+  check("מכשיר שהאפליקציה כבר נפתחה בו, בלי אף מפתח, נפתח במסך הפתיחה",
+    preparedScreen.screen === "door" && preparedScreen.saved === null, preparedScreen);
 
   // --------------------------------------------------------------
   group("שמע");
@@ -4186,8 +4227,10 @@ async function main(){
     modelExtracted = async () => false;
     try{
       await fetchModel();
-      const hit = await (await caches.open(CACHE_NAME)).match(MODEL_URL);
-      return hit ? (await hit.blob()).size : 0;
+      const c = await caches.open(CACHE_NAME), hit = await c.match(MODEL_URL);
+      // כל עוד העותק המחולץ לא שמור, הארכיון לא נמחק.
+      await dropArchive();
+      return hit && await c.match(MODEL_URL) ? (await hit.blob()).size : 0;
     } finally {
       modelExtracted = real;
       await dropArchive();
