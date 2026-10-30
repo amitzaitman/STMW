@@ -3543,6 +3543,79 @@ async function main(){
     reachChoices.apart && reachChoices.columns > 1, reachChoices);
   await page.setViewportSize(viewport);
 
+  // בזמן החגיגה של תמונה נכונה אין ⏭️ ואין 🔊: ⏭️ שם רשם ויתור על מילה שהילד
+  // בדיוק הבין, ובמילה האחרונה בסבב הטיימר של החגיגה אמר אותה על מסך הסיום.
+  const celebration = await page.evaluate(async () => {
+    uTest.lane("off");
+    uTest.show("dog");
+    await uTest.wait(HEAR_MS + 200);
+    uTest.choice(true).click();
+    const out = { picked: turn.picked, next: isShown($("next")), help: isShown($("playWord")) };
+    // הסבב נגמר באמצע החגיגה, ומסך הסיום האמיתי מופיע.
+    const spoken = uTest.spoken.length;
+    showRoundEnd = realShowRoundEnd;
+    try{
+      round.at = round.queue.length;
+      next();
+      await uTest.wait(UNDERSTOOD_MS + GOOD_MS + 300);
+      out.ended = ended;
+      out.spokenOnEnd = uTest.spoken.slice(spoken);
+    } finally {
+      showRoundEnd = () => newRound();
+      hideRoundEnd();
+    }
+    return out;
+  });
+  check("בחגיגה של תמונה נכונה אין ⏭️ ו-🔊, ומסך הסיום שבא אחריה שקט",
+    celebration.picked && !celebration.next && !celebration.help && celebration.ended && celebration.spokenOnEnd.length === 0, celebration);
+
+  // בלי מיקרופון וגם בלי קול שעובד אין מה לעשות בכרטיס אמירה: הסבב הופך לכתיבה,
+  // ולא לשורה של "אִמְרוּ בְּאַנְגְּלִית" בלי 🎤.
+  const deadEnd = await page.evaluate(async () => {
+    uTest.lane("off");
+    micBlocked = true;
+    uTest.speech = "silent";
+    try{
+      uTest.show("cat");
+      const before = turn.step;
+      uTest.choice(true).click();
+      await uTest.wait(SPEECH_START_MS + 300);
+      return { before, mode, step: turn.step, spell: $("spell").checkVisibility(), say: isShown($("say")), broken: speechBroken };
+    } finally {
+      micBlocked = false;
+      uTest.speech = "start";
+      speechBroken = false;
+      mode = "say";
+      startRound();
+    }
+  });
+  check("בלי מיקרופון, כשהקול מפסיק לעבוד, הסבב עובר לכתיבה",
+    deadEnd.before === "understand" && deadEnd.broken && deadEnd.mode === "spell" && deadEnd.spell, deadEnd);
+
+  // מילים חדשות שכבר הוצעו ולא נאמרו — רק בחרו תמונה, דילגו או שתקו — מפנות מקום
+  // לאחרות. בלי זה, כשהמנוע עוד יורד, כל סבב היה אותן שתי מילים לנצח.
+  const rotation = await page.evaluate(() => {
+    const day = dayNumber(), first = sayRound({}, day, 2).fresh;
+    const second = sayRound({}, day, 2, new Map(first.map((w, k) => [w, k]))).fresh;
+    // דרך startRound, מהיומן של הילד.
+    const saved = { log: localStorage.getItem(childKey(LOG_KEY)), round, mode };
+    try{
+      mode = "say";
+      startRound();
+      const opened = round.fresh.slice();
+      localStorage.setItem(childKey(LOG_KEY), JSON.stringify({ v: 1, a: opened.map(w => [day, 0, w, "say", "pick", 1, "hu", null, w, "normal", words.length]) }));
+      startRound();
+      return { first, second, opened, after: round.fresh.slice() };
+    } finally {
+      if(saved.log === null) localStorage.removeItem(childKey(LOG_KEY)); else localStorage.setItem(childKey(LOG_KEY), saved.log);
+      round = saved.round;
+      mode = saved.mode;
+    }
+  });
+  check("מילים חדשות שהוצעו ולא נאמרו מפנות מקום למילים חדשות אחרות",
+    rotation.first.length === 2 && rotation.second.length === 2 && !rotation.second.some(w => rotation.first.includes(w))
+      && rotation.opened.length === 2 && !rotation.after.some(w => rotation.opened.includes(w)), rotation);
+
   await page.evaluate(([P, L]) => {
     speak = uTest.realSpeak;
     chime = uTest.realChime;
@@ -3558,6 +3631,32 @@ async function main(){
     turn.word = null;
     applyWords(uTest.before, 0, false);
   }, [P, L]);
+
+  // באזור המבוגר שנפתח בסוף סבב, החלפת סוג התרגול נשמרת ולא בונה סבב מאחוריו:
+  // שום מילה לא נאמרת שם, ו"הסבב האחרון" שהמבוגר מסתכל עליו נשאר.
+  const behindPanel = await page.evaluate(async () => {
+    const realSpeak = speak, said = [], chosen = chosenMode;
+    speak = text => { said.push(text); return null; };
+    showRoundEnd = realShowRoundEnd;
+    try{
+      round.tried = [word()];
+      round.at = round.queue.length;
+      next();
+      openPanel();
+      setMode("spell");
+      const out = { said: said.slice(), ended, chosen: chosenMode, tried: round.tried.length,
+                    summary: getComputedStyle($("lastRoundSection")).display !== "none" };
+      closePanel();
+      setMode(chosen);
+      return out;
+    } finally {
+      speak = realSpeak;
+      showRoundEnd = () => newRound();
+      if(screen !== "game") enterGame();
+    }
+  }).catch(e => ({ error: e.message }));
+  check("סוג תרגול שנבחר באזור המבוגר בסוף סבב נשמר, בלי סבב ובלי מילה מאחוריו",
+    behindPanel.said && behindPanel.said.length === 0 && behindPanel.ended && behindPanel.chosen === "spell" && behindPanel.tried === 1 && behindPanel.summary, behindPanel);
 
   // --------------------------------------------------------------
   group("מסך הפתיחה וכניסת מבוגר");

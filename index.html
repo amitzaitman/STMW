@@ -1415,7 +1415,7 @@ function show(){
   if(fresh && turn.step === "understand") introduce();
   // בכתיבה המילה נאמרת כשהיא מופיעה, כהכתבה. היא לא עזרה: כתיבה נקייה לא
   // תלויה בשמיעה.
-  if(fresh && mode === "spell" && canSpeak()){ turn.heard = true; sayWord(); }
+  if(fresh && mode === "spell" && canSpeak() && $("overlay").hidden){ turn.heard = true; sayWord(); }
   // הצגה מחדש של מילה שכבר הוכרעה — שינוי ברשימה בחלון אחר, הדלקת התעתיק —
   // מבטלת את המעבר שההצלחה תזמנה (shownCount), ואין ⏭️ גדול שיוציא ממנה. לכן
   // היא ממשיכה לבד.
@@ -2226,7 +2226,12 @@ function shuffle(list){
   return out;
 }
 
-function sayRound(w, day, pace){
+// offered: מילה ← המקום האחרון שלה ביומן. מילה חדשה שכבר הוצעה ולא נאמרה —
+// רק נבחרה תמונה שלה, דילגו עליה או ששתקו — לא עולה על מילה חדשה שעוד לא
+// הוצעה, ובין אלה שהוצעו קודם זו שהוצעה מזמן. אחרת, כשהמנוע עוד יורד או
+// שהמיקרופון חסום, וגם כשילד מדלג תמיד על אותה מילה, כל סבב היה פותח באותן
+// מילים חדשות לנצח.
+function sayRound(w, day, pace, offered = new Map()){
   const list = shuffle([...new Set(words.map(x => x.word))]);
   const rec = x => w[x];
   const known = list.filter(x => rec(x) && rec(x).got !== undefined);
@@ -2236,8 +2241,9 @@ function sayRound(w, day, pace){
     .sort((a, b) => rec(a).seen - rec(b).seen);
   const fillers = known.filter(x => !due.includes(x)).sort((a, b) => rec(a).box - rec(b).box);
   // sort יציב, אז בתוך אותה רמה הסדר הוא של הרשימה.
+  const offeredAt = x => offered.has(x) ? offered.get(x) : -1;
   const freshPool = words.map(x => x.word).filter((x, k, all) => all.indexOf(x) === k && !(rec(x) && rec(x).n))
-    .sort((a, b) => levelOf(a) - levelOf(b));
+    .sort((a, b) => offered.has(a) - offered.has(b) || offeredAt(a) - offeredAt(b) || levelOf(a) - levelOf(b));
 
   const picked = [];
   const fits = x => !picked.includes(x) && !picked.some(p => confusable(p, x));
@@ -2337,7 +2343,8 @@ function startRound(){
   renderMode();
   const data = readStore(PROGRESS_KEY).data;
   const mixedSpell = mode === "spell" && mixedSpellRound;
-  const built = mode === "say" ? sayRound(data.w, dayNumber(), paceOf(data)) : { queue: spellRound(data.w, mixedSpell), fresh: [] };
+  const offered = new Map(readStore(LOG_KEY).data.a.map((e, k) => [e[2], k]));
+  const built = mode === "say" ? sayRound(data.w, dayNumber(), paceOf(data), offered) : { queue: spellRound(data.w, mixedSpell), fresh: [] };
   // סבב כתיבה משולב בלי אף מילה שהילד אומר (מילה נמחקה מהרשימה): אמירה במקומו.
   if(!built.queue.length && mixedSpell){ mixedSpellRound = false; mode = "say"; return startRound(); }
   round = { queue: built.queue, at: -1, row: [], tried: [], fresh: built.fresh, requeued: [], seen: [], said: false,
@@ -2665,6 +2672,12 @@ function speakStep(byTap){
     settled = true;
     if(!byTap) return nudgeButton("playWord");
     speechBroken = true;
+    // בלי מיקרופון אין גם אמירה: בלי קול אין מה לעשות בסבב הזה, והסבב הבא
+    // הוא כתיבה (startRound), עד שהקול או המיקרופון חוזרים.
+    if(listenOnly()){
+      startRound();
+      return next();
+    }
     toSay();
   };
   u.addEventListener("start", () => {
@@ -2746,18 +2759,19 @@ function tapChoice(b){
   noteTried(target);
   turn.picked = true;
   turn.heard = true;
-  renderStep();
   reveal();
   chime(CHEER);
+  ui();
   // לפי התור ולא לפי shownCount: הצגה מחדש של אותה מילה לא משאירה אותו תקוע.
+  // next() ועזיבת המשחק משאירים את אותו אובייקט בלי מילה (turn.word).
   const t = turn;
   setTimeout(() => {
-    if(turn !== t || t.step !== "understand") return;
+    if(turn !== t || !t.word || t.step !== "understand") return;
     if(!listenOnly()) return toSay(true);
     t.done = t.flown = true;
     renderStep();
     ui();
-    setTimeout(() => { if(turn === t) next(); }, GOOD_MS);
+    setTimeout(() => { if(turn === t && t.word) next(); }, GOOD_MS);
   }, UNDERSTOOD_MS);
 }
 
@@ -2918,7 +2932,9 @@ function setMode(to){
   renderMode();
   // מחוץ למשחק (מסך הפתיחה, קראו למבוגר) רק שומרים את הבחירה, ו-▶ בונה את
   // הסבב לפיה. בלי זה הסבב נבנה כאן, והמילה הראשונה שלו נאמרת מאחורי מסך הפתיחה.
-  if(screen !== "game") return;
+  // כך גם בסוף סבב, מתחת לאזור המבוגר: הסגירה שלו חוזרת למסך הפתיחה ממילא, וסבב
+  // שנבנה שם רק מחק את "הסבב האחרון" שהמבוגר מסתכל עליו.
+  if(screen !== "game" || ended && !$("overlay").hidden) return;
   if(practice === mode) return;
   mode = practice;
   // בכתיבה רואים את המילה באותיות שלה, ומעבר לכל כיוון אומר שהתור הזה היה שם.
@@ -2983,7 +2999,9 @@ function applyWords(nextWords, nextIndex, persist = true){
   if(persist) save();
   if(typeof nextIndex === "number") i = nextIndex;
   if(i >= words.length) i = 0;
-  if(screen === "game"){
+  // בסוף סבב, מתחת לאזור המבוגר, לא בונים סבב: הסגירה חוזרת למסך הפתיחה, ו-▶
+  // בונה אותו מהרשימה החדשה (ראו setMode).
+  if(screen === "game" && !(ended && !$("overlay").hidden)){
     // רשימה אחרת היא סבב חדש, שנבנה ממנה. בסוף סבב ▶ בונה אותו, והשורה של
     // הסבב שנגמר נשארת עם מסך הסיום שלו.
     if(!ended || nextIndex === null) startRound();
@@ -3440,7 +3458,7 @@ function pokeCue(){
 function renderDock(){
   if(screen !== "game" || ended) return;
   const understanding = mode === "say" && turn.step === "understand";
-  const calm = !!turn.word && !active && !turn.busy && !turn.done && !(understanding && !turn.awake);
+  const calm = !!turn.word && !active && !turn.busy && !turn.done && !(understanding && (!turn.awake || turn.picked));
   const away = (id, on) => $(id).classList.toggle("away", on);
   $("say").hidden = mode === "spell" || understanding || listenOnly();
   away("say", !calm && !active);
