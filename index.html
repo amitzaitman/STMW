@@ -18,7 +18,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <script src="./vosk.js"></script>
 <script src="./cache-name.js"></script>
-<script src="./words.js?v=11"></script>
+<script src="./words.js?v=12"></script>
 <style>
   /* המסך של הילד: בכל רגע דבר אחד בסגול ללחוץ עליו, ומה שאי אפשר להשתמש בו
      עכשיו לא על המסך. סגול = ללחוץ, טורקיז = מקשיב, ירוק = הצלחה, כתום =
@@ -1057,6 +1057,11 @@ var THEMES = window.THEMES || [];
 var THEME_BY_WORD = window.THEME_BY_WORD || {};
 // words.js ישן מהמטמון, בלי הרשימה, פשוט בלי בדיקות של מילים מעברית.
 const LOANWORD_SET = new Set(window.LOANWORDS || []);
+// זוגות מ-words.js, באותו מפתח משני הכיוונים. words.js ישן, בלי הרשימות, פשוט
+// בלי הזוגות.
+const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
+const LOOKALIKE_SET = new Set((window.LOOKALIKE || []).map(([a, b]) => pairKey(a, b)));
+const SOUNDALIKE_SET = new Set((window.SOUNDALIKE || []).map(([a, b]) => pairKey(a, b)));
 const PAIR_BY_WORD = Object.fromEntries(PAIRS.map(p => [p[1], p]));
 
 const $ = id => document.getElementById(id);
@@ -2216,11 +2221,12 @@ function levelOf(w){ return (PAIR_BY_WORD[w] || [])[3] || 2; }
 
 // מילים שקל לבלבל ביניהן, בשמיעה או בזיכרון: אות אחת שונה (cat, hat; ten,
 // tent), אותו צליל בכתיב אחר (ship, sheep; tea, tie), אותו תעתיק (ball,
-// bowl), או מה שהמנוע עצמו היה מקבל כאחת מהן.
+// bowl), מה שהמנוע עצמו היה מקבל כאחת מהן, או זוג שנשמע דומה לילד דובר עברית
+// (SOUNDALIKE ב-words.js: mouth, mouse).
 function confusable(a, b){
   if(a === b) return false;
   const plain = w => (typeof HE_BY_WORD !== "undefined" && HE_BY_WORD[w] || "").replace(/[֑-ׇ]/g, "");
-  return levenshtein(a, b) <= 1 || phoneticKey(a) === phoneticKey(b)
+  return levenshtein(a, b) <= 1 || phoneticKey(a) === phoneticKey(b) || SOUNDALIKE_SET.has(pairKey(a, b))
     || scoreToken(a, 1, b) >= DEFAULT_PRESET.threshold || scoreToken(b, 1, a) >= DEFAULT_PRESET.threshold
     || (!!plain(a) && plain(a) === plain(b));
 }
@@ -2603,7 +2609,8 @@ function canSpeak(){
 }
 
 // שתי תמונות לצד התמונה של המילה: מנושאים אחרים ושונים זה מזה, לא דומות לה
-// ולא זו לזו (confusable), ובלי אימוג'י מורכב, שבמכשיר ישן נראה כשתי תמונות.
+// ולא זו לזו, לא במילה (confusable) ולא בציור (LOOKALIKE), ובלי אימוג'י
+// מורכב, שבמכשיר ישן נראה כשתי תמונות.
 // קודם מילים מהרשימה שהילד כבר פגש, שהוא מכיר את התמונה שלהן, ואז השאר.
 function choicesFor(target){
   const w = readStore(PROGRESS_KEY).data.w, listed = new Set(words.map(x => x.word));
@@ -2617,7 +2624,8 @@ function choicesFor(target){
     for(const x of pool){
       if(picked.length === 2) return;
       const others = [target, ...picked];
-      if(picked.includes(x) || others.some(y => confusable(y, x) || (apart && theme(y) === theme(x)))) continue;
+      if(picked.includes(x) || others.some(y => confusable(y, x) || LOOKALIKE_SET.has(pairKey(y, x))
+         || (apart && theme(y) === theme(x)))) continue;
       picked.push(x);
     }
   };

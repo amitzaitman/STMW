@@ -502,6 +502,37 @@ async function main(){
   });
   check("כל מילה ברשימת המילים מעברית נמצאת במאגר, פעם אחת",
     loanwords.size > 0 && loanwords.size === loanwords.listed && loanwords.outside.length === 0, loanwords);
+  // גם בזוגות של תמונות דומות ושל מילים שנשמעות דומה: מילה שאינה במאגר לא
+  // משפיעה על כלום, וטעות כתיב בה עוברת בשקט.
+  const pairsOutside = await page.evaluate(() => {
+    const pool = new Set(PAIRS.map(p => p[1]));
+    return [...(window.LOOKALIKE || []), ...(window.SOUNDALIKE || [])].flat().filter(w => !pool.has(w));
+  });
+  check("כל מילה בזוגות הדומים נמצאת במאגר",
+    (wordsFile.LOOKALIKE || []).length > 0 && (wordsFile.SOUNDALIKE || []).length > 0 && pairsOutside.length === 0, pairsOutside);
+  // הניקוד של וו בתעתיק יושב על ה-ו השנייה (ווִי, ווֶ), כמו ברוב המאגר. על
+  // הראשונה ילד שקורא בניקוד הוגה וִ-ו-י.
+  const vavFirst = wordsFile.PAIRS.filter(p => /ו[\u05B0-\u05BD\u05C1\u05C2\u05C7]+ו(?![\u05B0-\u05BD\u05C1\u05C2\u05C7])/.test(p[2]))
+    .map(p => p[1] + " " + p[2]);
+  check("בתעתיק, הניקוד של וו על ה-ו השנייה", vavFirst.length === 0, vavFirst);
+  // ילד דובר עברית שומע את mouth ו-mouse כמעט אותו דבר, ואת 🐻 ו-🧸 הוא רואה
+  // כמעט אותו דבר: הם לא באים יחד.
+  const alike = await page.evaluate(() => {
+    const saved = words;
+    try{
+      words = ["bear", "teddy", "mouth", "mouse", "dog", "cat", "sun", "car", "book", "apple"]
+        .map(w => ({ emoji: emojiFor(w), word: w }));
+      let together = 0;
+      for(let k = 0; k < 300; k++){
+        const c = choicesFor("bear");
+        if(c.includes("teddy")) together++;
+        if(choicesFor("mouth").includes("mouse")) together++;
+      }
+      return { together, confusable: confusable("mouth", "mouse") && confusable("socks", "fox") && confusable("two", "tooth") };
+    } finally { words = saved; }
+  });
+  check("תמונות שנראות אותו דבר ומילים שנשמעות אותו דבר לא באות יחד",
+    alike.together === 0 && alike.confusable, alike);
 
   // בנייה מחדש מלאה נותנת את אותו מספר פריטים, אז נבדק שהצומת עצמו נשאר.
   const firstItem = await page.$("#catalog .catalog-item");

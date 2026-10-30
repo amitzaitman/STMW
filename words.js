@@ -84,7 +84,7 @@
       ["🐳","whale","ווֵייל",2],
       ["🦈","shark","שַארְק",1],
       ["🐙","octopus","אוֹקְטוֹפּוּס",2],
-      ["🦑","squid","סְקְוִויד",3],
+      ["🦑","squid","סְקְווִיד",3],
       ["🦐","shrimp","שְרִימְפּ",3],
       ["🦞","lobster","לוֹבְּסְטֶר",2],
       ["🦀","crab","קְרֶבּ",1],
@@ -165,7 +165,7 @@
       ["🍔","burger","בֶּרְגֶר",1],
       ["🍟","fries","פְרַייז",2],
       ["🍕","pizza","פִּיצָה",1],
-      ["🥪","sandwich","סֶנְדְוִויץ'",1],
+      ["🥪","sandwich","סֶנְדְווִיץ'",1],
       ["🌮","taco","טָאקוֹ",1],
       ["🌯","burrito","בּוּרִיטוֹ",2],
       ["🧆","falafel","פָלָאפֶל",1],
@@ -213,9 +213,9 @@
       ["🏝️","island","אַיילֶנְד",2]
     ]},
     {id:"plants", emoji:"🌸", name:"צמחים ופרחים", pairs:[
-      ["🌸","flower","פְלָאוֶור",2],
+      ["🌸","flower","פְלָאווֶר",2],
       ["🌼","daisy","דֵייזִי",2],
-      ["🌻","sunflower","סַאנְפְלָאוֶור",2],
+      ["🌻","sunflower","סַאנְפְלָאווֶר",2],
       ["🌺","hibiscus","הִיבִּיסְקוּס",3],
       ["🌹","rose","רוֹז",1],
       ["🌷","tulip","טוּלִיפּ",1],
@@ -301,7 +301,7 @@
     {id:"home", emoji:"🏠", name:"בבית", pairs:[
       ["🏠","house","הָאוּס",1],
       ["🚪","door","דוֹר",1],
-      ["🪟","window","וִוינְדוֹ",2],
+      ["🪟","window","ווִינְדוֹ",2],
       ["🛏️","bed","בֶּד",1],
       ["🪑","chair","צֶ'ר",1],
       ["💡","lamp","לֶמְפּ",1],
@@ -464,6 +464,19 @@
     "robot", "ninja", "dinosaur", "dragon", "princess"
   ];
 
+  // תמונות שנראות כמעט אותו דבר, אף שהמילים שונות: בשומעים ובוחרים הן לא
+  // יופיעו יחד, אחרת ילד שהבין את bear בוחר בצדק גם ב-🧸.
+  const LOOKALIKE = [
+    ["bear", "teddy"], ["bowl", "rice"], ["bowl", "noodles"], ["bowl", "soup"], ["rice", "noodles"], ["clock", "watch"]
+  ];
+
+  // מילים שנשמעות כמעט אותו דבר לילד שעברית היא שפת האם שלו, אף שהאותיות
+  // שונות: th נשמע לו כמו s או נבלע. הן לא יבואו באותו סבב, לא יופיעו יחד
+  // בשומעים ובוחרים, וברמה הסלחנית אחת מתקבלת במקום השנייה (ראו confusable).
+  const SOUNDALIKE = [
+    ["mouth", "mouse"], ["tooth", "two"], ["socks", "fox"], ["socks", "box"]
+  ];
+
   const DEFAULT_WORDS = [
     {emoji:"🐶", word:"dog"},
     {emoji:"🐱", word:"cat"},
@@ -490,4 +503,6 @@
   global.THEME_BY_WORD = THEME_BY_WORD;
   global.DEFAULT_WORDS = DEFAULT_WORDS;
   global.LOANWORDS = LOANWORDS;
+  global.LOOKALIKE = LOOKALIKE;
+  global.SOUNDALIKE = SOUNDALIKE;
 })(typeof window !== "undefined" ? window : (typeof globalThis !== "undefined" ? globalThis : this));
