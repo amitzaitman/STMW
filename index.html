@@ -1315,15 +1315,14 @@ function toggleSound(){
   setSound(!soundEnabled);
   // בלי שמע אין "להבין": המילה עוברת לאמירה, עם הכתב.
   if(!soundEnabled && turn.step === "understand") return toSay();
-  // בסוף הסבב המילה האחרונה כבר לא על המסך.
-  if(ended) return;
+  // בסוף הסבב המילה האחרונה כבר לא על המסך, ומחוץ למשחק אין מילה בכלל.
+  if(ended || !turn.word) return;
   // השמע נדלק ואומר את המילה: בבדיקה מהתמונה זה כמו 🔊.
   if(soundEnabled && turn.step === "probe"){
     endProbe();
     reveal();
   }
-  speak(word(), EN);   // שותק כשהשמע כבוי
-  if(soundEnabled) turn.heard = true;
+  if(speak(word(), EN)) turn.heard = true;   // שותק כשהשמע כבוי
 }
 
 function load(){
@@ -1468,7 +1467,14 @@ if("speechSynthesis" in window){
   speechSynthesis.addEventListener("voiceschanged", () => {
     const could = canSpeak();
     refreshVoices();
-    if(!could && canSpeak()) upgradeTurn();
+    if(could || !canSpeak()) return;
+    // "אין קול" כבר לא נכון, וקול שייעלם שוב יקבל אותו שוב.
+    if(turn.cue === "novoice"){
+      turn.cue = null;
+      noVoiceShown = false;
+      ui();
+    }
+    upgradeTurn();
   });
 }
 // קולות הצעצוע של אפל וקולות Eloquence הרובוטיים. באייפון הרשימה נפתחת בהם,
@@ -1497,11 +1503,14 @@ function voiceFor(lang){
   return best;
 }
 
-// מחזירה את ההקראה, או null כשאין מה להשמיע.
+// מחזירה את ההקראה, או null כשאין מה להשמיע. מכשיר שיש בו קולות ואף אחד לא
+// בשפה הזו היה מקריא את המילה בקול אחר, למשל עברי, וזו דוגמה שגויה. רשימת
+// קולות ריקה לא אומרת כלום: יש דפדפנים שמדברים בלי לפרסם אותה.
 function speak(text, lang){
   if(!soundEnabled || !("speechSynthesis" in window)) return null;
   if(!voices.length) refreshVoices();
   const v = voiceFor(lang);
+  if(voices.length && !v) return null;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = lang;
@@ -1787,7 +1796,8 @@ function scoreToken(spokenWord, conf, target){
      said.length >= want.length * PREFIX_MIN_RATIO){
     score = Math.max(score, PREFIX_SCORE);
   }
-  return Math.round(score * Math.min(1, sure + CONFIDENCE_FLOOR));
+  // מילה אחרת לא מקבלת יותר ממה שהיעד עצמו היה מקבל באותו ביטחון.
+  return Math.min(Math.round(score * Math.min(1, sure + CONFIDENCE_FLOOR)), Math.round(sure * 100));
 }
 
 function buildRecognizer(){
@@ -1819,11 +1829,13 @@ function processRecognition(msg){
   const target = word();
   // בדקדוק סגור, מה שאינו היעד הוא מילה אחרת מהרשימה, ו-scoreToken נותן לשכנה
   // קרובה ניקוד שעובר את הרף הרגיל: ship מול sheep, ball מול balloon. מעל הרמה
-  // הסלחנית רק היעד נחשב; בסלחנית שכנה קרובה עוברת כהגייה לא מדויקת.
+  // הסלחנית רק היעד נחשב; בסלחנית שכנה קרובה עוברת כהגייה לא מדויקת. שכנה היא
+  // מה ש-confusable מחשיב לקל לבלבל עם היעד. מילה שרק חולקת איתו אותיות, כמו
+  // moon מול book, היא מילה אחרת גם בסלחנית.
   const lenient = preset === PRESETS[0];
   let best = 0;
   for(const tok of tokens){
-    if(!lenient && tok.word !== target) continue;
+    if(tok.word !== target && !(lenient && confusable(tok.word, target))) continue;
     best = Math.max(best, scoreToken(tok.word, tok.conf, target));
   }
 
@@ -1996,33 +2008,39 @@ async function listen(){
 }
 
 // מילה שנאמרה ממש בסוף החלון עוד לא קיבלה תוצאה סופית: המנוע שולח אותה
-// מעצמו רק אחרי שהוא שומע שקט. לכן בסוף החלון מבקשים ממנו את מה שנשמע עד
-// עכשיו, והניסיון עדיין פעיל כשהתשובה מגיעה. תשובה שלא עוברת את הרף היא
-// אמירה שלא התקבלה. אין תשובה תוך FINAL_GRACE_MS — ההקשבה נעצרת בשקט ולא
-// נחשבת ניסיון: ילד שעוד מחפש את המילה, או שדיבר חלש מדי, לא טעה. 🎤 פועם
-// פעם אחת, כדי שיידע שאפשר לנסות שוב.
+// מעצמו רק אחרי שהוא שומע שקט. לכן בסוף החלון ממשיכים להקשיב עוד
+// FINAL_GRACE_MS, כדי שמילה שהתחילה בסוף תיגמר, ורק אז מבקשים ממנו את מה
+// שנשמע עד עכשיו, והניסיון עדיין פעיל כשהתשובה מגיעה. בקשה כזו גם חותכת: מה
+// שנאמר עד אליה נשפט לבד ומאפס את המפענח, ולכן היא לא באה כבר בסוף החלון, באמצע
+// מילה. תשובה שלא עוברת את הרף היא אמירה שלא התקבלה. אין תשובה תוך
+// FINAL_ANSWER_MS — ההקשבה נעצרת בשקט ולא נחשבת ניסיון: ילד שעוד מחפש את
+// המילה, או שדיבר חלש מדי, לא טעה. 🎤 פועם פעם אחת, כדי שיידע שאפשר לנסות שוב.
 // אין ⏭️ גדול, אז לשתיקה יש סולם משלה, כדי שהילד לא ייתקע: בשתיקה השנייה
 // באותה מילה היד מצביעה על 🔊, והמכשיר לא מדבר — הילד מחליט אם לבקש. בשלישית
 // המילה עוברת להמשך הסבב ובא הכרטיס הבא, בלי לסיים את המסלול המהיר ובלי
 // לרשום ויתור: כל שתיקה כבר נרשמה ביומן.
-const FINAL_GRACE_MS = 500, QUIET_HELP = 2, QUIET_GIVE_UP = 3;
+const FINAL_GRACE_MS = 500, FINAL_ANSWER_MS = 400, QUIET_HELP = 2, QUIET_GIVE_UP = 3;
 function closeWindow(){
   if(!active) return;
-  if(rec) rec.retrieveFinalResult();
   timer = setTimeout(()=>{
-    if(!stopListening()) return;
-    recordAttempt(word(), "quiet", null, { tryNo: turn.says + 1 });
-    turn.quiet++;
-    if(turn.quiet >= QUIET_GIVE_UP){
-      requeue(word());
-      turn.done = true;
-      return toPocket();
-    }
-    turn.cue = "quiet";
-    ui();
-    nudgeSay();
-    if(turn.quiet === QUIET_HELP) demo(helpTarget());
+    if(!active) return;
+    if(rec) rec.retrieveFinalResult();
+    timer = setTimeout(quietEnd, FINAL_ANSWER_MS);
   }, FINAL_GRACE_MS);
+}
+function quietEnd(){
+  if(!stopListening()) return;
+  recordAttempt(word(), "quiet", null, { tryNo: turn.says + 1 });
+  turn.quiet++;
+  if(turn.quiet >= QUIET_GIVE_UP){
+    requeue(word());
+    turn.done = true;
+    return toPocket();
+  }
+  turn.cue = "quiet";
+  ui();
+  nudgeSay();
+  if(turn.quiet === QUIET_HELP) demo(helpTarget());
 }
 function nudgeSay(){
   const say = $("say");
@@ -2107,7 +2125,7 @@ function notYet(probe = false){
     setTimeout(()=>{
       if(mine !== shownCount || active){ t.busy = false; return ui(); }
       const u = speak(word(), EN);
-      if(soundEnabled) t.heard = true;
+      if(u) t.heard = true;
       afterSpeech(u, () => { t.busy = false; ui(); });
     }, probe ? 0 : CHIME_SECONDS * 1000);
     return;
@@ -3918,8 +3936,7 @@ $("wordList").addEventListener("click", e=>{
   else if(e.target.closest(".speak-word-btn")){
     // ההקראה הזו מבטלת את המילה של "להבין" אם עוד לא התחילה, וזו לא תקלה.
     stepSpeech = null;
-    speak(words[n].word, EN);
-    if(n === i && soundEnabled) turn.heard = true;
+    if(speak(words[n].word, EN) && n === i) turn.heard = true;
   }
 });
 

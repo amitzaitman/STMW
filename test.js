@@ -400,7 +400,13 @@ async function main(){
       },
       target: PRESETS.map(p => decide(farm, "sheep", "sheep", p)),
       withNeighbour: [["ship", "sheep"], ["sheep", "ship"]].map(said => decide(farm, "sheep", said, normal)),
-      lenient: decide(farm, "sheep", "ship", lenient)
+      lenient: decide(farm, "sheep", "ship", lenient),
+      // אותן אותיות, מילה אחרת: moon מול book, car ו-cake מול cat.
+      far: [["book", "moon"], ["cat", "cake"], ["dog", "door"]].map(([target, said]) =>
+        decide(["book", "moon", "cat", "cake", "dog", "door"], target, said, lenient)),
+      // שכנה לא עוברת כשהיעד עצמו לא היה עובר באותו ביטחון.
+      weak: { target: decide(["house", "mouse"], "house", "house", lenient, 0.35),
+              neighbour: decide(["house", "mouse"], "house", "mouse", lenient, 0.35) }
     };
   });
   check("מילה אחרת מהרשימה לא מתקבלת מעל הרמה הסלחנית",
@@ -410,6 +416,10 @@ async function main(){
   check("מילת היעד מתקבלת גם לפני או אחרי שכנה מהרשימה באותה תוצאה",
         listNeighbour.withNeighbour.every(ok => ok === true), listNeighbour);
   check("ברמה הסלחנית שכנה קרובה מהרשימה מתקבלת", listNeighbour.lenient === true, listNeighbour);
+  check("ברמה הסלחנית מילה אחרת שרק חולקת אותיות עם היעד לא מתקבלת",
+    listNeighbour.far.every(ok => ok === false), listNeighbour.far);
+  check("שכנה לא עוברת כשהיעד עצמו לא עובר באותו ביטחון",
+    listNeighbour.weak.target === false && listNeighbour.weak.neighbour === false, listNeighbour.weak);
 
   const scores = await page.evaluate(() => ({
     exact:    scoreToken("dog", 0.9, "dog"),
@@ -1255,6 +1265,35 @@ async function main(){
   check("בלי תשובה מהמנוע החלון נסגר בלי \"נסו שוב\" ולא נחשב ניסיון",
     !lateNothing.won && !lateNothing.active && lateNothing.agains === 0 && lateNothing.missed === 0, lateNothing);
   check("חלון שנגמר בלי מילה — 🎤 פועם פעם אחת", lateNothing.nudged && !lateRight.nudged, { lateNothing, lateRight });
+  // ילד שמתחיל את המילה ממש בסוף החלון. עד שהיא נגמרת, בקשה לתוצאה סופית
+  // מחזירה "" וחותכת אותה. כאן המילה נגמרת 300ms אחרי סוף החלון: מי שמבקש
+  // כבר בסוף החלון מפסיד אותה, ומי שמבקש בסוף ההמתנה מקבל אותה כשהניסיון
+  // עוד פעיל. נמדד מול המודל האמיתי, עם מילה מוקלטת שהתחילה 300ms לפני הסוף.
+  const lateStart = await page.evaluate(async () => {
+    const realWindow = listenWindowMs, realRetrieve = rec.retrieveFinalResult, realGood = good;
+    let won = false, t0 = 0;
+    const asked = [];
+    listenWindowMs = () => 100;
+    good = () => { won = true; return realGood(); };
+    rec.retrieveFinalResult = function(){
+      const at = performance.now() - t0, done = at >= 100 + 300;
+      asked.push(Math.round(at));
+      setTimeout(() => this.dispatchEvent(new CustomEvent("result", { detail: { result:
+        done ? { result: [{ word: word(), conf: 1 }], text: word() } : { text: "" } } })), 50);
+    };
+    try{
+      await listen();
+      t0 = performance.now();
+      await new Promise(r => setTimeout(r, 1500));
+      return { won, asked, active };
+    } finally {
+      listenWindowMs = realWindow;
+      rec.retrieveFinalResult = realRetrieve;
+      good = realGood;
+      stopListening();
+    }
+  });
+  check("מילה שהתחילה ממש בסוף החלון ונגמרה אחריו — מתקבלת", lateStart.won && !lateStart.active, lateStart);
 
   // מעבר לכתיבה באמצע הקשבה עוצר אותה בשקט: זה לא ניסיון שנכשל, ו"נסו שוב"
   // היה נשמע כאילו הילד טעה.
@@ -1299,7 +1338,7 @@ async function main(){
       if(how === "late") rec.dispatchEvent(new CustomEvent("result",
         { detail: { result: { result: [{ word: from, conf: 1 }], text: from } } }));
       await new Promise(r => setTimeout(r, listenWindowMs()));
-      await new Promise(r => setTimeout(r, FINAL_GRACE_MS + 200));
+      await new Promise(r => setTimeout(r, FINAL_GRACE_MS + FINAL_ANSWER_MS + 200));
       for(const m of obs.takeRecords()) seen.push(m.oldValue);
       obs.disconnect();
       return { ...out, calls, seen: seen.concat(pic.className) };
@@ -1564,7 +1603,7 @@ async function main(){
         listenWindowMs = () => 100;
         rec.retrieveFinalResult = () => {};
         await listen();
-        await new Promise(r => setTimeout(r, 100 + FINAL_GRACE_MS + 300));
+        await new Promise(r => setTimeout(r, 100 + FINAL_GRACE_MS + FINAL_ANSWER_MS + 300));
       }
       const log = store(L), prog = store(P);
       return { target, threshold: preset.threshold, presetId: preset.id, size: words.length,
@@ -3193,7 +3232,7 @@ async function main(){
     rec.retrieveFinalResult = () => {};
     const hush = async () => {
       await listen();
-      await uTest.wait(60 + FINAL_GRACE_MS + 150);
+      await uTest.wait(60 + FINAL_GRACE_MS + FINAL_ANSWER_MS + 150);
       const hand = $("hand"), r = $("playWord").getBoundingClientRect();
       out.steps.push({ cue: $("cue").dataset.cue, word: word(), hand: hand.classList.contains("tap"),
         onHelp: Math.abs(parseFloat(hand.style.left) + 14 - (r.left + r.width / 2)) < 2, spoken: uTest.spoken.length });
