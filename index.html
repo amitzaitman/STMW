@@ -2168,8 +2168,9 @@ const PACE_WINDOW = 30, PACE_MIN_TRIES = 10, PACE_UP = 0.85, PACE_DOWN = 0.75;
 // שכבר הוצג בסבב, כדי ש"להבין" יהיה רק בפעם הראשונה (stepFor). הסבב רק
 // בזיכרון: טעינה מחדש מתחילה סבב חדש, ושום דבר לא נכתב בטעינה.
 // said: נשמעה בסבב אמירה אחת לפחות, כדי שהקצב יתעדכן רק מסבב שהיה בו ניסיון
-// (adaptPace), ולא מסבבים של שומעים ובוחרים בלבד.
-let round = { queue: [], at: -1, row: [], tried: [], fresh: [], requeued: [], seen: [], said: false };
+// (adaptPace), ולא מסבבים של שומעים ובוחרים בלבד. child: של מי הסבב. החלפת
+// ילד מחוץ למשחק לא בונה סבב, ו"הסבב האחרון" לא מוצג תחת שם של ילד אחר.
+let round = { queue: [], at: -1, row: [], tried: [], fresh: [], requeued: [], seen: [], said: false, child: childId };
 let ended = false;
 
 function wordRecord(w){ return readStore(PROGRESS_KEY).data.w[w]; }
@@ -2322,7 +2323,7 @@ function startRound(){
   // סבב כתיבה משולב בלי אף מילה שהילד אומר (מילה נמחקה מהרשימה): אמירה במקומו.
   if(!built.queue.length && mixedSpell){ mixedSpellRound = false; mode = "say"; return startRound(); }
   round = { queue: built.queue, at: -1, row: [], tried: [], fresh: built.fresh, requeued: [], seen: [], said: false,
-            basket: basketWords().map(b => b.word), pocketed: [] };
+            basket: basketWords().map(b => b.word), pocketed: [], child: childId };
 }
 
 // המילה הבאה בסבב, או null כשהוא נגמר. כל שינוי ברשימה בונה סבב חדש, כך
@@ -3145,7 +3146,7 @@ function renderPanel(){
 
 // לבד ובעזרה רואה רק המבוגר: אצל הילד כל ההצלחות נראות אותו דבר.
 function renderLastRound(){
-  const tried = round.tried, alone = tried.filter(w => round.row.includes(w));
+  const tried = round.child === childId ? round.tried : [], alone = tried.filter(w => round.row.includes(w));
   $("lastRoundSection").hidden = !tried.length;
   $("lastRound").textContent = `לבד, בניסיון הראשון: ${alone.map(emojiFor).join(" ") || "—"}. ` +
     `עם עזרה, בניסיון נוסף, או שלא הצליחו: ${tried.filter(w => !alone.includes(w)).map(emojiFor).join(" ") || "—"}.`;

@@ -4162,6 +4162,27 @@ async function main(){
   check("ילד שנמחק בחלון אחר — עוברים לבלי שם, לא לרשימת ברירת המחדל",
     fellBack.childId === "" && fellBack.words === "dog,cat" && fellBack.pointer === noaId, fellBack);
 
+  // ממסך הפתיחה החלפת ילד לא בונה סבב חדש. "הסבב האחרון" באזור המבוגר הוא של
+  // הילד שהסבב שלו, ולא מופיע תחת השם של ילד אחר.
+  const doorSwitch = await page.evaluate(() => {
+    const shown = () => getComputedStyle($("lastRoundSection")).display !== "none";
+    goDoor();
+    round.tried = ["dog"]; round.row = ["dog"];
+    openPanel();
+    const out = { own: shown() };
+    addChild("בדיקה");
+    const id = childId;
+    out.other = shown();
+    out.text = $("lastRound").textContent;
+    switchChild("");
+    out.back = shown();
+    for(const k of Object.keys(localStorage)) if(k.endsWith("@" + id)) localStorage.removeItem(k);
+    closePanel();
+    return out;
+  });
+  check("\"הסבב האחרון\" של ילד אחד לא מופיע אחרי מעבר לילד אחר ממסך הפתיחה",
+    doorSwitch.own && !doorSwitch.other && doorSwitch.back, doorSwitch);
+
   await page.evaluate(() => {
     localStorage.removeItem("say-the-word-children");
     localStorage.removeItem("say-the-word-child");
