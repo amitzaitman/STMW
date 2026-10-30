@@ -4172,6 +4172,9 @@ $("hebrewToggle").checked = hebrewEnabled;
 renderDoor();
 setScreen(setupDue() ? "setup" : "door");
 loadModel();
+// הבדיקה אילו תמונות המכשיר מצייר, בזמן שמסך הפתיחה פנוי, ולא כשהילד כבר
+// מחכה לכרטיס הראשון. בטאבלט ישן היא יכולה לקחת כמה מאות אלפיות שנייה.
+(window.requestIdleCallback || setTimeout)(() => { for(const p of PAIRS) drawable(p[0]); });
 </script>
 </body>
 </html>
