@@ -1784,22 +1784,64 @@ function micLive(){
   return !!micStream && micStream.getAudioTracks().some(t => t.readyState === "live");
 }
 
+// המפענח מקבל אודיו רק בזמן ניסיון. בשאר הזמן שום דבר לא מעובד.
+function hear(samples){
+  if(rec && active){ try{ rec.acceptWaveformFloat(samples, ctx.sampleRate); }catch(err){} }
+  if(active) showLevel(samples);
+}
+
+// גרף השמע: המיקרופון, צומת שמעביר כל TAP_SIZE דגימות ל-hear, ויציאה
+// בעוצמה 0, כי צומת שלא מחובר ליציאה לא רץ. createScriptProcessor הוצא
+// משימוש לטובת AudioWorklet, אבל הוא המסלול שעובד היום בכל מכשיר שהאפליקציה
+// רצה עליו, ולכן הוא נשאר כל עוד הדפדפן מציע אותו. דפדפן שכבר הסיר אותו מקבל
+// את אותו צומת ב-AudioWorklet, מקוד שבתוך הדף ולא מקובץ נוסף שה-service
+// worker היה צריך לשמור.
+const TAP_SIZE = 4096;
+const TAP_WORKLET = `registerProcessor("tap", class extends AudioWorkletProcessor {
+  constructor(){ super(); this.buf = new Float32Array(${TAP_SIZE}); this.n = 0; }
+  process(inputs){
+    const ch = inputs[0] && inputs[0][0];
+    for(let k = 0; ch && k < ch.length; k++){
+      this.buf[this.n++] = ch[k];
+      if(this.n < this.buf.length) continue;
+      this.port.postMessage(this.buf, [this.buf.buffer]);
+      this.buf = new Float32Array(${TAP_SIZE});
+      this.n = 0;
+    }
+    return true;
+  }
+});`;
+let graph = null;
+function buildGraph(){
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  sinkNode = ctx.createGain();
+  sinkNode.gain.value = 0;
+  sinkNode.connect(ctx.destination);
+  if(ctx.createScriptProcessor){
+    procNode = ctx.createScriptProcessor(TAP_SIZE, 1, 1);
+    procNode.onaudioprocess = e => hear(e.inputBuffer.getChannelData(0));
+    procNode.connect(sinkNode);
+    return Promise.resolve();
+  }
+  const url = URL.createObjectURL(new Blob([TAP_WORKLET], { type: "text/javascript" }));
+  return ctx.audioWorklet.addModule(url).then(() => {
+    procNode = new AudioWorkletNode(ctx, "tap", { channelCount: 1, channelCountMode: "explicit" });
+    procNode.port.onmessage = e => hear(e.data);
+    procNode.connect(sinkNode);
+  }).finally(() => URL.revokeObjectURL(url));
+}
+
 async function ensureAudio(){
   // גרף השמע נבנה פעם אחת. רק המיקרופון עצמו נפתח מחדש אחרי שחרור,
-  // אחרת כל מחזור היה משאיר מאחוריו צומת מחובר ל-destination.
-  if(!ctx){
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
-    procNode = ctx.createScriptProcessor(4096, 1, 1);
-    procNode.onaudioprocess = e=>{
-      // המפענח מקבל אודיו רק בזמן ניסיון. בשאר הזמן שום דבר לא מעובד.
-      if(rec && active){ try{ rec.acceptWaveform(e.inputBuffer); }catch(err){} }
-      if(active) showLevel(e.inputBuffer.getChannelData(0));
-    };
-    sinkNode = ctx.createGain();
-    sinkNode.gain.value = 0;
-    procNode.connect(sinkNode);
-    sinkNode.connect(ctx.destination);
-  }
+  // אחרת כל מחזור היה משאיר מאחוריו צומת מחובר ל-destination. גרף שלא
+  // נבנה נבנה מחדש בניסיון הבא.
+  if(!graph) graph = buildGraph().catch(err => {
+    graph = null;
+    try{ ctx.close(); }catch(e){}
+    ctx = procNode = sinkNode = null;
+    throw err;
+  });
+  await graph;
   await ctx.resume();
   if(!micLive()){
     releaseMic();

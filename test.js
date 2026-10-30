@@ -1002,6 +1002,9 @@ async function main(){
   await page.evaluate(() => ensureAudio());
   await page.waitForTimeout(300);
   check("המיקרופון נפתח", await page.evaluate(() => !!micStream));
+  // המסלול שנבדק בכל מכשיר נשאר כל עוד הדפדפן מציע אותו.
+  check("כשיש createScriptProcessor המיקרופון עובר דרכו",
+    await page.evaluate(() => procNode.constructor.name) === "ScriptProcessorNode");
   // micStream === null לבדו לא אומר כלום: מסלול שלא נעצר ממשיך להקליט גם
   // בלי משתנה שמחזיק אותו.
   const released = await page.evaluate(() => {
@@ -3405,6 +3408,35 @@ async function main(){
     } finally { processRecognition = realProcess; }
   });
   check("בזמן ההקשבה הטבעות זזות עם הקול, ואחריה נעצרות", rings.during > 0 && rings.after === 0, rings);
+
+  // דפדפן שכבר הסיר את createScriptProcessor, שהוצא משימוש: המיקרופון עובר
+  // דרך AudioWorklet, ואותו אודיו מגיע למפענח ולטבעות. בדפדפן נפרד, בלי מודל:
+  // המפענח כאן הוא רק מונה.
+  const noProc = await browser.newContext({ permissions: ["microphone"], serviceWorkers: "block" });
+  await noProc.addInitScript(() => {
+    delete BaseAudioContext.prototype.createScriptProcessor;
+    delete AudioContext.prototype.createScriptProcessor;
+  });
+  await noProc.route("**/model.tar.gz", route => route.abort());
+  const noProcPage = await noProc.newPage();
+  await noProcPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  const worklet = await noProcPage.evaluate(async () => {
+    await ensureAudio();
+    const chunks = [];
+    rec = { acceptWaveformFloat: (samples, rate) => chunks.push([samples.length, rate]), retrieveFinalResult(){}, remove(){} };
+    active = true;
+    let level = 0;
+    for(let k = 0; k < 40; k++){
+      await new Promise(r => setTimeout(r, 20));
+      level = Math.max(level, parseFloat($("say").style.getPropertyValue("--level")) || 0);
+    }
+    active = false;
+    return { node: procNode && procNode.constructor.name, chunks: chunks.length, size: chunks.length && chunks[0][0],
+             rate: chunks.length && chunks[0][1] === ctx.sampleRate, level };
+  }).catch(e => ({ error: e.message }));
+  await noProc.close();
+  check("בלי createScriptProcessor המיקרופון עובר דרך AudioWorklet, למפענח ולטבעות",
+    worklet.node === "AudioWorkletNode" && worklet.chunks > 0 && worklet.size === 4096 && worklet.rate && worklet.level > 0, worklet);
 
   // מקלדת, ומסך של טלפון: התמונות בגובה של אצבע, על המסך, והתחתונה רחוקה מ-⏭️.
   await page.setViewportSize({ width: 360, height: 640 });
