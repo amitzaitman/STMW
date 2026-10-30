@@ -2266,6 +2266,25 @@ async function main(){
   });
   check("נגיעה שנייה מיד אחרי ▶ לא מדלגת על המילה הראשונה בסבב, ואחר כך ⏭️ עובד",
     tapAfterPlay.kept && tapAfterPlay.moved, tapAfterPlay);
+  // ⏭️ פעמיים מהר מדלג על מילה אחת, ולא גם על הבאה, שהילד לא ראה.
+  const doubleSkip = await page.evaluate(async () => {
+    await roundTest.wait(END_GUARD_MS + 50);
+    // כל כרטיס שמוצג עובר ב-show.
+    const real = show;
+    let shown = 0;
+    show = () => { shown++; return real(); };
+    try{
+      $("next").click();
+      await roundTest.wait(150);
+      $("next").click();
+      const quick = shown;
+      await roundTest.wait(END_GUARD_MS + 50);
+      $("next").click();
+      return { quick, later: shown };
+    } finally { show = real; }
+  });
+  check("נגיעה כפולה ב-⏭️ מדלגת על מילה אחת, ואחר כך ⏭️ עובד שוב",
+    doubleSkip.quick === 1 && doubleSkip.later === 2, doubleSkip);
   // וגם ▶ של מסך הפתיחה: נגיעה כפולה בו לא מדלגת על המילה הראשונה. הדף נפתח
   // בהקשר נפרד, בלי מה שהבדיקות כאן מכבות.
   const earlyCtx = await browser.newContext({ serviceWorkers: "block" });
@@ -3736,6 +3755,36 @@ async function main(){
   check("תשובה שגויה סוגרת בשקט, בלי הגדרות", !wrongAnswer.gate && !wrongAnswer.panel && wrongAnswer.screen === "door", wrongAnswer);
   check("תשובה נכונה פותחת את ההגדרות", !rightAnswer.gate && rightAnswer.panel, rightAnswer);
   check("המספרים באנגלית", numbers.join() === "twenty-one,thirty,fifty-three,ninety-nine", numbers);
+
+  // היד שמדגימה לא עוברת מעל השאלה של המבוגר, ולא מדגימה ▶ שמוסתר בזמן
+  // שהמיקרופון נפתח.
+  const handQuiet = await page.evaluate(async () => {
+    const tapped = () => $("hand").classList.contains("tap");
+    const fresh = () => { $("hand").classList.remove("tap"); demoSeen.clear(); idleState = ""; armIdle(); };
+    goDoor();
+    fresh();
+    openGate();
+    await new Promise(r => setTimeout(r, DEMO_FIRST_MS + 400));
+    const out = { gate: tapped() };
+    closeGate();
+    starting = true;
+    document.body.classList.add("starting");
+    try{
+      fresh();
+      await new Promise(r => setTimeout(r, DEMO_FIRST_MS + 400));
+      out.starting = tapped();
+    } finally {
+      starting = false;
+      document.body.classList.remove("starting");
+    }
+    fresh();
+    await new Promise(r => setTimeout(r, DEMO_FIRST_MS + 400));
+    out.door = tapped();
+    enterGame();
+    return out;
+  });
+  check("היד לא מדגימה מעל שאלת המבוגר, ולא על ▶ מוסתר; במסך הפתיחה עצמו היא מדגימה",
+    !handQuiet.gate && !handQuiet.starting && handQuiet.door, handQuiet);
 
   // --------------------------------------------------------------
   group("עדכון");

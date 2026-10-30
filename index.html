@@ -3526,7 +3526,8 @@ function armIdle(){
   const first = !demoSeen.has(state);
   idleTimer = setTimeout(() => {
     idleTimer = null;
-    if(cueNow() !== state) return;
+    // השאלה של המבוגר או ההגדרות נפתחו אחרי שהטיימר כבר רץ.
+    if(cueNow() !== state || !$("overlay").hidden || !$("gate").hidden) return;
     const count = screen === "game" ? turn.demos : screenDemos;
     if(count >= DEMO_MAX) return;
     demoSeen.add(state);
@@ -3544,7 +3545,8 @@ function armIdle(){
   }, first ? DEMO_FIRST_MS : wait);
 }
 function demoTarget(){
-  if(screen === "door") return $("play");
+  // בזמן ש-▶ מחכה למיקרופון הוא מוסתר (body.starting), ואין מה להדגים.
+  if(screen === "door") return starting ? null : $("play");
   if(screen === "grownup") return $("resume");
   return isShown($("say")) ? $("say") : $("next");
 }
@@ -3633,7 +3635,7 @@ function enterGame(){
   pickMode();
   if(backPending) pushAfterBack = true;
   else pushGame();
-  roundShownAt = performance.now();
+  buttonsGuardAt = performance.now();
   startRound();
   next();
 }
@@ -3891,22 +3893,24 @@ $("say").addEventListener("click", e=>{
   pressListened = false;
   if(!handled) listen();
 });
-$("next").addEventListener("click", skipWord);
+// נגיעה כפולה ב-⏭️ מדלגת על מילה אחת, ולא גם על זו שבאה אחריה לפני שהילד
+// ראה אותה: על כרטיס ❓ זה היה גם מסיים לתמיד את המסלול המהיר.
+$("next").addEventListener("click", () => { buttonsGuardAt = performance.now(); skipWord(); });
 $("hint").addEventListener("click", giveHint);
 // ▶ ו-🧺 מתעלמים מנגיעה ברגע שמסך הסיום מופיע (ראו END_GUARD_MS), והכפתורים
 // של הסבב החדש — ⏭️, 💡, 🎤 — מתעלמים מנגיעה ברגע שאחרי ▶, של מסך הפתיחה או
 // של סוף הסבב, שיושב מעליהם: נגיעה כפולה ב-▶ הייתה מדלגת על המילה הראשונה
-// בסבב לפני שהילד ראה אותה.
-let roundShownAt = -Infinity;
+// בסבב לפני שהילד ראה אותה. וכך גם ברגע שאחרי ⏭️.
+let buttonsGuardAt = -Infinity;
 const endSettled = () => performance.now() - endShownAt >= END_GUARD_MS;
 $("againBtn").addEventListener("click", () => {
   if(!endSettled()) return;
-  roundShownAt = performance.now();
+  buttonsGuardAt = performance.now();
   newRound();
 });
 for(const type of ["pointerdown", "click"])
   $("buttons").addEventListener(type, e => {
-    if(performance.now() - roundShownAt < END_GUARD_MS){ e.stopPropagation(); e.preventDefault(); }
+    if(performance.now() - buttonsGuardAt < END_GUARD_MS){ e.stopPropagation(); e.preventDefault(); }
   }, true);
 
 $("modeSwitch").addEventListener("click", e=>{
