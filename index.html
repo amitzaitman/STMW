@@ -719,7 +719,7 @@
     <div id="card">
       <span id="badge" aria-hidden="true"></span>
       <div id="picture"></div>
-      <div id="word"></div>
+      <div id="word" lang="en" dir="ltr"></div>
       <div id="wordHe" lang="he" dir="rtl"></div>
       <div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
     </div>
@@ -812,7 +812,7 @@
   <div class="gate-box">
     <button id="gateClose" type="button" aria-label="סגירה">×</button>
     <p id="gateTitle">למבוגרים: הקלידו את המספר</p>
-    <div id="gateWord"></div>
+    <div id="gateWord" lang="en" dir="ltr"></div>
     <div id="gateEntry" aria-live="polite"></div>
     <div id="gateKeys"></div>
   </div>
@@ -1291,7 +1291,7 @@ let preset = readPreset();
 
 function setPreset(p){
   preset = p;
-  try { localStorage.setItem(childKey(MATCH_KEY), p.id); } catch(e){}
+  keep(childKey(MATCH_KEY), p.id);
   updateMatchUI();
 }
 
@@ -1308,7 +1308,7 @@ function updateSoundUI(){
 
 function setSound(on){
   soundEnabled = on;
-  try{ localStorage.setItem(SOUND_KEY, on ? "1" : "0"); }catch(e){}
+  keep(SOUND_KEY, on ? "1" : "0");
   updateSoundUI();
   ui();
 }
@@ -1345,7 +1345,21 @@ function load(){
     return list.length ? list : null;
   }catch(e){ return null; }
 }
-function save(){ try{ localStorage.setItem(childKey("words"), JSON.stringify(words)); }catch(e){} }
+// כתיבה של הגדרה או של הרשימה. היא נכשלת כשהמקום נגמר — כל הפרויקטים באותו
+// github.io חולקים אותו — או במצב פרטי של ספארי ישן. אז באזור המבוגר כתוב שהשינוי
+// לא נשמר, ולא "נוסף בהצלחה": בלי זה מורה בונה רשימה מילה אחר מילה, והיא
+// נעלמת בפתיחה הבאה. unsaved: הכתיבה האחרונה נכשלה.
+let unsaved = false;
+const NOT_SAVED = "לא הצלחנו לשמור במכשיר הזה, כנראה כי נגמר בו המקום. השינוי יימחק כשהאפליקציה תיסגר.";
+function keep(key, value){
+  try{ localStorage.setItem(key, value); unsaved = false; }
+  catch(e){ unsaved = true; }
+  if(unsaved) setSettingsNotice("settingsNotice", NOT_SAVED, true);
+  return !unsaved;
+}
+function save(){ return keep(childKey("words"), JSON.stringify(words)); }
+// ההודעה של פעולה ברשימה: ההצלחה, או שהשינוי לא נשמר.
+function savedNotice(id, msg){ setSettingsNotice(id, unsaved ? NOT_SAVED : msg, unsaved); }
 
 function word(){ return words[i].word; }
 // מתקדם בכל הצגה, כדי שהמעבר ש-good() מזמן אחרי ההצלחה יוותר כשמשהו אחר כבר
@@ -1455,7 +1469,7 @@ function reveal(){
 // בסוף הסבב, ומחוץ למשחק, ההחלפה נשמרת למילה הבאה ולא מציגה מילה.
 function setHebrew(on){
   hebrewEnabled = on;
-  try{ localStorage.setItem(childKey(HEBREW_KEY), on ? "1" : "0"); }catch(e){}
+  keep(childKey(HEBREW_KEY), on ? "1" : "0");
   if(!ended && screen === "game") show();
 }
 
@@ -2562,6 +2576,7 @@ function picture(w, cls = ""){
   b.dataset.word = w;
   b.setAttribute("role", "img");
   b.setAttribute("aria-label", w);
+  b.lang = "en";
   return b;
 }
 
@@ -2579,7 +2594,7 @@ function renderBasket(){
   const items = basketWords();
   $("basketPics").replaceChildren(...items.map(({ word: w, wrote }) => {
     const b = picture(w);
-    b.append(span("w", w + (wrote ? " ✏️" : "")));
+    b.append(Object.assign(span("w", w + (wrote ? " ✏️" : "")), { lang: "en" }));
     return b;
   }));
   $("basketEmpty").hidden = items.length > 0;
@@ -2990,7 +3005,7 @@ function setMode(to){
   stopListening();
   chosenMode = to;
   mixedSpellRound = false;
-  try{ localStorage.setItem(childKey(MODE_KEY), to); }catch(e){}
+  keep(childKey(MODE_KEY), to);
   renderMode();
   // מחוץ למשחק (מסך הפתיחה, קראו למבוגר) רק שומרים את הבחירה, ו-▶ בונה את
   // הסבב לפיה. בלי זה הסבב נבנה כאן, והמילה הראשונה שלו נאמרת מאחורי מסך הפתיחה.
@@ -3025,7 +3040,8 @@ function setSettingsNotice(elementId, msg, isError = false){
 }
 
 function updateMainWordsSummary(){
-  $("panelMeta").textContent = words.length + " מילים בתרגול" + (childId ? " של " + childName() : "") + ". נשמר במכשיר הזה.";
+  $("panelMeta").textContent = words.length + " מילים בתרגול" + (childId ? " של " + childName() : "") +
+    (unsaved ? ". לא נשמר במכשיר הזה." : ". נשמר במכשיר הזה.");
   $("mainWordsCountBadge").textContent = words.length + " מילים";
   $("wordsPreviewEmojis").textContent = words.slice(0, 10).map(w => w.emoji).join(" ") + (words.length > 10 ? " …" : "");
   $("wordsListMeta").textContent = words.length + " מילים פעילות. המשחק בוחר מהן את המילים של כל סבב.";
@@ -3106,7 +3122,7 @@ function removeAt(index){
   const removed = words[index];
   // applyWords חוזר להתחלה כשהמילה שעל המסך הייתה האחרונה ונמחקה.
   applyWords(words.filter((_, n) => n !== index), index < i ? i - 1 : i);   // גם מרנדר
-  setSettingsNotice("wordsListNotice", `המילה ״${removed.word}״ הוסרה מהתרגול.`, false);
+  savedNotice("wordsListNotice", `המילה ״${removed.word}״ הוסרה מהתרגול.`);
 }
 
 function el(tag, cls, text = ""){
@@ -3133,7 +3149,7 @@ function buildCatalog(){
     b.title = `הוספת ${w} לתרגול`;
     b.append(span("catalog-item-status", "✓ בתרגול"),
              span("catalog-item-emoji", emoji),
-             span("catalog-item-name", w));
+             Object.assign(span("catalog-item-name", w), { lang: "en" }));
     return b;
   });
   $("catalog").append(...catalogItems);
@@ -3195,7 +3211,7 @@ function practiceShown(){
   if(!set.length) return;
   if(!confirm(`להחליף את רשימת התרגול (${words.length} מילים) ב-${set.length} המילים האלה?`)) return;
   applyWords(set, null);   // גם מרנדר
-  setSettingsNotice("catalogNotice", `🎉 עכשיו בתרגול: ${set.length} מילים.`, false);
+  savedNotice("catalogNotice", `🎉 עכשיו בתרגול: ${set.length} מילים.`);
 }
 
 function addShown(){
@@ -3203,8 +3219,8 @@ function addShown(){
   const fresh = shownWords().filter(w => !taken.has(w.word));
   if(!fresh.length) return;
   applyWords(words.concat(fresh));   // גם מרנדר; המילה שעל המסך נשארת
-  setSettingsNotice("catalogNotice", fresh.length === 1
-    ? `🎉 ״${fresh[0].word}״ נוספה לתרגול!` : `🎉 ${fresh.length} מילים נוספו לתרגול!`, false);
+  savedNotice("catalogNotice", fresh.length === 1
+    ? `🎉 ״${fresh[0].word}״ נוספה לתרגול!` : `🎉 ${fresh.length} מילים נוספו לתרגול!`);
 }
 
 function opButton(cls, icon, title, label){
@@ -3220,7 +3236,7 @@ function renderList(){
     li.dataset.index = n;
 
     const jump = el("span", "jump");
-    jump.append(span("pic", item.emoji), span("w", item.word));
+    jump.append(span("pic", item.emoji), Object.assign(span("w", item.word), { lang: "en" }));
 
     const ops = el("div", "ops");
     const del = opButton("del-word-btn", "🗑️", "מחיקת המילה " + item.word, "מחיקת " + item.word);
@@ -3354,8 +3370,9 @@ function renderChildren(){
 // הכפתורים שמאחוריה, ו-Enter או רווח מפעילים אותם בלי שרואים. לכן כל עוד
 // היא פתוחה הפוקוס בתוכה, ובסגירה הוא חוזר ל-🔒. במגע ובעכבר אין הבדל:
 // הכיסוי חוסם ממילא, ו-preventScroll משאיר את החלונית באותה גלילה שבה נסגרה.
-function setBehindInert(on){
-  for(const child of document.body.children) if(child !== $("overlay")) child.inert = on;
+// וכך גם שאלת המספר, שגם היא נפתחת מעל המסך (keep: מה שנשאר פעיל).
+function setBehindInert(on, keep = $("overlay")){
+  for(const child of document.body.children) child.inert = on && child !== keep;
 }
 
 // נפתחת רק ממסכי מנוחה, דרך 🔒 ושאלת המספר. מה שהמיקרופון שומע מאחוריה —
@@ -3862,10 +3879,12 @@ function openGate(){
   $("gateWord").textContent = numberWord(gateNumber);
   $("gateEntry").textContent = "";
   $("gate").hidden = false;
+  setBehindInert(true, $("gate"));
   $("gateKeys").querySelector("button").focus({ preventScroll: true });
   armIdle();
 }
 function closeGate(){
+  setBehindInert(false);
   $("gate").hidden = true;
   armIdle();
 }
@@ -4013,7 +4032,7 @@ $("catalog").addEventListener("click", e=>{
     return;
   }
   applyWords(words.concat([{emoji, word: w}]), words.length);   // גם מרנדר
-  setSettingsNotice("catalogNotice", `🎉 ״${w}״ נוספה בהצלחה למילות התרגול!`, false);
+  savedNotice("catalogNotice", `🎉 ״${w}״ נוספה בהצלחה למילות התרגול!`);
 });
 
 // ומאזין אחד לרשימת המילים, במקום שלושה לכל שורה.

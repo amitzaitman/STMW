@@ -733,6 +733,33 @@ async function main(){
     lostWord);
   check("רשימה מחלון אחר לא נשמרת בחזרה", keptWord.notWrittenBack && lostWord.notWrittenBack, { keptWord, lostWord });
 
+  // כשהמקום נגמר — כל הפרויקטים באותו github.io חולקים אותו — מה שמבוגר מוסיף
+  // לא נשמר, וזה כתוב, ולא "נוספה בהצלחה". בהקשר נפרד, שהמקום שלו מלא.
+  const fullCtx = await browser.newContext({ serviceWorkers: "block" });
+  const fullPage = await fullCtx.newPage();
+  await fullPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  const full = await fullPage.evaluate(() => {
+    for(let size = 1 << 20, k = 0; size >= 1; ){
+      try{ localStorage.setItem("fill" + k++, "x".repeat(size)); }catch(e){ size >>= 1; }
+    }
+    openPanel();
+    showSettingsView("catalog", false);
+    const item = [...document.querySelectorAll("#catalog .catalog-item")].find(b => !takenSet().has(b.dataset.word));
+    item.click();
+    const out = { notice: $("catalogNotice").textContent, error: $("catalogNotice").classList.contains("error"),
+                  saved: localStorage.getItem("words") };
+    showSettingsView("main", false);
+    $("btnLevelStrict").click();
+    out.preset = { notice: $("settingsNotice").textContent, error: $("settingsNotice").classList.contains("error"),
+                   saved: localStorage.getItem("speech_match_config") };
+    out.meta = $("panelMeta").textContent;
+    return out;
+  });
+  await fullCtx.close();
+  check("כשהמקום במכשיר נגמר, הוספה ושינוי הגדרה אומרים שלא נשמרו",
+    full.error && full.notice.includes("לא הצלחנו לשמור") && full.saved === null
+      && full.preset.error && full.preset.saved === null && full.meta.includes("לא נשמר"), full);
+
   // --------------------------------------------------------------
   group("מה נרשם לבד");
   // הילד רואה כל הצלחה אותו דבר: הכרטיס מוריק, קונפטי, והתמונה נשארת. מה
@@ -1090,7 +1117,31 @@ async function main(){
   await page.keyboard.press("Escape");
   const escIdle = await page.evaluate(() => ({ hidden: $("overlay").hidden, focus: document.activeElement.id }));
   check("Esc כשההגדרות סגורות לא מזיז את הפוקוס", escIdle.hidden && escIdle.focus === "play", escIdle);
+  // גם שאלת המספר: Tab לא יוצא ממנה, ו-Enter על ▶ שמאחוריה לא מתחיל משחק.
+  const gateModal = await page.evaluate(() => {
+    openGate();
+    const out = { door: $("door").inert, lock: $("lock").inert, gate: $("gate").inert };
+    closeGate();
+    out.after = $("door").inert || $("lock").inert;
+    return out;
+  });
+  check("כששאלת המספר פתוחה, מה שמאחוריה לא מגיב למקלדת",
+    gateModal.door && gateModal.lock && !gateModal.gate && !gateModal.after, gateModal);
   await backToGame();
+  // מילה באנגלית בתוך דף בעברית מסומנת באנגלית, כדי שקורא מסך יקרא אותה כך.
+  const english = await page.evaluate(() => {
+    const lang = el => el && (el.closest("[lang]") || {}).lang;
+    openPanel();
+    showSettingsView("catalog", false);
+    const out = { word: lang($("word")), gate: lang($("gateWord")), catalog: lang(document.querySelector(".catalog-item-name")),
+                  picture: lang(picture("dog")) };
+    showSettingsView("words", false);
+    out.list = lang(document.querySelector("#wordList .w"));
+    closePanel();
+    return out;
+  });
+  await backToGame();
+  check("מילים באנגלית מסומנות lang=\"en\"", Object.values(english).every(l => l === "en"), english);
 
   // --------------------------------------------------------------
   group("קישורי המשוב");
