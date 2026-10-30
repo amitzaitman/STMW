@@ -171,6 +171,11 @@ async function main(){
   check("אין id במניפסט", !("id" in manifest), manifest.id);
   const missingIcons = manifest.icons.map(ic => ic.src).filter(src => !fs.existsSync(path.join(DIR, src)));
   check("כל האייקונים במניפסט קיימים", missingIcons.length === 0, missingIcons);
+  // מסך הפתיחה של אפליקציה מותקנת וסרגל המצב בצבע של רקע הדף, ולא בצבעים
+  // של העיצוב הקודם.
+  const themeMeta = (fs.readFileSync(path.join(DIR, "index.html"), "utf8").match(/<meta name="theme-color" content="([^"]+)">/) || [])[1];
+  check("צבעי המניפסט כמו רקע הדף", manifest.theme_color === themeMeta && manifest.background_color === themeMeta,
+    { theme: manifest.theme_color, background: manifest.background_color, themeMeta });
 
   await page.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1200);
