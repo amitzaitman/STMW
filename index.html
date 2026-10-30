@@ -2213,6 +2213,52 @@ function paceOf(data){
   const p = data.pace;
   return Number.isInteger(p) && p >= PACE_MIN && p <= PACE_MAX ? p : PACE_START;
 }
+// --- תמונות שהמכשיר יודע לצייר ---
+// אימוג'י חדש (Emoji 12 ו-13, למשל 🦩, 🧇 ו-🫐) מופיע בטאבלט ישן כריבוע ריק, ואין
+// לילד מה לראות. כל אחד כזה מצויר פעם אחת על קנבס בצבע מגנטה: אימוג'י צבעוני
+// לא מקבל את צבע הכתב, וריבוע ריק כן. רק מ-U+1F900 ומהעיגולים והריבועים
+// הצבעוניים: הוותיקים יותר נתמכים בכל דפדפן שמריץ את מנוע הדיבור. מכשיר שגם
+// 🐶 לא יוצא בו צבעוני — בלי גופן אימוג'י צבעוני — לא מסנן כלום.
+// מילה שהתמונה שלה לא מצוירת לא נכנסת לסבב, לשומעים ובוחרים ולמאגר שבאזור
+// המבוגר; כשאף מילה ברשימה לא מצוירת, הסבב בכל זאת נבנה מכולן.
+const drawn = new Map();
+let drawPad = null;
+function colorful(emoji){
+  const g = drawPad.getContext("2d", { willReadFrequently: true });
+  g.clearRect(0, 0, 20, 20);
+  g.fillStyle = "#f0f";
+  g.fillText(emoji, 0, 0);
+  const d = g.getImageData(0, 0, 20, 20).data;
+  let colored = 0;
+  for(let k = 0; k < d.length; k += 4)
+    if(d[k + 3] >= 64 && !(d[k] > 200 && d[k + 1] < 60 && d[k + 2] > 200)) colored++;
+  return colored >= 8;
+}
+function drawable(emoji){
+  const cp = String(emoji).codePointAt(0);
+  if(!(cp >= 0x1F900 || cp >= 0x1F7E0 && cp <= 0x1F7FF)) return true;
+  if(drawn.has(emoji)) return drawn.get(emoji);
+  let ok = true;
+  try{
+    if(!drawPad){
+      drawPad = document.createElement("canvas");
+      drawPad.width = drawPad.height = 20;
+      const g = drawPad.getContext("2d", { willReadFrequently: true });
+      g.textBaseline = "top";
+      g.font = "16px sans-serif";
+      drawPad.checks = colorful("🐶");
+    }
+    if(drawPad.checks) ok = colorful(emoji);
+  }catch(e){}
+  drawn.set(emoji, ok);
+  return ok;
+}
+// המילים שהסבב נבנה מהן.
+function roundWords(){
+  const ok = words.filter(x => drawable(x.emoji));
+  return [...new Set((ok.length ? ok : words).map(x => x.word))];
+}
+
 function emojiFor(w){
   const item = words.find(x => x.word === w);
   return item ? item.emoji : (PAIR_BY_WORD[w] || [])[0] || "";
@@ -2246,7 +2292,7 @@ function shuffle(list){
 // שהמיקרופון חסום, וגם כשילד מדלג תמיד על אותה מילה, כל סבב היה פותח באותן
 // מילים חדשות לנצח.
 function sayRound(w, day, pace, offered = new Map()){
-  const list = shuffle([...new Set(words.map(x => x.word))]);
+  const list = shuffle(roundWords());
   const rec = x => w[x];
   const known = list.filter(x => rec(x) && rec(x).got !== undefined);
   const due = known.filter(x => rec(x).due <= day).sort((a, b) => rec(a).due - rec(b).due);
@@ -2256,7 +2302,7 @@ function sayRound(w, day, pace, offered = new Map()){
   const fillers = known.filter(x => !due.includes(x)).sort((a, b) => rec(a).box - rec(b).box);
   // sort יציב, אז בתוך אותה רמה הסדר הוא של הרשימה.
   const offeredAt = x => offered.has(x) ? offered.get(x) : -1;
-  const freshPool = words.map(x => x.word).filter((x, k, all) => all.indexOf(x) === k && !(rec(x) && rec(x).n))
+  const freshPool = roundWords().filter(x => !(rec(x) && rec(x).n))
     .sort((a, b) => offered.has(a) - offered.has(b) || offeredAt(a) - offeredAt(b) || levelOf(a) - levelOf(b));
 
   const picked = [];
@@ -2316,7 +2362,7 @@ function sayRound(w, day, pace, offered = new Map()){
 // בחר מתמלא גם במילים אחרות.
 function spellRound(w, known = false){
   const tier = x => w[x] && w[x].wrote === undefined ? (w[x].got !== undefined ? 0 : 1) : 2;
-  return shuffle([...new Set(words.map(x => x.word))]).filter(x => !known || (w[x] && w[x].got !== undefined))
+  return shuffle(roundWords()).filter(x => !known || (w[x] && w[x].got !== undefined))
     .sort((a, b) => tier(a) - tier(b)).slice(0, ROUND_SIZE);
 }
 
@@ -2615,7 +2661,7 @@ function canSpeak(){
 function choicesFor(target){
   const w = readStore(PROGRESS_KEY).data.w, listed = new Set(words.map(x => x.word));
   const theme = x => THEME_BY_WORD[x] || x;
-  const simple = x => !!emojiFor(x) && !emojiFor(x).includes("\u200d") && emojiFor(x) !== emojiFor(target);
+  const simple = x => !!emojiFor(x) && !emojiFor(x).includes("\u200d") && emojiFor(x) !== emojiFor(target) && drawable(emojiFor(x));
   const rank = x => listed.has(x) ? (w[x] ? 0 : 1) : 2;
   const pool = shuffle([...new Set([...listed, ...PAIRS.map(p => p[1])])].filter(x => x !== target && simple(x)))
     .sort((a, b) => rank(a) - rank(b));
@@ -3109,7 +3155,7 @@ function renderCatalog(){
   for(const b of catalogItems){
     const w = b.dataset.word;
     const isTaken = taken.has(w);
-    const match = (!q || w.includes(q) || b.dataset.emoji.includes(q))
+    const match = (!q || w.includes(q) || b.dataset.emoji.includes(q)) && drawable(b.dataset.emoji)
       && (!catalogTheme || b.dataset.theme === catalogTheme)
       && (!catalogLevel || b.dataset.level === catalogLevel);
     b.hidden = !match;
@@ -3492,7 +3538,10 @@ function renderDock(){
   away("next", !calm);
   away("hint", !calm || busy);
 }
-function isShown(el){ return el.checkVisibility() && !el.classList.contains("away"); }
+// checkVisibility רק מספארי 17.4. בלעדיו: בלי מסגרות פריסה, האלמנט או אחד
+// ההורים שלו ב-display:none.
+function visible(el){ return el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0; }
+function isShown(el){ return visible(el) && !el.classList.contains("away"); }
 
 // ❓ על בדיקה של מילה חדשה, 💭 על מילה שהילד כבר אמר לבד. שני תגים שונים,
 // כדי ש"אולי חדשה" ו"כבר אמרתם" לא ייראו אותו דבר.
@@ -3568,7 +3617,7 @@ function demoTarget(){
 }
 function helpTarget(){ return isShown($("playWord")) ? $("playWord") : $("say"); }
 function demo(target){
-  if(!target || !target.checkVisibility()) return;
+  if(!target || !visible(target)) return;
   const r = target.getBoundingClientRect(), hand = $("hand");
   hand.style.left = (r.left + r.width / 2 - 14) + "px";
   hand.style.top = (r.top + r.height / 2 - 8) + "px";

@@ -533,6 +533,30 @@ async function main(){
   });
   check("תמונות שנראות אותו דבר ומילים שנשמעות אותו דבר לא באות יחד",
     alike.together === 0 && alike.confusable, alike);
+  // אימוג'י שהמכשיר לא יודע לצייר מופיע כריבוע ריק. כאן כל אימוג'י מצויר, ולכן
+  // הבדיקה של הציור נבדקת מול נקודת קוד שאין לה תמונה, והסינון מול 🦩 שמסומן
+  // כלא מצויר.
+  const undrawn = await page.evaluate(() => {
+    const out = { unknown: drawable("\u{1FAFF}"), flamingo: drawable("🦩"), dog: drawable("🐶") };
+    const saved = words;
+    drawn.set("🦩", false);
+    try{
+      words = ["flamingo", "dog", "cat", "sun", "car", "book", "apple", "moon"].map(w => ({ emoji: emojiFor(w), word: w }));
+      let seen = 0;
+      for(let k = 0; k < 200; k++) if(choicesFor("dog").includes("flamingo")) seen++;
+      out.inChoices = seen;
+      out.inRound = roundWords().includes("flamingo") || sayRound({}, dayNumber(), 3).queue.includes("flamingo");
+      words = [{ emoji: "🦩", word: "flamingo" }];
+      out.onlyOne = roundWords().join();
+      return out;
+    } finally {
+      drawn.delete("🦩");
+      words = saved;
+    }
+  }).catch(e => ({ error: e.message }));
+  check("אימוג'י שלא מצויר במכשיר לא מגיע לסבב ולבחירת התמונות, אלא אם אין אחר",
+    undrawn.unknown === false && undrawn.flamingo && undrawn.dog && undrawn.inChoices === 0 && !undrawn.inRound
+      && undrawn.onlyOne === "flamingo", undrawn);
 
   // בנייה מחדש מלאה נותנת את אותו מספר פריטים, אז נבדק שהצומת עצמו נשאר.
   const firstItem = await page.$("#catalog .catalog-item");
@@ -3862,6 +3886,24 @@ async function main(){
   });
   check("היד לא מדגימה מעל שאלת המבוגר, ולא על ▶ מוסתר; במסך הפתיחה עצמו היא מדגימה",
     !handQuiet.gate && !handQuiet.starting && handQuiet.door, handQuiet);
+
+  // אייפד עם ספארי שלפני 17.4, בלי checkVisibility: היד שמדגימה עדיין מופיעה,
+  // והדף לא זורק שגיאה בכל הדגמה.
+  const oldSafari = await browser.newContext({ serviceWorkers: "block" });
+  await oldSafari.addInitScript(() => { delete Element.prototype.checkVisibility; });
+  const oldSafariPage = await oldSafari.newPage();
+  const oldSafariErrors = [];
+  oldSafariPage.on("pageerror", e => oldSafariErrors.push(e.message));
+  await oldSafariPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  const oldDemo = await oldSafariPage.evaluate(async () => {
+    let taps = 0;
+    new MutationObserver(() => { if($("hand").classList.contains("tap")) taps++; }).observe($("hand"), { attributes: true });
+    await new Promise(r => setTimeout(r, DEMO_FIRST_MS + 400));
+    return { taps, api: "checkVisibility" in Element.prototype };
+  });
+  await oldSafari.close();
+  check("בלי checkVisibility היד מדגימה, בלי שגיאות",
+    !oldDemo.api && oldDemo.taps > 0 && oldSafariErrors.length === 0, { oldDemo, oldSafariErrors });
 
   // --------------------------------------------------------------
   group("עדכון");
