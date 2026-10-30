@@ -1334,6 +1334,17 @@ async function main(){
         await wait(AGAIN_MS + 300);
         out.after = mark();
         out.shown = shownCount;
+      } else if(scenario === "redisplay"){
+        // אותה מילה מוצגת שוב באותו תור: הדלקת התעתיק, רשימה שנשמרה בחלון אחר.
+        await miss();
+        await wait(AGAIN_MS + 100);
+        show();
+        out.redisplayed = shownCount;
+        out.before = mark();
+        await miss();
+        await wait(AGAIN_MS + 300);
+        out.after = mark();
+        out.shown = shownCount;
       } else if(scenario === "retry"){
         await miss();
         await listen();
@@ -1386,6 +1397,13 @@ async function main(){
       && secondMiss.after.chime === secondMiss.before.chime && secondMiss.after.spoken === secondMiss.before.spoken
       && !secondMiss.log.classes.slice(secondMiss.before.classes).includes("again")
       && secondMiss.log.classes.slice(secondMiss.before.classes).includes("fall"), secondMiss);
+  // הספירה שייכת לתור ולא להצגה. אחרת האמירה השנייה נרשמת בסולם כ-failed,
+  // ועל המסך מקבלת "עוד פעם" במקום הכיס.
+  const redisplayed = await notYetRun("redisplay");
+  check("הצגה מחדש של אותה מילה לא מאפסת את ספירת האמירות שלא התקבלו",
+    redisplayed.shown === redisplayed.redisplayed + 1
+      && redisplayed.log.classes.slice(redisplayed.before.classes).includes("fall")
+      && redisplayed.after.again === redisplayed.before.again, redisplayed);
   const retried = await notYetRun("retry");
   check("מי שכבר לוחץ שוב על 🎤 לא שומע את ההקראה באמצע",
     retried.listening && retried.log.spoken.length === 0, retried);

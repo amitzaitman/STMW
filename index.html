@@ -1286,7 +1286,8 @@ function word(){ return words[i].word; }
 // מתקדם בכל הצגה, כדי שהמעבר ש-good() מזמן אחרי ההצלחה יוותר כשמשהו אחר כבר
 // הציג מילה: ⏭️ של הילד, או מורה שקפצה למילה מהרשימה.
 let shownCount = 0;
-// כמה אמירות של המילה שעל המסך לא התקבלו. מתאפס בכל הצגה (ראו notYet).
+// כמה אמירות של המילה שעל המסך לא התקבלו (ראו notYet). מתאפס עם התור, כמו
+// turn.says: הצגה מחדש של אותה מילה באותו תור לא מוחקת אמירה שכבר נשפטה.
 let sayMisses = 0;
 // מה קרה עם המילה שעל המסך מאז שהוצגה, בשביל היומן וההתקדמות: שמעו אותה
 // (🔊, נגיעה בתמונה, הדלקת השמע, המילה אחרי "עוד לא"), נעזרו ב-💡, כמה
@@ -1324,9 +1325,11 @@ function show(){
   stopListening();
   hideRoundEnd();
   shownCount++;
-  sayMisses = 0;
   const fresh = turn.word !== word() || turn.child !== childId;
-  if(fresh) turn = newTurn();
+  if(fresh){
+    turn = newTurn();
+    sayMisses = 0;
+  }
   if(!round.seen.includes(word())) round.seen.push(word());
   shownWord = word();
   $("picture").textContent = words[i].emoji;
