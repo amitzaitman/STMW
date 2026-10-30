@@ -256,6 +256,17 @@ async function main(){
     resumed.screen === "game" && resumed.mode === "spell" && resumed.spell && !resumed.say && resumed.saved === null
       && resumed.switchShows === "mixed", resumed);
   check("באזור המבוגר כתובה הסיבה המדויקת", status.shown && status.text === stuck.error, { status, stuck });
+  // הורדה שנקטעה באמצע, כשהמכשיר עוד מדווח שהוא מחובר: הסיבה היא החיבור, לא הקובץ.
+  const cutModel = await browser.newContext();
+  await cutModel.addInitScript(() => { delete Navigator.prototype.serviceWorker; });
+  await cutModel.route("**/model.tar.gz", route => route.abort("connectionreset"));
+  const cutPage = await cutModel.newPage();
+  await cutPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  await cutPage.waitForFunction(() => modelError !== "", null, { timeout: 15000 }).catch(() => {});
+  const cut = await cutPage.evaluate(() => ({ error: modelError, online: navigator.onLine }));
+  await cutModel.close();
+  check("הורדה שנקטעה — כתוב לבדוק את החיבור, לא את model.tar.gz",
+    cut.online && cut.error.includes("החיבור") && !cut.error.includes("model.tar.gz"), cut);
 
   // --------------------------------------------------------------
   group("התקנה");
@@ -283,6 +294,20 @@ async function main(){
   check("באייפד מוצעת הוספה למסך הבית", ipad.shown && ipad.hint.includes("הוספה למסך הבית"), ipad);
   const mac = await installOffer(0);
   check("במק בלי מסך מגע אין כפתור התקנה", !mac.shown && mac.hint === "", mac);
+  // בקשת ההתקנה של כרום נפתחת פעם אחת. אחרי "לא עכשיו" הכפתור לא נשאר בלי תגובה.
+  const dismissed = await page.evaluate(async () => {
+    let prompts = 0;
+    const e = new Event("beforeinstallprompt", { cancelable: true });
+    e.prompt = () => { prompts++; };
+    e.userChoice = Promise.resolve({ outcome: "dismissed" });
+    window.dispatchEvent(e);
+    const before = !installBtn.hidden;
+    installBtn.click();
+    await new Promise(r => setTimeout(r, 50));
+    return { before, prompts, after: !installBtn.hidden, setup: !$("setupInstall").hidden };
+  });
+  check("אחרי שבקשת ההתקנה נדחתה, כפתור ההתקנה יורד",
+    dismissed.before && dismissed.prompts === 1 && !dismissed.after && !dismissed.setup, dismissed);
 
   // --------------------------------------------------------------
   group("מילון המודל");
@@ -3709,6 +3734,25 @@ async function main(){
   await doorPage.evaluate(() => $("play").click());
   await doorPage.waitForFunction(() => screen !== "door", null, { timeout: 5000 }).catch(() => {});
   const blocked = await doorPage.evaluate(() => ({ screen, status: (openPanel(), $("micStatus").checkVisibility()) }));
+  // ▶ ואז יציאה מהאפליקציה בזמן שהמיקרופון נפתח: הוא לא נשאר מקליט ברקע.
+  const hiddenStart = await doorPage.evaluate(async () => {
+    closePanel();
+    micBlocked = false;
+    const opened = [];
+    navigator.mediaDevices.getUserMedia = c => new Promise(r => setTimeout(r, 600)).then(() => {
+      const st = new MediaStream([ctx.createMediaStreamDestination().stream.getAudioTracks()[0]]);
+      opened.push(st);
+      return st;
+    });
+    $("play").click();
+    await new Promise(r => setTimeout(r, 150));
+    Object.defineProperty(document, "hidden", { value: true, configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await new Promise(r => setTimeout(r, 1000));
+    const out = { opened: opened.length, live: opened.flatMap(st => st.getTracks()).filter(t => t.readyState === "live").length };
+    delete document.hidden;
+    return out;
+  });
   await doorCtx.close();
   check("מסך הפתיחה: רק ▶, 🔒, 🔄 וסוג התרגול, בלי מילה ובלי מיקרופון",
     atDoor.screen === "door" && !atDoor.mic && atDoor.word === ""
@@ -3719,6 +3763,8 @@ async function main(){
     && !!pressed.back && pressed.back.game, pressed);
   check("\"חזור\" מחזיר למסך הפתיחה, בלי לרשום את התור שלא נגמר", backed.screen === "door" && backed.log === null, backed);
   check("מיקרופון חסום — \"קראו למבוגר\", והסיבה באזור המבוגר", blocked.screen === "grownup" && blocked.status, blocked);
+  check("יציאה מהאפליקציה בזמן ש-▶ פותח את המיקרופון — הוא לא נשאר מקליט",
+    hiddenStart.opened === 1 && hiddenStart.live === 0, hiddenStart);
 
   // 🔒: נגיעה רגילה לא עושה כלום, החזקה פותחת את שאלת המספר, תשובה שגויה
   // סוגרת בשקט ונכונה פותחת את ההגדרות.
@@ -4477,6 +4523,17 @@ async function main(){
     .then(() => page.evaluate(() => ({ model: model !== null, error: modelError }))).catch(e => ({ timeout: e.message }));
   await ctx.setOffline(false);
   check("בלי רשת, אחרי שהמודל ירד, מנוע הדיבור נטען", offlineModel.model === true, offlineModel);
+  // וגם כשהדף לא מצליח לבדוק את IndexedDB בעצמו (באג ידוע בספארי) ולכן מנסה
+  // להוריד: ההורדה נכשלת בלי רשת, ו-Vosk עדיין קורא את העותק המחולץ.
+  const blindPage = await ctx.newPage();
+  await blindPage.addInitScript(() => { IDBFactory.prototype.open = () => { throw new Error("blocked"); }; });
+  await ctx.setOffline(true);
+  await blindPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" }).catch(() => {});
+  const blindModel = await blindPage.waitForFunction(() => model !== null || modelError !== "", null, { timeout: 30000 })
+    .then(() => blindPage.evaluate(() => ({ model: model !== null, error: modelError }))).catch(e => ({ timeout: e.message }));
+  await ctx.setOffline(false);
+  await blindPage.close();
+  check("בלי רשת, גם כשההורדה של הדף נכשלת, מנוע הדיבור נטען מהעותק המחולץ", blindModel.model === true, blindModel);
   await reload();
 
   // ב-GitHub Pages כל הריפו של אותו משתמש חולקים origin אחד, ואיתו את

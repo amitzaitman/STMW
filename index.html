@@ -1684,11 +1684,15 @@ function modelReady(){
 }
 
 async function loadModel(){
+  let fetchError = null;
   try{
     if(typeof Vosk === "undefined") throw new Error("vosk-browser did not load");
     progress(0, "מתכוננים… זה קורה פעם אחת");
     await controlled();
-    await fetchModel();
+    // הורדה שנכשלה — אין רשת, החיבור נקטע — לא עוצרת: Vosk קורא קודם את העותק
+    // המחולץ, ובלעדיו מנסה להוריד בעצמו. רק אם גם הוא נכשל זו תקלה, והסיבה
+    // שלה היא של ההורדה.
+    try{ await fetchModel(); }catch(err){ fetchError = err; }
     progress(100, "עוד רגע…");
     // לא Vosk.createModel: הוא מחכה רק להודעת load, וכשה-worker נכשל (ארכיון
     // קטוע, שגיאת HTTP) מגיעה רק error. ההבטחה שלו לא מסתיימת, והמסך נתקע
@@ -1703,9 +1707,13 @@ async function loadModel(){
     dropArchive();
   }catch(err){
     $("loading").hidden = true;
+    // שגיאת HTTP מהשרת היא קובץ חסר או חסום; כל תקלה אחרת בהורדה היא החיבור.
+    const cut = fetchError && !/^HTTP /.test(fetchError.message);
     modelError = navigator.onLine === false
       ? "מנוע הדיבור עוד לא ירד, ואין אינטרנט. התחברו לרשת ונסו שוב."
+      : cut ? "ההורדה של מנוע הדיבור נקטעה. בדקו את החיבור לאינטרנט ונסו שוב."
       : "לא הצלחנו לטעון את מנוע הדיבור. בדקו את model.tar.gz";
+    if(fetchError) console.error(fetchError);
     renderStatus();
     // לילד: מסך "קראו למבוגר", עם ▶ שממשיך לשחק בלי לדבר.
     if(screen === "game") goGrownup();
@@ -3615,6 +3623,8 @@ async function startGame(){
     micBlocked = true;
     renderStatus();
   }
+  // הדף ירד מהמסך בזמן שהמיקרופון נפתח: releaseMic כבר רץ ולא מצא מה לסגור.
+  if(document.hidden) releaseMic();
   clearTimeout(slow);
   if(!voices.length && "speechSynthesis" in window)
     await new Promise(r => setTimeout(r, VOICES_GRACE_MS));
@@ -4051,8 +4061,10 @@ const IOS_INSTALL = "להתקנה ב־iPhone/iPad: לחצו על שיתוף ⎋ 
 async function installApp(){
   if (deferredPrompt) {
     deferredPrompt.prompt();
-    const choice = await deferredPrompt.userChoice;
-    if (choice.outcome === "accepted") installable(false);
+    // אחרי תשובה, כל תשובה, הבקשה הזו כבר לא תיפתח שוב. כרום ישלח
+    // beforeinstallprompt חדש כשאפשר, והכפתור יחזור.
+    await deferredPrompt.userChoice;
+    installable(false);
     deferredPrompt = null;
   } else if (isIOS) {
     setSettingsNotice("settingsNotice", IOS_INSTALL);
