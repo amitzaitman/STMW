@@ -1944,7 +1944,7 @@ document.addEventListener("visibilitychange", ()=>{
     stopListening();
     releaseMic();
     // הדפדפן עוצר דיבור של דף שירד מהמסך, וזו לא תקלה בדיבור (speakStep).
-    stepSpeech = null;
+    hiddenAt = performance.now();
   }
 });
 
@@ -2626,9 +2626,9 @@ function introduce(){
 // רק ההקראה האחרונה נבדקת: נגיעה שנייה ב-🔊 מבטלת את הקודמת לפני שהתחילה,
 // וזו לא תקלה. הקראה שהתחילה היא שמיעה של המילה (heard, said).
 const SPEECH_START_MS = 1500;
-let stepSpeech = null;
+let stepSpeech = null, hiddenAt = -Infinity;
 function speakStep(byTap){
-  const mine = shownCount, u = speak(word(), EN), t = turn;
+  const mine = shownCount, u = speak(word(), EN), t = turn, askedAt = performance.now();
   if(!u) return;
   stepSpeech = u;
   t.awake = false;
@@ -2639,8 +2639,10 @@ function speakStep(byTap){
     ui();
   });
   let settled = false;
+  // דף שירד מהמסך מאז שהמילה התבקשה: הדפדפן עצר אותה. זו לא תקלה, והתמונות
+  // מתעוררות כרגיל כשהיא נגמרת או נעצרת (afterSpeech).
   const fail = () => {
-    if(settled || u !== stepSpeech || mine !== shownCount || turn.step !== "understand") return;
+    if(settled || u !== stepSpeech || mine !== shownCount || turn.step !== "understand" || hiddenAt >= askedAt) return;
     settled = true;
     if(!byTap) return nudgeButton("playWord");
     speechBroken = true;

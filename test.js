@@ -2551,6 +2551,8 @@ async function main(){
         setTimeout(() => u.dispatchEvent(new Event("end")), 30); } };
       if(uTest.speech === "start") setTimeout(start, 5);
       if(uTest.speech === "slow") setTimeout(start, 300);
+      // "hang": מתחילה ולא נגמרת, כמו הקראה שהדפדפן עצר כשהדף ירד מהמסך.
+      if(uTest.speech === "hang") setTimeout(() => { if(uTest.pending === u){ u.started = true; u.dispatchEvent(new Event("start")); } }, 5);
       if(uTest.speech === "error") setTimeout(() => u.dispatchEvent(Object.assign(new Event("error"), { error: "synthesis-failed" })), 5);
       return u;
     };
@@ -3153,6 +3155,18 @@ async function main(){
     finally { delete document.hidden; }
     await uTest.wait(SPEECH_START_MS + 200);
     out.hidden = { step: turn.step, broken: speechBroken };
+    // הדף ירד מהמסך באמצע המילה, וחזר: התמונות מתעוררות, ו-🔊 שם כדי לשמוע שוב.
+    uTest.speech = "hang";
+    uTest.show("sun");
+    speakStep(true);
+    await uTest.wait(50);
+    Object.defineProperty(document, "hidden", { value: true, configurable: true });
+    try{ document.dispatchEvent(new Event("visibilitychange")); }
+    finally { delete document.hidden; }
+    document.dispatchEvent(new Event("visibilitychange"));
+    await uTest.wait(WORD_END_MS + 300);
+    out.back = { step: turn.step, awake: turn.awake, asleep: [...$("choices").children].some(b => b.classList.contains("asleep")),
+                 help: uTest.seen("playWord") && !$("playWord").classList.contains("away"), broken: speechBroken };
     uTest.speech = "start";
     speechBroken = false;
     return out;
@@ -3167,6 +3181,8 @@ async function main(){
   check("קולות שמגיעים אחרי הרגע הראשון של המילה לא מסתירים את הכתב",
     aside.lateVoices.step === "say" && aside.lateVoices.text, aside);
   check("דף שירד מהמסך לפני שהמילה נשמעה נשאר ב\"להבין\"", aside.hidden.step === "understand" && !aside.hidden.broken, aside);
+  check("דף שירד מהמסך באמצע המילה וחזר — התמונות ערות ו-🔊 על המסך",
+    aside.back.step === "understand" && aside.back.awake && !aside.back.asleep && aside.back.help && !aside.back.broken, aside.back);
 
   // שתיקה לא נספרת, ולכן יש לה סולם משלה במקום ⏭️ גדול: בשנייה היד מצביעה על
   // 🔊 והמכשיר לא מדבר; בשלישית המילה עוברת להמשך הסבב, בלי ויתור ובלי לסיים
