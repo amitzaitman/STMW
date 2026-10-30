@@ -4143,6 +4143,255 @@ async function main(){
   }
 
   // --------------------------------------------------------------
+  group("פריסה במסכים קטנים");
+  // טלפון שוכב, טלפון קטן לאורך, ודפדפן ישן. בכל אחד מהם משהו כבר ירד מתחת
+  // לקצה המסך או כוסה. נמדד מה שנראה: המלבן מול גודל המסך, ומה יושב בנקודת
+  // האמצע של כפתור (elementFromPoint) — זה מה שמקבל את הנגיעה. בהקשר נפרד,
+  // כדי שהגדלים לא ייגעו בקבוצות האחרות.
+  const LANDSCAPE = [[568, 320], [640, 360], [667, 375], [740, 360], [812, 375], [844, 390]];
+  const layCtx = await browser.newContext({ serviceWorkers: "block", permissions: ["microphone"] });
+  const lay = await layCtx.newPage();
+  await lay.addInitScript(() => {
+    localStorage.setItem("sound_enabled", "0");
+    window.addEventListener("DOMContentLoaded", () => {
+      window.inView = el => { const r = el.getBoundingClientRect();
+        return r.width > 0 && r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight + 0.5 && r.right <= innerWidth + 0.5; };
+      window.onTop = el => { const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const h = document.elementFromPoint(x, y);
+        return h && (h === el || el.contains(h)) ? true : (h ? h.id || String(h.className.baseVal ?? h.className) : "null"); };
+      window.basketOf = n => {
+        const ok2 = { met: 1, seen: 9, box: 3, due: 20, ok: [5, 9], n: 4, k: 3, got: 1 };
+        const names = ["dog", "cat", "sun", "moon", "fish", "apple", "car", "book", "lion", "tree", "bird", "house"].slice(0, n);
+        localStorage.setItem("say-the-word-progress", JSON.stringify({ v: 1, w: Object.fromEntries(names.map(w => [w, ok2])) }));
+      };
+    });
+  });
+  await lay.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  await lay.waitForTimeout(800);
+  const at = async ([width, height], fn, arg) => {
+    await lay.setViewportSize({ width, height });
+    await lay.waitForTimeout(60);
+    return { at: `${width}x${height}`, ...await lay.evaluate(fn, arg) };
+  };
+
+  // מסך הפתיחה בטלפון שוכב: ▶ היה מתחת לקצה המסך, ולילד לא היה על מה ללחוץ.
+  const doorLand = [];
+  for(const vp of LANDSCAPE) for(const n of [0, 12]) doorLand.push(await at(vp, n => {
+    basketOf(n);
+    goDoor();
+    return { n, play: onTop($("play")), playIn: inView($("play")), mode: [...$("doorMode").children].every(inView),
+      scroll: document.documentElement.scrollHeight - innerHeight };
+  }, n));
+  check("בטלפון שוכב ▶ במסך הפתיחה על המסך ומקבל את הנגיעה, וגם סוג התרגול, בלי גלילה",
+    doorLand.every(d => d.play === true && d.playIn && d.mode && d.scroll <= 0), doorLand.filter(d => !(d.play === true && d.playIn && d.mode && d.scroll <= 0)));
+
+  // ובטלפון נמוך לאורך הסל נמחץ לאפס, ובגובה 568 ▶ וסוג התרגול ירדו מהמסך.
+  const doorLow = [];
+  for(const vp of [[320, 568], [360, 640], [375, 667]]) doorLow.push(await at(vp, () => {
+    basketOf(12);
+    goDoor();
+    const basket = $("doorBasket").getBoundingClientRect(), pic = $("doorBasketPics").children[0].getBoundingClientRect();
+    return { play: onTop($("play")), mode: [...$("doorMode").children].every(inView), basket: Math.round(basket.height),
+      firstRow: pic.top >= basket.top && pic.bottom <= basket.bottom + 0.5 && inView($("doorBasket")),
+      scroll: document.documentElement.scrollHeight - innerHeight };
+  }));
+  check("בטלפון נמוך לאורך הסל במסך הפתיחה בגובה שורה של תמונות לפחות, ו-▶ וסוג התרגול על המסך",
+    doorLow.every(d => d.play === true && d.mode && d.firstRow && d.scroll <= 0), doorLow);
+
+  // קראו למבוגר: גם שם ▶ הוא הדבר היחיד ללחוץ עליו.
+  const grownLand = [];
+  for(const vp of LANDSCAPE) grownLand.push(await at(vp, () => {
+    goGrownup();
+    const out = { resume: onTop($("resume")), inView: inView($("resume")) };
+    goDoor();
+    return out;
+  }));
+  check("בטלפון שוכב ▶ ב\"קראו למבוגר\" על המסך", grownLand.every(g => g.resume === true && g.inView), grownLand);
+
+  // שאלת המספר בטלפון שוכב: הקופסה הייתה גבוהה מהמסך, ממורכזת, וה-× יצא
+  // מעל הקצה העליון. עכשיו היא בתוך המסך ונגללת בתוכה עד המקש האחרון, וכל
+  // פתיחה מתחילה למעלה, גם אחרי שגללו בפעם הקודמת.
+  const gateLand = [];
+  for(const vp of LANDSCAPE) gateLand.push(await at(vp, () => {
+    openGate();
+    const box = document.querySelector("#gate .gate-box");
+    const out = { close: onTop($("gateClose")), box: inView(box) };
+    box.scrollTop = box.scrollHeight;
+    out.zero = onTop(document.querySelector('#gateKeys [data-digit="0"]'));
+    closeGate();
+    return out;
+  }));
+  check("בטלפון שוכב שאלת המספר על המסך: ה-× מקבל נגיעה, וה-0 נגיש בגלילה",
+    gateLand.every(g => g.close === true && g.box && g.zero === true), gateLand);
+
+  // המשחק עצמו, כמו בשאר הקבוצות: בלי שלב "להבין" מעצמו, בלי קול, ורשימה
+  // עם מילים ארוכות.
+  await lay.evaluate(() => {
+    localStorage.removeItem("say-the-word-progress");
+    mixedSpellDue = () => false; laneFast = () => false; canSpeak = () => false; listenOnly = () => false;
+    LOANWORD_SET.clear();
+    const names = ["dog", "cat", "sun", "moon", "fish", "banana", "crocodile", "watermelon", "strawberry", "butterfly"];
+    applyWords(PAIRS.filter(p => names.includes(p[1])).map(([emoji, word]) => ({ emoji, word })), 0, false);
+    enterGame();
+  });
+  const spellAt = (vp, w) => at(vp, w => {
+    setMode("spell");
+    i = words.findIndex(x => x.word === w);
+    turn.word = null;
+    show();
+    const dock = $("buttons").getBoundingClientRect().top;
+    const parts = [...$("slots").children, ...$("bank").children];
+    return { w, hint: onTop($("hint")), next: onTop($("next")),
+      lettersOn: parts.every(inView), aboveDock: parts.every(t => t.getBoundingClientRect().bottom <= dock + 0.5),
+      rows: new Set([...$("bank").children].map(t => Math.round(t.getBoundingClientRect().top))).size,
+      tile: Math.round($("bank").children[0].getBoundingClientRect().width), tilesFree: [...$("bank").children].every(t => onTop(t) === true) };
+  }, w);
+
+  // כתיבה בטלפון שוכב: הכרטיס, המשבצות והאותיות גלשו מהבמה, ומפני שהבמה
+  // ממוקמת הם נצבעו מעל 💡 ו-⏭️ ובלעו את הנגיעות שלהם. ובמילה ארוכה השורה
+  // השנייה של האותיות ירדה מתחת לקצה המסך.
+  const spellLand = [];
+  for(const vp of LANDSCAPE) for(const w of ["cat", "crocodile", "watermelon"]) spellLand.push(await spellAt(vp, w));
+  check("בכתיבה בטלפון שוכב כל המשבצות והאותיות על המסך, מעל שורת הכפתורים, ו-💡 ו-⏭️ מקבלים את הנגיעה",
+    spellLand.every(s => s.hint === true && s.next === true && s.lettersOn && s.aboveDock && s.tilesFree),
+    spellLand.filter(s => !(s.hint === true && s.next === true && s.lettersOn && s.aboveDock && s.tilesFree)));
+  // ונגיעה אמיתית: 💡 נותן רמז, ו-⏭️ מחליף את המילה.
+  await at([568, 320], () => { i = words.findIndex(x => x.word === "watermelon"); turn.word = null; show(); buttonsGuardAt = -Infinity; });
+  const tapAt = async sel => { const b = await lay.locator(sel).boundingBox(); await lay.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
+  await tapAt("#hint");
+  const hinted = await lay.evaluate(() => ({ hinted: turn.hinted, filled: $("slots").querySelectorAll(".hinted").length, shown: shownCount }));
+  await lay.evaluate(() => { buttonsGuardAt = -Infinity; });
+  await tapAt("#next");
+  const skipped = await lay.evaluate(() => shownCount);
+  check("בכתיבה בטלפון שוכב נגיעה ב-💡 נותנת רמז, ונגיעה ב-⏭️ מדלגת",
+    hinted.hinted && hinted.filled === 1 && skipped !== hinted.shown, { hinted, skipped });
+  // ושורת הכפתורים מעל הבמה גם כשמשהו בה גולש, בכל גודל.
+  const overflowing = await at([360, 640], () => {
+    i = words.findIndex(x => x.word === "cat"); turn.word = null; show();
+    $("bank").style.paddingBottom = "600px";
+    const out = { hint: onTop($("hint")), next: onTop($("next")) };
+    $("bank").style.paddingBottom = "";
+    return out;
+  });
+  check("גם כשהבמה גולשת, 💡 ו-⏭️ מעליה ומקבלים את הנגיעה", overflowing.hint === true && overflowing.next === true, overflowing);
+
+  // ובמסך של 320 ארבע אותיות נכנסו בשורה: מילה של עשר אותיות הייתה שלוש
+  // שורות, והשלישית כיסתה את 💡 ואת ⏭️.
+  const spellNarrow = [];
+  for(const w of ["crocodile", "watermelon", "strawberry"]) spellNarrow.push(await spellAt([320, 568], w));
+  check("בטלפון של 320 מילה של עשר אותיות בשתי שורות, מעל שורת הכפתורים, ו-💡 ו-⏭️ מקבלים את הנגיעה",
+    spellNarrow.every(s => s.rows <= 2 && s.lettersOn && s.aboveDock && s.hint === true && s.next === true && s.tilesFree), spellNarrow);
+  await lay.evaluate(() => setMode("say"));
+
+  // ברוחב 320 שורת הכפתורים הייתה רחבה מהמסך: ⏭️ נחתך והדף זז לצדדים. גם
+  // בבדיקה מהתמונה, כש-🔊 רחב יותר בגלל "לא יודעים?".
+  const narrowDock = [];
+  for(const step of ["say", "probe"]) narrowDock.push(await at([320, 568], step => {
+    i = words.findIndex(x => x.word === "dog"); turn.word = null; show();
+    turn.step = step; ui();
+    const dock = ["playWord", "say", "next"].map($), rects = dock.map(b => b.getBoundingClientRect());
+    const out = { step, width: document.documentElement.scrollWidth, max: innerWidth, inView: dock.every(inView),
+      onTop: dock.filter(isShown).map(onTop), apart: rects.every((r, k) => rects.every((q, j) => j <= k || r.right <= q.left || q.right <= r.left)),
+      label: !!$("playWord").querySelector(".lbl") };
+    turn.step = "say"; ui();
+    return out;
+  }, step));
+  check("ברוחב 320 שורת הכפתורים בתוך המסך, בלי גלילה לצדדים, והכפתורים לא עולים זה על זה",
+    narrowDock.every(d => d.width <= d.max && d.inView && d.onTop.every(h => h === true) && d.apart) && narrowDock[1].label, narrowDock);
+
+  // שומעים ובוחרים בטלפון שוכב: בשתי שורות העיגולים התכווצו ל-31px.
+  const pickLand = [];
+  for(const vp of LANDSCAPE) pickLand.push(await at(vp, () => {
+    turn.step = "understand"; turn.choices = ["dog", "cat", "sun"]; turn.faded = []; turn.awake = true; turn.picked = false;
+    const out = [];
+    for(const layout of [0, 1, 2]){
+      turn.layout = layout;
+      ui();
+      const rects = [...$("choices").children].map(b => b.getBoundingClientRect()), dock = $("buttons").getBoundingClientRect();
+      const apart = !rects.some((r, k) => rects.some((q, j) => j > k && r.left < q.right && q.left < r.right && r.top < q.bottom && q.top < r.bottom));
+      out.push({ d: Math.round(Math.min(...rects.map(r => r.width))), apart,
+        on: [...$("choices").children].every(b => inView(b) && onTop(b) === true), clear: rects.every(r => r.bottom <= dock.top) });
+    }
+    turn.step = "say"; ui();
+    return { layouts: out };
+  }));
+  check("שומעים ובוחרים בטלפון שוכב: שלושה עיגולים של 64px לפחות, על המסך, לא זה על זה ולא על שורת הכפתורים",
+    pickLand.every(p => p.layouts.every(l => l.d >= 64 && l.apart && l.on && l.clear)), pickLand);
+
+  // דפדפן בלי יחידות cq (ספארי לפני 16): --d היה מקבל את הערך עם cq, שנפסל רק
+  // בחישוב הרוחב, והעיגולים התכווצו לגודל האימוג'י. כאן היחידות מוחלפות
+  // ביחידה שאף דפדפן לא מכיר, וכך גם @supports עליהן.
+  const noCq = [];
+  const sheet = await lay.evaluate(() => {
+    const css = document.querySelector("style");
+    window.realCss = css.textContent;
+    css.textContent = realCss.replace(/(\d)cq(w|h|i|b|min|max)\b/g, "$1zz$2");
+    return realCss !== css.textContent;
+  });
+  for(const vp of [[360, 640], [640, 360]]) noCq.push(await at(vp, () => {
+    turn.step = "understand"; turn.choices = ["dog", "cat", "sun"]; turn.faded = []; turn.awake = true; turn.picked = false;
+    ui();
+    const d = [...$("choices").children].map(b => Math.round(b.getBoundingClientRect().width));
+    turn.step = "say"; ui();
+    return { d };
+  }));
+  await lay.evaluate(() => { document.querySelector("style").textContent = realCss; });
+  check("בדפדפן בלי יחידות cq העיגולים בגודל הקבוע, ולא מתכווצים", sheet && noCq.every(n => n.d.every(d => d >= 64)), noCq);
+
+  // סוף סבב בטלפון שוכב ובטלפון קטן: ▶ היה בתחתית של קופסה שנגללת, וכמעט
+  // כולו מחוץ לה.
+  const endAt = [];
+  for(const vp of [...LANDSCAPE, [320, 568]]) endAt.push(await at(vp, async () => {
+    const ok2 = { met: 1, seen: 9, box: 3, due: 20, ok: [5, 9], n: 4, k: 3, got: 1 };
+    localStorage.setItem("say-the-word-progress", JSON.stringify({ v: 1, w: { dog: ok2, cat: ok2 } }));
+    round = { queue: ["fish"], at: 0, row: [], tried: ["dog", "cat", "sun", "moon", "fish", "banana", "butterfly", "crocodile"],
+              fresh: [], requeued: [], seen: [], basket: [], pocketed: [] };
+    showRoundEnd();
+    await new Promise(r => setTimeout(r, END_GUARD_MS + 100));
+    const end = $("roundEnd").getBoundingClientRect(), again = $("againBtn").getBoundingClientRect();
+    const out = { again: onTop($("againBtn")), inView: inView($("againBtn")),
+      inBox: again.top >= end.top && again.bottom <= end.bottom, basket: $("endBasket").checkVisibility() };
+    hideRoundEnd();
+    localStorage.removeItem("say-the-word-progress");
+    return out;
+  }));
+  check("בסוף סבב ▶ כולו על המסך ומקבל את הנגיעה, גם בטלפון שוכב ובטלפון של 320",
+    endAt.every(e => e.again === true && e.inView && e.inBox && e.basket), endAt);
+
+  // הנקודות של הסבב: --line ו---act-soft על הרקע היו 1.5:1 ו-1.9:1, כמעט
+  // בלתי נראות. הנוכחית שונה מאלה שכבר עברו.
+  const dotColors = await lay.evaluate(() => {
+    const rgb = c => c.match(/[\d.]+/g).slice(0, 3).map(Number);
+    const lum = c => { const [r, g, b] = rgb(c).map(v => v / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    round.queue = ["dog", "cat", "sun", "moon"]; round.at = 1;
+    renderDots();
+    const bg = getComputedStyle(document.body).backgroundColor, style = cls => getComputedStyle($("dots").querySelector(cls));
+    const [done, now, rest] = ["i.done", "i.now", "i:not(.done):not(.now)"].map(style);
+    return { done: +ratio(done.backgroundColor, bg).toFixed(2), now: +ratio(now.backgroundColor, bg).toFixed(2), rest: +ratio(rest.backgroundColor, bg).toFixed(2),
+      distinct: now.backgroundColor !== done.backgroundColor && (now.boxShadow !== done.boxShadow || now.width !== done.width) };
+  });
+  check("נקודות הסבב לפחות 3:1 מול הרקע, והנוכחית שונה מאלה שעברו",
+    dotColors.done >= 3 && dotColors.now >= 3 && dotColors.rest >= 3 && dotColors.distinct, dotColors);
+
+  // ובמכשיר שמבקש פחות תנועה, היד שמדגימה הופיעה לאורך כל הדרך שקופה: רק
+  // האנימציה שלה, שכובתה, הראתה אותה.
+  await lay.setViewportSize({ width: 360, height: 640 });
+  await lay.emulateMedia({ reducedMotion: "reduce" });
+  const stillHand = await lay.evaluate(async () => {
+    goDoor();
+    demo($("play"));
+    await new Promise(r => setTimeout(r, 500));
+    const s = getComputedStyle($("hand"));
+    return { opacity: +s.opacity, transform: s.transform };
+  });
+  await lay.emulateMedia({ reducedMotion: null });
+  check("במכשיר שמבקש פחות תנועה היד שמדגימה נראית, בלי לזוז",
+    stillHand.opacity >= 0.5 && stillHand.transform === "none", stillHand);
+  await layCtx.close();
+
+  // --------------------------------------------------------------
   group("הכנת המכשיר");
   // מכשיר חדש נפתח במסך הכנה למבוגר: מנוע הדיבור יורד מולו, הוא מאשר את
   // המיקרופון ושומע את הקול, ולומד איפה ההגדרות. הילד לא פוגש אף אחד מאלה.

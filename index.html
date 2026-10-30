@@ -64,10 +64,12 @@
   body[data-screen="game"] #home{display:flex}
   body.ended #lock{top:calc(max(8px, env(safe-area-inset-top)) + 64px)}
   #game .guide{padding-inline-end:52px}
+  /* הנקודות קטנות, ולכן כל צבע שלהן לפחות 3:1 מול הרקע. לנוכחית הילה, כמו
+     למשבצת הבאה בכתיבה, כי בצבע היא קרובה לאלה שכבר עברו. */
   #dots{display:flex; gap:6px; justify-content:center; flex-wrap:wrap; min-height:10px; flex:0 0 auto; direction:rtl}
-  #dots i{width:10px; height:10px; border-radius:50%; background:var(--line)}
-  #dots i.done{background:var(--act-soft)}
-  #dots i.now{background:var(--act)}
+  #dots i{width:10px; height:10px; border-radius:50%; background:#6A9084}
+  #dots i.done{background:#8A74EE}
+  #dots i.now{background:var(--act); box-shadow:0 0 0 3px var(--act-soft)}
   body.ended #dots{visibility:hidden}
   #lock.holding, #refresh.holding, #home.holding{opacity:1; color:var(--act)}
   /* סוג התרגול במסך הפתיחה, חיוור כמו 🔒: מעורב, אומרים, כותבים. נגיעה רגילה
@@ -186,7 +188,7 @@
   #choices{position:absolute; inset:0 0 32px; display:grid; grid-template:repeat(3, 1fr) / repeat(2, 1fr); place-items:center; container-type:size}
   #choices[hidden]{display:none}
   .choice{
-    --d:120px; --d:min(46cqw, 31cqh, 200px);
+    --d:120px;
     width:var(--d); height:var(--d); border-radius:50%; padding:0;
     background:#fff; border:5px solid var(--ink); box-shadow:0 0 0 5px var(--act);
     font-size:calc(var(--d) * .5); line-height:1; display:flex; align-items:center; justify-content:center;
@@ -201,10 +203,25 @@
   #choices.l2 .choice:nth-child(1){grid-area:1/2} #choices.l2 .choice:nth-child(2){grid-area:2/1} #choices.l2 .choice:nth-child(3){grid-area:3/1; justify-self:end}
   @media (orientation: landscape){
     #choices{grid-template:repeat(2, 1fr) / repeat(3, 1fr)}
-    .choice{--d:min(31cqw, 46cqh, 200px)}
     #choices.l0 .choice:nth-child(1){grid-area:1/1} #choices.l0 .choice:nth-child(2){grid-area:2/2} #choices.l0 .choice:nth-child(3){grid-area:1/3}
     #choices.l1 .choice:nth-child(1){grid-area:2/1} #choices.l1 .choice:nth-child(2){grid-area:1/2} #choices.l1 .choice:nth-child(3){grid-area:2/3}
     #choices.l2 .choice:nth-child(1){grid-area:1/1} #choices.l2 .choice:nth-child(2){grid-area:2/2} #choices.l2 .choice:nth-child(3){grid-area:2/3; justify-self:start}
+  }
+  /* בטלפון שוכב הבמה נמוכה מדי לשתי שורות: בשתיים עיגול יוצא קטן מאצבע.
+     לכן שורה אחת של שלוש, בכל הגובה. */
+  @media (orientation: landscape) and (max-height: 520px){
+    #choices{grid-template:1fr / repeat(3, 1fr)}
+    #choices[class] .choice:nth-child(n){grid-area:auto; justify-self:auto}
+    .choice{--d:88px}
+  }
+  /* --d מקבל כל ערך, גם יחידה שהדפדפן לא מכיר, ולכן הצהרה שנייה באותו כלל
+     לא משמשת גיבוי: בדפדפן בלי cq (ספארי לפני 16) היא גוברת, נפסלת רק
+     כשמחשבים את הרוחב, והעיגולים מתכווצים לגודל האימוג'י. כאן היא חלה רק
+     בדפדפן שמכיר cq, ובכל אחר נשאר הגודל הקבוע שלמעלה. */
+  @supports (width:1cqw){
+    .choice{--d:min(46cqw, 31cqh, 200px)}
+    @media (orientation: landscape){ .choice{--d:min(31cqw, 46cqh, 200px)} }
+    @media (orientation: landscape) and (max-height: 520px){ .choice{--d:min(31cqw, 92cqh, 200px)} }
   }
   body.understanding #card{display:none}
 
@@ -228,8 +245,12 @@
   .slot.hinted{border-style:solid; border-color:#2B6CB0; color:#2B6CB0; background:#EBF8FF}
   .slot.right{border-style:solid; border-color:var(--ok); color:var(--ok); background:#F0FFF4}
   .slot.wrong{border-color:#C05621; color:#C05621; background:#FFF4E5; animation:shake .3s}
+  /* חמש אותיות בשורה גם במסך של 320: בארבע, מילה של עשר אותיות היא שלוש
+     שורות, והשלישית יורדת על 💡 ו-⏭️. 100vw פחות 64px הוא רוחב הבנק (שוליים
+     של 16 מכל צד) פחות ארבעה רווחים של 8. */
   .tile{
-    width:56px; height:56px; padding:0; font-size:30px; font-weight:800;
+    width:min(56px, calc((100vw - 64px) / 5)); height:min(56px, calc((100vw - 64px) / 5));
+    padding:0; font-size:30px; font-weight:800;
     border-width:3px; border-radius:14px; box-shadow:0 3px 0 var(--ink); -webkit-tap-highlight-color:transparent;
   }
   .tile:active{transform:translateY(2px); box-shadow:0 1px 0 var(--ink)}
@@ -239,8 +260,10 @@
   /* שורת הכפתורים: 🎤 גדול באמצע, תמיד באותו מקום. העזרה מימין ו-⏭️ משמאל,
      קטנים ולא סגולים, עם שטח מגע של 64px לפחות. כפתור שלא שמיש עכשיו מוסתר
      בלי להזיז את האחרים (.away), ומה שלא שייך לתרגול לא קיים בכלל ([hidden]). */
+  /* #stage ממוקם, ולכן מה שגולש ממנו נצבע מעל שורת הכפתורים ובולע את הנגיעות
+     בה. z-index משאיר אותה תמיד מעליו. */
   #buttons{
-    flex:0 0 auto; width:100%; height:120px; direction:rtl;
+    flex:0 0 auto; width:100%; height:120px; direction:rtl; position:relative; z-index:1;
     display:grid; grid-template-columns:1fr auto 1fr; grid-template-areas:"help main skip"; align-items:center;
   }
   #buttons button{-webkit-tap-highlight-color:transparent; touch-action:manipulation}
@@ -256,8 +279,10 @@
   #playWord{grid-area:help; justify-self:start}
   #next{grid-area:skip; justify-self:end}
   #say, #hint{grid-area:main}
+  /* צר מספיק כדי ששני הכפתורים הקטנים נכנסים לצדדיו גם במסך של 320: ⏭️ של
+     72, ו-🔊 עם "לֹא יוֹדְעִים?" של 81. 196 הם שתי עמודות של 82 והשוליים. */
   #say{
-    width:176px; height:112px; border-radius:34px; background:var(--act); color:#fff; border:4px solid var(--ink);
+    width:min(176px, calc(100vw - 196px)); height:112px; border-radius:34px; background:var(--act); color:#fff; border:4px solid var(--ink);
     box-shadow:0 6px 0 var(--ink); display:flex; align-items:center; justify-content:center; font-size:54px; padding:0;
     transition:background-color .15s ease, box-shadow .15s ease;
   }
@@ -288,12 +313,14 @@
   }
   #roundEnd[hidden]{display:none}
   body.ended #card, body.ended #choices, body.ended #spell, body.ended #buttons, body.ended #pocket{display:none}
-  #roundPics{display:flex; flex-wrap:wrap; justify-content:center; align-content:flex-start; gap:10px; flex:1}
+  /* רק המדבקות נגללות, ו-▶ נשאר על המסך גם כשאין מקום לכולן. */
+  #roundPics{display:flex; flex-wrap:wrap; justify-content:center; align-content:flex-start; gap:10px; flex:1 1 0; min-height:0; overflow-y:auto}
+  #endBasket{flex:0 0 auto}
   .pic{line-height:1; font-size:44px; display:inline-flex; align-items:center; justify-content:center}
   /* המדבקות נכנסות אחת אחרי השנייה, כולן באותו גודל. */
   .pic.sticker{background:#fff; border:3px solid var(--line); border-radius:20px; width:76px; height:76px; animation:stick .25s ease-out backwards}
   @keyframes stick{from{transform:scale(.3) rotate(-12deg); opacity:0}}
-  #endActions{display:flex; width:100%; margin-top:auto}
+  #endActions{display:flex; width:100%; margin-top:auto; flex:0 0 auto}
   #endActions button{
     flex:1; height:88px; border-radius:28px; box-shadow:0 5px 0 var(--ink); font-size:40px;
     display:flex; align-items:center; justify-content:center; padding:0;
@@ -308,6 +335,9 @@
   .basket-pics{display:flex; flex-wrap:wrap; justify-content:center; gap:2px; max-width:100%}
   .basket-pics .pic{font-size:28px}
   #doorBasket{margin-bottom:8px; max-height:24dvh; overflow:hidden}
+  /* כשיש בו תמונות, הסל לא נמחץ לפחות משורה אחת שלהן (56 הסל, 4 רווח, 28
+     שורה). */
+  #doorBasket:not(.empty){min-height:88px}
   #doorBasket.empty .basket-art{color:var(--line)}
   .pic.new{animation:twinkle .7s .4s 2 alternate ease-in-out}
   @keyframes twinkle{to{transform:scale(1.35)}}
@@ -319,10 +349,13 @@
   #basketEmpty[hidden]{display:none}
 
   /* שאלת המספר לפני ההגדרות: מספר כתוב באנגלית, שילד שלא קורא אנגלית לא יפתור. */
-  #gate{position:fixed; inset:0; z-index:25; background:rgba(23,48,42,.55); display:flex; align-items:center; justify-content:center; padding:16px}
+  /* margin:auto ממרכז בלי לדחוף את הקופסה אל מעבר לקצה העליון, ובמסך נמוך
+     היא נגללת בתוכה. */
+  #gate{position:fixed; inset:0; z-index:25; background:rgba(23,48,42,.55); display:flex; padding:16px}
   #gate[hidden]{display:none}
   .gate-box{
     background:#fff; border:4px solid var(--ink); border-radius:24px; padding:16px; width:100%; max-width:320px;
+    margin:auto; max-height:100%; overflow-y:auto;
     display:flex; flex-direction:column; align-items:center; gap:10px; -webkit-user-select:none; user-select:none;
   }
   .gate-box p{margin:0; font-size:16px; text-align:center}
@@ -332,22 +365,84 @@
   #gateKeys button{height:56px; border-width:2px; border-radius:14px; font-size:24px; font-weight:700}
   #gateClose{align-self:flex-start; width:44px; height:44px; border-width:2px; border-radius:12px; font-size:22px; padding:0}
 
-  /* טלפון שוכב: הכרטיס נמוך, אז התמונה והכתב בשורה אחת, ושורת הכפתורים נמוכה יותר. */
+  /* טלפון שוכב: הכרטיס נמוך, אז התמונה והכתב בשורה אחת, ושורת הכפתורים נמוכה
+     יותר. הציפור והבועה קטנות, כדי שלבמה יישאר גובה. */
   @media (orientation: landscape) and (max-height: 520px){
-    #game.screen{gap:8px}
-    #game .bird{width:56px; height:62px}
-    #game .cue{min-height:52px; padding:6px 14px}
+    .screen{padding-top:max(10px, env(safe-area-inset-top)); padding-bottom:max(10px, env(safe-area-inset-bottom))}
+    #game.screen{gap:6px}
+    #game .bird{width:44px; height:48px}
+    #game .cue{min-height:48px; padding:4px 14px; font-size:24px}
+    #game .cue .ico{font-size:26px}
     #card{flex-direction:row; gap:24px}
     #picture{font-size:clamp(48px, 26dvh, 140px)}
     #buttons{height:92px}
     #say{width:150px; height:84px}
     .small{height:64px}
+    /* כתיבה: התמונה והתעתיק בצד, והמשבצות והאותיות לידם. האותיות בשורה אחת
+       שמתכווצת לפי אורך המילה: בשתי שורות הבנק יורד מתחת לקצה המסך. */
+    body.spelling #stage{flex-direction:row; align-items:center; gap:10px}
+    body.spelling #card{flex:0 0 auto; width:auto; align-self:stretch; min-height:0; flex-direction:column; gap:0; padding:6px 12px}
+    body.spelling #picture{font-size:clamp(40px, 16dvh, 90px)}
+    body.spelling #wordHe{font-size:20px}
+    #spell{flex:1; min-width:0; gap:4px}
+    .slot{height:40px}
+    #spellArrow{font-size:18px; margin-top:0}
+    #bank{flex-wrap:nowrap; gap:4px}
+    .tile{flex:0 1 56px; min-width:0; width:auto; height:auto; aspect-ratio:1; font-size:26px}
+    /* סוף הסבב: המדבקות בצד, קטנות יותר כדי שסבב שלם ייכנס בלי גלילה, והסל
+       ו-▶ לידן. */
+    #roundEnd{display:grid; grid-template:"pics basket" 1fr "pics actions" auto / 1fr 180px; gap:8px 12px; padding:10px 12px}
+    #roundPics{grid-area:pics}
+    .pic.sticker{width:64px; height:64px; font-size:36px}
+    #endBasket{grid-area:basket; align-self:center}
+    #endActions{grid-area:actions}
+    /* מסך הפתיחה בשני טורים: הציפור והשם מצד אחד, ▶ מהצד השני, ומתחתם הסל
+       וסוג התרגול. בטור אחד ▶ יורד מתחת לקצה המסך. */
+    body[data-screen="door"] #door{display:grid; grid-template:"top play" auto "guide play" 1fr "basket mode" auto / 1fr 1fr; place-items:center; gap:6px 16px}
+    .door-top{grid-area:top; margin-top:0}
+    #door .guide{grid-area:guide; gap:10px}
+    #door .bird{width:100px; height:110px}
+    #play{grid-area:play; margin-bottom:8px}
+    #doorMode{grid-area:mode}
+    #doorBasket{grid-area:basket; flex-direction:row; gap:8px; margin-bottom:0}
+    #doorBasket:not(.empty){min-height:0}
+    #doorBasketPics{max-height:58px; overflow:hidden}
+    /* קראו למבוגר: הבועה והציור בשורה, כדי ש-▶ יישאר על המסך. */
+    #grownup .guide{flex-direction:row}
+  }
+  /* ומגובה 375 יש מקום לשתי שורות של אותיות בגודל מלא. */
+  @media (orientation: landscape) and (min-height: 375px) and (max-height: 520px){
+    #bank{flex-wrap:wrap}
+    .tile{flex:0 0 56px; font-size:30px}
+  }
+  /* טלפון נמוך לאורך. במסך הפתיחה הסל, ▶ וסוג התרגול נשארים על המסך, והציפור
+     מתכווצת. */
+  @media (orientation: portrait) and (max-height: 700px){
+    .door-top{margin-top:24px}
+    #door.screen{gap:10px}
+    #door .bird{width:110px; height:120px}
+    #play{width:136px; height:136px; font-size:60px}
+  }
+  /* ועוד יותר נמוך: הציפור ליד הבועה ולא מתחתיה, ובכתיבה התמונה ליד התעתיק,
+     כדי שמילה של עשר אותיות, בשתי שורות של אותיות, תיכנס מעל שורת הכפתורים.
+     והמדבקות בסוף הסבב קטנות יותר, כדי שסבב שלם ייכנס בלי גלילה. */
+  @media (orientation: portrait) and (max-height: 640px){
+    #door .guide{flex-direction:row; gap:10px}
+    #door .bird{width:100px; height:110px}
+    #game.screen{gap:10px}
+    #game .bird{width:64px; height:70px}
+    body.spelling #card{flex-direction:row; gap:16px; min-height:0}
+    body.spelling #picture{font-size:clamp(44px, 9dvh, 80px)}
+    .pic.sticker{width:64px; height:64px; font-size:36px}
   }
   @media (prefers-reduced-motion: reduce){
     #card.pop, .big-play, .cue .ico, .pic.sticker, .pic.new, .pic.into, #card.again, #card.fall, #card.grow, .confetti i, #say.nudge, #say.appear .ico,
-    #playWord.nudge .ico, .bird .b-all, #hand.tap, .cue.poke{animation:none !important}
+    #playWord.nudge .ico, .bird .b-all, .cue.poke{animation:none !important}
     .choice.fly{transition:none}
+    /* היד שקופה, ורק האנימציה מראה אותה. כאן היא מופיעה ונעלמת במקום, בלי לזוז. */
+    #hand.tap{animation:handShow 1.6s ease-in-out}
   }
+  @keyframes handShow{0%, 100%{opacity:0} 15%, 85%{opacity:.8}}
 
   /* אזור המבוגר */
   #loading{display:flex; flex-direction:column; gap:6px}
@@ -3880,6 +3975,9 @@ function openGate(){
   $("gateEntry").textContent = "";
   $("gate").hidden = false;
   setBehindInert(true, $("gate"));
+  // במסך נמוך הקופסה נגללת, והדפדפן זוכר עד איפה גם אחרי שהוסתרה. בלי זה
+  // פתיחה שנייה מתחילה במקשים, וה-× מעל הקצה.
+  document.querySelector("#gate .gate-box").scrollTop = 0;
   $("gateKeys").querySelector("button").focus({ preventScroll: true });
   armIdle();
 }
