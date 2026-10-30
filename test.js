@@ -19,10 +19,13 @@ const TYPES = {
   ".gz": "application/gzip"
 };
 
-// שרת סטטי קטן, קרוב ככל האפשר למה ש-GitHub Pages עושה.
+// שרת סטטי קטן, קרוב ככל האפשר למה ש-GitHub Pages עושה. served סופר כמה
+// פעמים כל קובץ הוגש, כדי לבדוק מה באמת יורד מהרשת.
+const served = new Map();
 function staticServer(){
   return http.createServer((req, res) => {
     const rel = decodeURIComponent(req.url.split("?")[0]).replace(/^\/+/, "") || "index.html";
+    served.set(rel, (served.get(rel) || 0) + 1);
     const file = path.join(DIR, rel);
     if(!file.startsWith(DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){
       res.writeHead(404, {"Content-Type": "text/plain"});
@@ -4064,15 +4067,52 @@ async function main(){
   // הדף פותח את המטמון בשם CACHE_NAME ומוצא בו את מה שה-service worker שמר.
   check("הדף וה-service worker על אותו מטמון", cached.length > 0, cached);
   check("words.js נשמר במטמון", cached.includes("words.js"), cached);
-  // המודל נכתב למטמון בזרימה, בלי לצבור 29MB בזיכרון. אם הזרימה נקטעת
-  // הקובץ נשמר חסר, והמנוע נופל רק בפתיחה הבאה.
-  const modelBytes = await page.evaluate(async () => {
+  // Vosk חילץ את המודל ל-IndexedDB כשהדף נטען לראשונה, ומאז קורא רק משם. את
+  // הארכיון במטמון אף אחד כבר לא קורא, והוא נמחק אחרי הטעינה.
+  await page.waitForFunction(() => model !== null, null, { timeout: 30000 });
+  const stored = await page.evaluate(async () => {
     const c = await caches.open(CACHE_NAME);
-    const hit = await c.match(new URL("model.tar.gz", location.href).href);
-    return hit ? (await hit.blob()).size : 0;
+    let archive = true;
+    for(let k = 0; k < 50 && archive; k++){
+      archive = !!(await c.match(MODEL_URL));
+      if(archive) await new Promise(r => setTimeout(r, 100));
+    }
+    return { archive, extracted: await modelExtracted() };
+  });
+  check("אחרי הטעינה המודל שמור מחולץ, והארכיון לא נשאר במטמון", stored.extracted && !stored.archive, stored);
+  // ההורדה עצמה נכתבת למטמון בזרימה, בלי לצבור 29MB בזיכרון. אם הזרימה
+  // נקטעת הקובץ נשמר חסר, והמנוע נופל רק כשהוא מחלץ אותו. כאן הדף מוריד שוב,
+  // כאילו המודל עוד לא חולץ.
+  const modelBytes = await page.evaluate(async () => {
+    const real = modelExtracted;
+    modelExtracted = async () => false;
+    try{
+      await fetchModel();
+      const hit = await (await caches.open(CACHE_NAME)).match(MODEL_URL);
+      return hit ? (await hit.blob()).size : 0;
+    } finally {
+      modelExtracted = real;
+      await dropArchive();
+      $("loading").hidden = true;
+      renderStatus();
+    }
   });
   const realBytes = fs.statSync(path.join(DIR, "model.tar.gz")).size;
   check("המודל נשמר במטמון במלואו", modelBytes === realBytes, { modelBytes, realBytes });
+  // פתיחה נוספת לא מורידה את המודל שוב, ובלי רשת המנוע נטען מהעותק המחולץ.
+  const downloads = () => served.get("model.tar.gz") || 0;
+  const before = downloads();
+  await reload();
+  await page.waitForFunction(() => model !== null, null, { timeout: 30000 });
+  const reopened = { downloads: downloads() - before, error: await page.evaluate(() => modelError) };
+  check("בפתיחה הבאה המודל לא יורד שוב", reopened.downloads === 0 && !reopened.error, reopened);
+  await ctx.setOffline(true);
+  await reload();
+  const offlineModel = await page.waitForFunction(() => model !== null || modelError !== "", null, { timeout: 30000 })
+    .then(() => page.evaluate(() => ({ model: model !== null, error: modelError }))).catch(e => ({ timeout: e.message }));
+  await ctx.setOffline(false);
+  check("בלי רשת, אחרי שהמודל ירד, מנוע הדיבור נטען", offlineModel.model === true, offlineModel);
+  await reload();
 
   // ב-GitHub Pages כל הריפו של אותו משתמש חולקים origin אחד, ואיתו את
   // Cache Storage. ה-service worker מנקה בהפעלה רק מטמונים ישנים שלנו; מחיקה

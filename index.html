@@ -1512,12 +1512,48 @@ function renderStatus(){
   $("deviceStatus").hidden = $("loading").hidden && $("micStatus").hidden && $("modelStatus").hidden && $("voiceStatus").hidden;
 }
 
+// Vosk מחלץ את המודל פעם אחת ל-IndexedDB, לפי הכתובת שלו, ומאז קורא רק משם,
+// גם בלי רשת. הקובץ extracted.ok שם נכתב אחרי שהחילוץ נשמר, ולכן הוא הסימן
+// שהמודל במכשיר: fetchModel לא מוריד אותו שוב, והארכיון במטמון, 29MB שאף
+// אחד כבר לא קורא, נמחק (dropArchive). שם המסד, המאגר והנתיב הם של vosk.js:
+// ה-worker שלו שומר תחת /vosk ואת הכתובת כשכל תו שאינו אות הופך ל-_.
+const VOSK_DB = "/vosk", VOSK_STORE = "FILE_DATA";
+const EXTRACTED_KEY = VOSK_DB + "/" + MODEL_URL.replace(/\W/g, "_") + "/extracted.ok";
+function modelExtracted(){
+  return new Promise(done => {
+    try{
+      const req = indexedDB.open(VOSK_DB);
+      // אין מסד עדיין: לא יוצרים אותו כאן. Vosk יוצר אותו בגרסה שלו.
+      req.onupgradeneeded = () => req.transaction.abort();
+      req.onerror = e => { e.preventDefault(); done(false); };
+      req.onsuccess = () => {
+        const db = req.result;
+        try{
+          const count = db.transaction(VOSK_STORE).objectStore(VOSK_STORE).count(EXTRACTED_KEY);
+          count.onsuccess = () => { db.close(); done(count.result > 0); };
+          count.onerror = e => { e.preventDefault(); db.close(); done(false); };
+        }catch(e){ db.close(); done(false); }
+      };
+    }catch(e){ done(false); }
+  });
+}
+// אחרי טעינה מוצלחת. המטמון נבדק שוב מול IndexedDB, כדי שארכיון לא יימחק
+// לפני שהעותק המחולץ באמת שמור.
+async function dropArchive(){
+  try{
+    if(typeof CACHE_NAME !== "string" || !("caches" in window) || !await caches.has(CACHE_NAME)) return;
+    if(!await modelExtracted()) return;
+    await (await caches.open(CACHE_NAME)).delete(MODEL_URL, { ignoreSearch: true });
+  }catch(e){}
+}
+
 async function fetchModel(){
   // בלי CACHE_NAME (cache-name.js לא נטען) מדלגים על ההורדה המוקדמת במקום
   // ליצור מטמון בשם שגוי. Vosk יוריד את המודל בעצמו, רק בלי פס התקדמות.
   if(typeof CACHE_NAME !== "string") return;
   if(!("caches" in window) || !("body" in Response.prototype)) return;
   if(typeof TransformStream === "undefined") return;
+  if(await modelExtracted()) return;
   const cache = await caches.open(CACHE_NAME);
   if(await cache.match(MODEL_URL)) return;
 
@@ -1589,6 +1625,7 @@ async function loadModel(){
       loading.on("error", fail);
     });
     modelReady();
+    dropArchive();
   }catch(err){
     $("loading").hidden = true;
     modelError = navigator.onLine === false
