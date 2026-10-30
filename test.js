@@ -71,6 +71,16 @@ async function main(){
   const browser = await chromium.launch({
     args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"]
   });
+  // מכשיר שלא נשמר בו כלום נפתח בהכנת המכשיר ולא במסך הפתיחה. כל הקבוצות כאן
+  // מתחילות ממכשיר שכבר הוכן, חוץ מ"הכנת המכשיר", שמבקשת { setup: true }.
+  const openContext = browser.newContext.bind(browser);
+  browser.newContext = async ({ setup = false, ...options } = {}) => {
+    const context = await openContext(options);
+    if(!setup) await context.addInitScript(() => {
+      try{ if(localStorage.getItem("say-the-word-setup") === null) localStorage.setItem("say-the-word-setup", "1"); }catch(e){}
+    });
+    return context;
+  };
   const ctx = await browser.newContext({ permissions: ["microphone"] });
   const page = await ctx.newPage();
   const errors = [];
@@ -3746,6 +3756,57 @@ async function main(){
   } finally {
     await page.evaluate(() => { stopListening(); processRecognition = window.realProcess; });
   }
+
+  // --------------------------------------------------------------
+  group("הכנת המכשיר");
+  // מכשיר חדש נפתח במסך הכנה למבוגר: מנוע הדיבור יורד מולו, הוא מאשר את
+  // המיקרופון ושומע את הקול, ולומד איפה ההגדרות. הילד לא פוגש אף אחד מאלה.
+  const setupCtx = await browser.newContext({ setup: true, permissions: ["microphone"] });
+  const setupPage = await setupCtx.newPage();
+  await setupPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  const setupStart = await setupPage.evaluate(() => ({ screen, saved: localStorage.getItem("say-the-word-setup"),
+    shown: $("setup").checkVisibility(), door: $("door").checkVisibility(), lock: $("lock").checkVisibility() }));
+  check("מכשיר חדש נפתח בהכנת המכשיר, ולא נכתב כלום",
+    setupStart.screen === "setup" && setupStart.shown && !setupStart.door && !setupStart.lock && setupStart.saved === null, setupStart);
+  await setupPage.waitForFunction(() => model !== null, null, { timeout: 60000 });
+  const setupModel = await setupPage.evaluate(() => ({ text: $("setupModel").textContent, bar: $("setupBar").checkVisibility(),
+    offline: !!navigator.serviceWorker.controller }));
+  check("כשמנוע הדיבור במכשיר זה כתוב, בלי פס",
+    setupModel.text.startsWith("✓") && !setupModel.bar && setupModel.text.includes("בלי אינטרנט") === setupModel.offline, setupModel);
+  await setupPage.click("#setupMicBtn");
+  await setupPage.waitForFunction(() => $("setupMic").classList.contains("ok") || $("setupMic").classList.contains("bad"), null, { timeout: 5000 }).catch(() => {});
+  const setupMicState = await setupPage.evaluate(() => ({ text: $("setupMic").textContent, ok: $("setupMic").classList.contains("ok"),
+    open: !!micStream, button: $("setupMicBtn").checkVisibility() }));
+  check("אישור המיקרופון בהכנה — מאושר, והמיקרופון נסגר עד ▶",
+    setupMicState.ok && !setupMicState.open && !setupMicState.button, setupMicState);
+  // בכרומיום של הבדיקות אין קול באנגלית: ההקראה לא מתחילה, וזה כתוב.
+  await setupPage.click("#setupVoiceBtn");
+  await setupPage.waitForTimeout(1800);
+  const setupVoiceState = await setupPage.evaluate(() => ({ text: $("setupVoice").textContent, bad: $("setupVoice").classList.contains("bad") }));
+  check("בדיקת קול בלי קול באנגלית — כתוב שהמשחק יעבוד בלי השמיעה", setupVoiceState.bad, setupVoiceState);
+  await setupPage.fill("#setupName", "  נועה  ");
+  await setupPage.click("#setupDone");
+  const setupDone = await setupPage.evaluate(() => ({ screen, child: childName(), door: $("childName").textContent,
+    saved: localStorage.getItem("say-the-word-setup"), focus: document.activeElement.id }));
+  await setupPage.reload({ waitUntil: "domcontentloaded" });
+  const setupAfter = await setupPage.evaluate(() => screen);
+  check("\"סיימנו\" — מסך הפתיחה עם השם שנכתב, ובפתיחה הבאה אין הכנה",
+    setupDone.screen === "door" && setupDone.child === "נועה" && setupDone.door === "נועה" && setupDone.saved === "1"
+      && setupDone.focus === "play" && setupAfter === "door", { setupDone, setupAfter });
+  // מאזור המבוגר חוזרים אליה, למשל כדי לבדוק את הקול שוב.
+  const setupAgain = await setupPage.evaluate(() => { openPanel(); $("setupBtn").click();
+    return { screen, overlay: !$("overlay").hidden }; });
+  check("\"בדיקת המכשיר\" באזור המבוגר פותח את ההכנה שוב", setupAgain.screen === "setup" && !setupAgain.overlay, setupAgain);
+  await setupCtx.close();
+  // מכשיר שכבר שיחקו בו, מגרסה שלפני ההכנה, נפתח כרגיל במסך הפתיחה.
+  const usedCtx = await browser.newContext({ setup: true, serviceWorkers: "block" });
+  const usedPage = await usedCtx.newPage();
+  await usedPage.goto(base + "/manifest.json");
+  await usedPage.evaluate(() => localStorage.setItem("say-the-word-progress", JSON.stringify({ v: 1, w: {} })));
+  await usedPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  const usedScreen = await usedPage.evaluate(() => ({ screen, saved: localStorage.getItem("say-the-word-setup") }));
+  await usedCtx.close();
+  check("מכשיר שכבר שיחקו בו נפתח במסך הפתיחה, בלי הכנה", usedScreen.screen === "door" && usedScreen.saved === null, usedScreen);
 
   // --------------------------------------------------------------
   group("שמע");

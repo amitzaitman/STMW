@@ -374,6 +374,25 @@
     border-width:2px; border-color:#2B6CB0; border-radius:12px; padding:8px 12px;
     font-size:14px; background:#EBF8FF; color:#2B6CB0; font-weight:600;
   }
+  /* הכנת המכשיר: מסך למבוגר, בסגנון של אזור המבוגר, שנגלל כשהוא ארוך. */
+  body[data-screen="setup"] #setup{display:flex}
+  #setup{height:auto; min-height:100dvh; align-items:stretch; gap:10px; -webkit-user-select:text; user-select:text}
+  #setup h2{margin:0; font-size:24px; font-weight:800}
+  .setup-head{display:flex; flex-direction:column; gap:4px}
+  .setup-line{margin:0; font-size:14px; line-height:1.5; color:#1B2140}
+  .setup-line.ok{color:var(--ok-ink); font-weight:700}
+  .setup-line.bad{color:#B23A00; font-weight:700}
+  .setup-btn{align-self:flex-start; border-width:2px; border-radius:12px; padding:8px 14px; font-size:15px; font-weight:700; min-height:44px}
+  .setup-btn[hidden]{display:none}
+  #setupName{font:inherit; font-size:18px; padding:8px 12px; border:2px solid #1B2140; border-radius:12px; min-height:44px; width:100%}
+  .bar{height:16px; border:3px solid #1B2140; border-radius:10px; background:#fff; overflow:hidden}
+  .bar[hidden]{display:none}
+  .bar i{display:block; height:100%; width:0; background:var(--act); transition:width .2s}
+  .setup-done{
+    background:var(--act); color:#fff; border:4px solid var(--ink); border-radius:22px; box-shadow:0 6px 0 var(--ink);
+    padding:14px 18px; font-size:20px; font-weight:800; margin-top:6px; min-height:56px
+  }
+  .setup-done:active{transform:translateY(3px); box-shadow:0 3px 0 var(--ink)}
   #overlay{
     position:fixed; inset:0; background:rgba(27,33,64,.45);
     display:flex; align-items:flex-end; justify-content:center; z-index:20;
@@ -650,7 +669,7 @@
   .panel-notice.success{background:#F0FDF4; color:#15803D; border:1px solid #BBF7D0;}
   .panel-notice:empty{display:none;}
 
-  #resetBtn, #deleteChildBtn{
+  #resetBtn, #deleteChildBtn, #setupBtn{
     border-width:2px; border-color:#B9C2D8; border-radius:12px; padding:8px 12px;
     font-size:14px; background:#fff; color:#4A5480; align-self:flex-start;
   }
@@ -744,6 +763,46 @@
     <div class="grownup-art" aria-hidden="true"><span id="adultArt"></span><span id="mutedMicArt"></span></div>
   </div>
   <button id="resume" class="big-play" type="button" aria-label="להמשיך לשחק"></button>
+</section>
+
+<!-- הכנה של מכשיר חדש, פעם אחת, למבוגר: מנוע הדיבור, המיקרופון, הקול, שם,
+     ואיך נכנסים להגדרות. הילד לא פוגש את ההורדה ואת בקשת המיקרופון. -->
+<section id="setup" class="screen" aria-labelledby="setupTitle">
+  <div class="setup-head">
+    <h2 id="setupTitle">הכנת המכשיר</h2>
+    <p class="match-desc">פעם אחת, למבוגר. אחר כך הילד משחק לבד. אפשר לדלג על כל שלב.</p>
+  </div>
+  <div class="match-section">
+    <div class="match-title-wrap"><span class="match-icon">🧠</span><span class="match-title">מנוע הדיבור</span></div>
+    <div id="setupBar" class="bar"><i></i></div>
+    <p id="setupModel" class="setup-line" aria-live="polite"></p>
+    <button id="setupModelRetry" type="button" class="setup-btn" hidden>נסו שוב</button>
+  </div>
+  <div class="match-section">
+    <div class="match-title-wrap"><span class="match-icon">🎤</span><span class="match-title">מיקרופון</span></div>
+    <p id="setupMic" class="setup-line" aria-live="polite">הדפדפן ישאל אם לאשר. בלי מיקרופון הילד רק שומע ובוחר תמונות.</p>
+    <button id="setupMicBtn" type="button" class="setup-btn">אישור המיקרופון</button>
+  </div>
+  <div class="match-section">
+    <div class="match-title-wrap"><span class="match-icon">🔊</span><span class="match-title">קול באנגלית</span></div>
+    <p id="setupVoice" class="setup-line" aria-live="polite">המשחק אומר את המילים באנגלית. בכיתה מומלץ להשתמש באוזניות.</p>
+    <button id="setupVoiceBtn" type="button" class="setup-btn">השמעת מילה</button>
+  </div>
+  <div class="match-section">
+    <label class="match-title-wrap" for="setupName"><span class="match-icon">🧒</span><span class="match-title">שם הילד או הילדה</span></label>
+    <input id="setupName" type="text" maxlength="20" autocomplete="off" placeholder="לא חובה">
+    <p class="match-desc">למכשיר של כמה ילדים מוסיפים שמות בהגדרות. לכל שם רשימה והתקדמות משלו.</p>
+  </div>
+  <div id="setupInstall" class="match-section" hidden>
+    <div class="match-title-wrap"><span class="match-icon">📲</span><span class="match-title">התקנה במסך הבית</span></div>
+    <p id="setupInstallText" class="setup-line">כך המשחק נפתח כמו אפליקציה, וכרום לא מוחק את מנוע הדיבור כשנגמר מקום.</p>
+    <button id="setupInstallBtn" type="button" class="setup-btn">התקנה</button>
+  </div>
+  <div class="match-section">
+    <div class="match-title-wrap"><span class="match-icon">🔒</span><span class="match-title">ההגדרות</span></div>
+    <p class="setup-line">במסך הפתיחה, לחיצה ארוכה של שתי שניות על 🔒 בפינה העליונה השמאלית, ואז מקלידים מספר שכתוב באנגלית. שם: רשימת המילים, רמת ההתאמה, סוג התרגול, השמע, ומה הילד כבר אומר.</p>
+  </div>
+  <button id="setupDone" type="button" class="setup-done">סיימנו — למסך הפתיחה</button>
 </section>
 
 <div id="hand" aria-hidden="true"></div>
@@ -898,6 +957,7 @@
 
       <div id="settingsActions">
         <button id="installBtn" type="button" hidden>📲 התקנת אפליקציה למכשיר</button>
+        <button id="setupBtn" type="button">🛠️ בדיקת המכשיר</button>
         <button id="resetBtn" type="button">🔄 איפוס מילים והגדרות</button>
         <a id="feedbackBtnInSettings" data-feedback target="_blank" rel="noopener noreferrer">💬 שליחת משוב ורעיונות ↗</a>
       </div>
@@ -1510,6 +1570,7 @@ function renderStatus(){
   $("modelStatusText").textContent = modelError;
   $("voiceStatus").hidden = !soundEnabled || !("speechSynthesis" in window) || !!voiceFor(EN);
   $("deviceStatus").hidden = $("loading").hidden && $("micStatus").hidden && $("modelStatus").hidden && $("voiceStatus").hidden;
+  renderSetup();
 }
 
 // Vosk מחלץ את המודל פעם אחת ל-IndexedDB, לפי הכתובת שלו, ומאז קורא רק משם,
@@ -3118,8 +3179,9 @@ function childrenNotSaved(){
 // לכל ילד. שם שכבר קיים רק עובר אליו, בלי לדרוס את ההגדרות שלו, ואומר את
 // זה: מי שרצה ילד שני באותו שם היה עורך בלי לדעת את הרשימה של הראשון.
 // Array.from חותך לפי תווים, ולא באמצע אימוג'י.
-function addChild(){
-  const name = Array.from((prompt("איך קוראים לילד או לילדה?") || "").trim().replace(/\s+/g, " ")).slice(0, 20).join("");
+function addChild(given){
+  const asked = given === undefined ? prompt("איך קוראים לילד או לילדה?") : given;
+  const name = Array.from((asked || "").trim().replace(/\s+/g, " ")).slice(0, 20).join("");
   if(!name) return;
   const list = readChildren();
   if(!list) return childrenNotSaved();
@@ -3307,6 +3369,7 @@ function setScreen(s){
 
 // ההנחיה של הרגע הזה, מתוך המצב. הנחיה של תוצאה (turn.cue) נשארת עד הפעולה הבאה.
 function cueNow(){
+  if(screen === "setup") return "";
   if(screen === "door") return starting && startingSlow ? "grownup" : "door";
   if(screen === "grownup") return "grownup";
   if(ended) return "end";
@@ -3319,7 +3382,9 @@ function cueNow(){
   return turn.known && !turn.revealed ? "recall" : "say";
 }
 function renderCue(){
-  const state = cueNow(), [ico, text, pose] = CUES[state];
+  const state = cueNow();
+  if(!state) return;
+  const [ico, text, pose] = CUES[state];
   const cue = screen === "game" ? $("cue") : document.querySelector(`#${screen} .cue`);
   if(cue.dataset.cue !== state || !cue.firstChild){
     cue.dataset.cue = state;
@@ -3564,6 +3629,89 @@ function renderDoor(){
   renderDoorBasket();
 }
 
+// --- הכנת המכשיר ---
+// מכשיר חדש לגמרי, שלא נשמר בו כלום, נפתח במסך הכנה למבוגר ולא במסך הפתיחה:
+// מנוע הדיבור יורד מול המבוגר, המבוגר מאשר את המיקרופון ושומע את הקול, ולומד
+// איפה ההגדרות. מכשיר שכבר שיחקו בו, או ששינו בו הגדרה, לא רואה אותו; באזור
+// המבוגר "בדיקת המכשיר" מחזיר אליו. "סיימנו" נשמר במכשיר, גם בלי שאף שלב נעשה.
+const SETUP_KEY = "say-the-word-setup";
+function freshDevice(){
+  try{
+    return [SETUP_KEY, CHILDREN_KEY, "words", PROGRESS_KEY, LOG_KEY, SOUND_KEY, MODE_KEY, MATCH_KEY, HEBREW_KEY]
+      .every(k => localStorage.getItem(k) === null);
+  }catch(e){ return false; }
+}
+// "בלי אינטרנט" רק כשה-service worker כבר שולט בדף: הוא שמר את שאר הקבצים.
+function renderSetup(){
+  const line = $("setupModel"), ready = model !== null;
+  const offline = "serviceWorker" in navigator && !!navigator.serviceWorker.controller;
+  $("setupBar").hidden = ready || !!modelError;
+  $("setupBar").firstChild.style.width = $("fill").style.width || "0";
+  line.textContent = ready ? (offline ? "✓ במכשיר. מעכשיו המשחק עובד גם בלי אינטרנט." : "✓ מוכן.")
+    : modelError || $("loadtext").textContent || "מתכוננים…";
+  line.className = "setup-line" + (ready ? " ok" : modelError ? " bad" : "");
+  $("setupModelRetry").hidden = !modelError;
+}
+function setupLine(id, text, kind = ""){
+  $(id).textContent = text;
+  $(id).className = "setup-line" + (kind ? " " + kind : "");
+}
+function openSetup(){
+  closePanel();
+  renderSetup();
+  setScreen("setup");
+  window.scrollTo(0, 0);
+}
+// ההרשאה נשארת, והמיקרופון עצמו נסגר עד ▶, כדי שחיווי ההקלטה לא יידלק סתם.
+async function setupMic(){
+  const b = $("setupMicBtn");
+  if(b.disabled) return;
+  b.disabled = true;
+  try{
+    await ensureAudio();
+    releaseMic();
+    micBlocked = false;
+    setupLine("setupMic", "✓ המיקרופון מאושר.", "ok");
+    b.hidden = true;
+  }catch(e){
+    micBlocked = true;
+    setupLine("setupMic", "המיקרופון חסום. צריך לאשר אותו בהגדרות הדפדפן, ואז לנסות שוב.", "bad");
+  }
+  b.disabled = false;
+  renderStatus();
+}
+// קול שלא מתחיל תוך SPEECH_START_MS אומר שאין קול באנגלית שעובד.
+const SETUP_PHRASE = "Hello! Let's play.";
+function setupVoice(){
+  if(!("speechSynthesis" in window)) return setupLine("setupVoice", "הדפדפן הזה לא מדבר. המשחק יעבוד בלי השמיעה של המילים.", "bad");
+  if(!soundEnabled) return setupLine("setupVoice", "השמע כבוי. מדליקים אותו בהגדרות, תחת \"שמע במכשיר\".", "bad");
+  refreshVoices();
+  const u = speak(SETUP_PHRASE, EN);
+  let started = false;
+  setupLine("setupVoice", "…");
+  u.addEventListener("start", () => {
+    started = true;
+    setupLine("setupVoice", "שמעתם \"Hello! Let's play\"? אם לא, הגבירו את עוצמת הקול ונסו שוב.");
+  });
+  setTimeout(() => {
+    if(!started) setupLine("setupVoice", "לא נשמע קול באנגלית. המשחק יעבוד, רק בלי השמיעה של המילים.", "bad");
+  }, SPEECH_START_MS);
+}
+function finishSetup(){
+  const name = $("setupName").value;
+  $("setupName").value = "";
+  if(name.trim()) addChild(name);
+  try{ localStorage.setItem(SETUP_KEY, "1"); }catch(e){}
+  goDoor();
+  $("play").focus({ preventScroll: true });
+}
+$("setupModelRetry").addEventListener("click", retryModel);
+$("setupMicBtn").addEventListener("click", setupMic);
+$("setupVoiceBtn").addEventListener("click", setupVoice);
+$("setupDone").addEventListener("click", finishSetup);
+$("setupBtn").addEventListener("click", openSetup);
+if("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("controllerchange", renderSetup);
+
 // --- כניסת מבוגר ---
 // לחיצה ארוכה על 🔒, ואחריה מספר שכתוב באנגלית, במקלדת ספרות ועם מספר אחר
 // בכל פעם. ילד שלא קורא אנגלית לא יפתור, ותשובה שגויה חוזרת בשקט. Enter או
@@ -3777,11 +3925,12 @@ $("retryMic").addEventListener("click", async () => {
   try{ await ensureAudio(); micBlocked = false; }catch(e){ micBlocked = true; }
   renderStatus();
 });
-$("retryModel").addEventListener("click", () => {
+function retryModel(){
   modelError = "";
   renderStatus();
   loadModel();
-});
+}
+$("retryModel").addEventListener("click", retryModel);
 
 $("childChips").addEventListener("click", e=>{
   const b = e.target.closest(".chip");
@@ -3809,31 +3958,40 @@ const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
 // המגע: מק מדווח אפס נקודות מגע.
 const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase()) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
+// ההתקנה מוצעת גם באזור המבוגר וגם בהכנת המכשיר.
+function installable(on){
+  installBtn.hidden = !on;
+  $("setupInstall").hidden = !on;
+}
 if (!isStandalone) {
   window.addEventListener("beforeinstallprompt", e => {
     e.preventDefault();
     deferredPrompt = e;
-    installBtn.hidden = false;
+    installable(true);
   });
 
-  if (isIOS) installBtn.hidden = false;
+  if (isIOS) installable(true);
 }
 
 window.addEventListener("appinstalled", () => {
-  installBtn.hidden = true;
+  installable(false);
   deferredPrompt = null;
 });
 
-installBtn.addEventListener("click", async () => {
+const IOS_INSTALL = "להתקנה ב־iPhone/iPad: לחצו על שיתוף ⎋ בספארי ובחרו 'הוספה למסך הבית'.";
+async function installApp(){
   if (deferredPrompt) {
     deferredPrompt.prompt();
     const choice = await deferredPrompt.userChoice;
-    if (choice.outcome === "accepted") installBtn.hidden = true;
+    if (choice.outcome === "accepted") installable(false);
     deferredPrompt = null;
   } else if (isIOS) {
-    setSettingsNotice("settingsNotice", "להתקנה ב־iPhone/iPad: לחצו על שיתוף ⎋ בספארי ובחרו 'הוספה למסך הבית'.");
+    setSettingsNotice("settingsNotice", IOS_INSTALL);
+    setupLine("setupInstallText", IOS_INSTALL);
   }
-});
+}
+installBtn.addEventListener("click", installApp);
+$("setupInstallBtn").addEventListener("click", installApp);
 
 // מבקש מהדפדפן לא למחוק את המטמון (המודל, 29MB) כשנגמר מקום. בלי חלון אישור;
 // אם הדפדפן מסרב, פשוט ממשיכים.
@@ -3854,7 +4012,7 @@ updateSoundUI();
 updateMatchUI();
 $("hebrewToggle").checked = hebrewEnabled;
 renderDoor();
-setScreen("door");
+setScreen(freshDevice() ? "setup" : "door");
 loadModel();
 </script>
 </body>
