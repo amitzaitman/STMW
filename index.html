@@ -887,7 +887,7 @@
   <div class="match-section">
     <label class="match-title-wrap" for="setupName"><span class="match-icon">🧒</span><span class="match-title">שם הילד או הילדה</span></label>
     <input id="setupName" type="text" maxlength="20" autocomplete="off" placeholder="לא חובה">
-    <p class="match-desc">למכשיר של כמה ילדים מוסיפים שמות בהגדרות. לכל שם רשימה והתקדמות משלו.</p>
+    <p id="setupNameNote" class="match-desc">למכשיר של כמה ילדים מוסיפים שמות בהגדרות. לכל שם רשימה והתקדמות משלו.</p>
   </div>
   <div id="setupInstall" class="match-section" hidden>
     <div class="match-title-wrap"><span class="match-icon">📲</span><span class="match-title">התקנה במסך הבית</span></div>
@@ -1452,7 +1452,9 @@ function keep(key, value){
   if(unsaved) setSettingsNotice("settingsNotice", NOT_SAVED, true);
   return !unsaved;
 }
-function save(){ return keep(childKey("words"), JSON.stringify(words)); }
+// הרשימה לחוד: כתיבה מוצלחת של הגדרה אחרת לא אומרת שהרשימה נשמרה.
+let listUnsaved = false;
+function save(){ listUnsaved = !keep(childKey("words"), JSON.stringify(words)); return !listUnsaved; }
 // ההודעה של פעולה ברשימה: ההצלחה, או שהשינוי לא נשמר.
 function savedNotice(id, msg){ setSettingsNotice(id, unsaved ? NOT_SAVED : msg, unsaved); }
 
@@ -1806,8 +1808,13 @@ async function loadModel(){
     // הורדה שנכשלה — אין רשת, החיבור נקטע — לא עוצרת: Vosk קורא קודם את העותק
     // המחולץ, ובלעדיו מנסה להוריד בעצמו. רק אם גם הוא נכשל זו תקלה, והסיבה
     // שלה היא של ההורדה.
-    try{ await fetchModel(); }catch(err){ fetchError = err; }
-    progress(100, "עוד רגע…");
+    // מקום שנגמר לא יסתדר בהורדה של Vosk: היא הייתה נתקעת על "עוד רגע…".
+    try{ await fetchModel(); }catch(err){
+      if(err && err.name === "QuotaExceededError") throw err;
+      fetchError = err;
+    }
+    // אחרי הורדה שנכשלה Vosk מוריד בעצמו, בלי פס התקדמות: לא 100%.
+    progress(fetchError ? 0 : 100, fetchError ? "מתכוננים…" : "עוד רגע…");
     // לא Vosk.createModel: הוא מחכה רק להודעת load, וכשה-worker נכשל (ארכיון
     // קטוע, שגיאת HTTP) מגיעה רק error. ההבטחה שלו לא מסתיימת, והמסך נתקע
     // על "עוד רגע…" בלי ההודעה שב-catch.
@@ -1823,7 +1830,9 @@ async function loadModel(){
     $("loading").hidden = true;
     // שגיאת HTTP מהשרת היא קובץ חסר או חסום; כל תקלה אחרת בהורדה היא החיבור.
     const cut = fetchError && !/^HTTP /.test(fetchError.message);
-    modelError = navigator.onLine === false
+    modelError = err && err.name === "QuotaExceededError"
+      ? "אין במכשיר מספיק מקום פנוי למנוע הדיבור, כ-70MB. פנו מקום ונסו שוב."
+      : navigator.onLine === false
       ? "מנוע הדיבור עוד לא ירד, ואין אינטרנט. התחברו לרשת ונסו שוב."
       : cut ? "ההורדה של מנוע הדיבור נקטעה. בדקו את החיבור לאינטרנט ונסו שוב."
       : "לא הצלחנו לטעון את מנוע הדיבור. בדקו את model.tar.gz";
@@ -1913,7 +1922,7 @@ function scoreToken(spokenWord, conf, target){
   if(said === want) return Math.round(sure * 100);
 
   let score = Math.round(wordSimilarity(said, want) * 100);
-  if(phoneticKey(said) === phoneticKey(want)) score = Math.max(score, PHONETIC_SCORE);
+  if(phoneticKey(said) === phoneticKey(want) || SOUNDALIKE_SET.has(pairKey(said, want))) score = Math.max(score, PHONETIC_SCORE);
   if(want.startsWith(said) && said.length >= PREFIX_MIN_LETTERS &&
      said.length >= want.length * PREFIX_MIN_RATIO){
     score = Math.max(score, PREFIX_SCORE);
@@ -2141,7 +2150,7 @@ async function listen(){
 // באותה מילה היד מצביעה על 🔊, והמכשיר לא מדבר — הילד מחליט אם לבקש. בשלישית
 // המילה עוברת להמשך הסבב ובא הכרטיס הבא, בלי לסיים את המסלול המהיר ובלי
 // לרשום ויתור: כל שתיקה כבר נרשמה ביומן.
-const FINAL_GRACE_MS = 500, FINAL_ANSWER_MS = 400, QUIET_HELP = 2, QUIET_GIVE_UP = 3;
+const FINAL_GRACE_MS = 500, FINAL_ANSWER_MS = 500, QUIET_HELP = 2, QUIET_GIVE_UP = 3;
 function closeWindow(){
   if(!active) return;
   timer = setTimeout(()=>{
@@ -2325,8 +2334,9 @@ function paceOf(data){
 // --- תמונות שהמכשיר יודע לצייר ---
 // אימוג'י חדש (Emoji 12 ו-13, למשל 🦩, 🧇 ו-🫐) מופיע בטאבלט ישן כריבוע ריק, ואין
 // לילד מה לראות. כל אחד כזה מצויר פעם אחת על קנבס בצבע מגנטה: אימוג'י צבעוני
-// לא מקבל את צבע הכתב, וריבוע ריק כן. רק מ-U+1F900 ומהעיגולים והריבועים
-// הצבעוניים: הוותיקים יותר נתמכים בכל דפדפן שמריץ את מנוע הדיבור. מכשיר שגם
+// לא מקבל את צבע הכתב, וריבוע ריק כן. רק מ-U+1F900, מ-U+1F6F9 (🛹) ומהעיגולים
+// והריבועים הצבעוניים: שם מה שיש במאגר מ-Emoji 11 והלאה, והוותיקים יותר
+// נתמכים בכל דפדפן שמריץ את מנוע הדיבור. מכשיר שגם
 // 🐶 לא יוצא בו צבעוני — בלי גופן אימוג'י צבעוני — לא מסנן כלום.
 // מילה שהתמונה שלה לא מצוירת לא נכנסת לסבב, לשומעים ובוחרים ולמאגר שבאזור
 // המבוגר; כשאף מילה ברשימה לא מצוירת, הסבב בכל זאת נבנה מכולן.
@@ -2345,7 +2355,7 @@ function colorful(emoji){
 }
 function drawable(emoji){
   const cp = String(emoji).codePointAt(0);
-  if(!(cp >= 0x1F900 || cp >= 0x1F7E0 && cp <= 0x1F7FF)) return true;
+  if(!(cp >= 0x1F900 || cp >= 0x1F7E0 && cp <= 0x1F7FF || cp >= 0x1F6F9 && cp <= 0x1F6FF)) return true;
   if(drawn.has(emoji)) return drawn.get(emoji);
   let ok = true;
   try{
@@ -2846,7 +2856,9 @@ function speakStep(byTap){
     speechBroken = true;
     // בלי מיקרופון אין גם אמירה: בלי קול אין מה לעשות בסבב הזה, והסבב הבא
     // הוא כתיבה (startRound), עד שהקול או המיקרופון חוזרים.
+    // הקראה שתתחיל באיחור לא תישמע מעל הכרטיס של הכתיבה.
     if(listenOnly()){
+      speechSynthesis.cancel();
       startRound();
       return next();
     }
@@ -3136,7 +3148,7 @@ function setSettingsNotice(elementId, msg, isError = false){
 
 function updateMainWordsSummary(){
   $("panelMeta").textContent = words.length + " מילים בתרגול" + (childId ? " של " + childName() : "") +
-    (unsaved ? ". לא נשמר במכשיר הזה." : ". נשמר במכשיר הזה.");
+    (listUnsaved ? ". לא נשמר במכשיר הזה." : ". נשמר במכשיר הזה.");
   $("mainWordsCountBadge").textContent = words.length + " מילים";
   $("wordsPreviewEmojis").textContent = words.slice(0, 10).map(w => w.emoji).join(" ") + (words.length > 10 ? " …" : "");
   $("wordsListMeta").textContent = words.length + " מילים פעילות. המשחק בוחר מהן את המילים של כל סבב.";
@@ -3712,7 +3724,7 @@ function armIdle(){
     if(state === "pick"){
       if(!first) speakStep(false);
       demoOver([...$("choices").children].filter(b => !b.disabled), state);
-    } else if(state === "spell"){
+    } else if(state === "spell" || mode === "spell" && state === "again"){
       // בכתיבה: המשבצת הזוהרת, ואז אות שאינה הנכונה — היד לא מגלה את התשובה.
       const next = slotList().find(s => !s.tile), want = next && word()[slotList().indexOf(next)];
       const tiles = [...$("bank").children].filter(t => !t.disabled);
@@ -3737,8 +3749,11 @@ function demo(target){
   void hand.offsetWidth;
   hand.classList.add("tap");
 }
+// בשלב הבחירה ההדגמה אומרת את המילה שוב, ובזמן שהיא נשמעת ההנחיה היא "הקשיבו".
+// היד ממשיכה לעבור על כל התמונות גם אז, ולא נעצרת על האחרונה, שאולי היא התשובה.
 function demoOver(targets, state){
-  targets.forEach((t, k) => setTimeout(() => { if(cueNow() === state) demo(t); }, k * 700));
+  const still = () => cueNow() === state || state === "pick" && turn.step === "understand" && !turn.picked && !active;
+  targets.forEach((t, k) => setTimeout(() => { if(still()) demo(t); }, k * 700));
 }
 document.addEventListener("pointerdown", () => {
   $("hand").classList.remove("tap");
@@ -3778,7 +3793,10 @@ function sayWord(){
 // כבר לא מתיר — ומבקש את המיקרופון, כדי שהבקשה לא תקפוץ באמצע מילה. אם
 // אחרי MIC_ASK_MS אין תשובה, ההנחיה אומרת לקרוא למבוגר. אחר כך מחכים עד
 // VOICES_GRACE_MS לרשימת הקולות, שבחלק מהדפדפנים מגיעה באיחור.
-const MIC_ASK_MS = 1500;
+// בקשת מיקרופון שלא נענית לעולם (בפיירפוקס, כשסוגרים אותה בלחיצה מחוץ לחלון)
+// לא משאירה את מסך הפתיחה בלי ▶: אחרי MIC_GIVE_UP_MS נכנסים בלי מיקרופון, ו-🎤
+// מבקש אותו שוב.
+const MIC_ASK_MS = 1500, MIC_GIVE_UP_MS = 8000;
 let starting = false, startingSlow = false;
 async function startGame(){
   if(starting || screen !== "door") return;
@@ -3787,7 +3805,11 @@ async function startGame(){
   document.body.classList.add("starting");
   const slow = setTimeout(() => { startingSlow = true; ui(); }, MIC_ASK_MS);
   try{
-    if(!micBlocked) await ensureAudio();
+    if(!micBlocked){
+      const opened = ensureAudio();
+      opened.catch(() => {});   // נדחתה אחרי שוויתרנו עליה: 🎤 יבקש שוב
+      await Promise.race([opened, new Promise(r => setTimeout(r, MIC_GIVE_UP_MS))]);
+    }
   }catch(e){
     micBlocked = true;
     renderStatus();
@@ -3850,7 +3872,9 @@ function goDoor(){
   }
 }
 // מיקרופון חסום, או מנוע שלא נטען: אף פעם לא מסך קפוא. ▶ ממשיך לשחק בלי לדבר,
-// והסיבה המדויקת כתובה באזור המבוגר.
+// והסיבה המדויקת כתובה באזור המבוגר. רק הכניסה למשחק מוסיפה רשומה להיסטוריה,
+// ולכן "חזור" כאן, כשהגיעו ישר מ-▶ של מסך הפתיחה, סוגר את האפליקציה כמו בכל
+// מסך עליון: README מבטיח את "חזור" רק מתוך המשחק.
 function goGrownup(){
   if(screen === "game") leaveGame();
   screenDemos = 0;
@@ -3881,10 +3905,21 @@ function setupDue(){
     return true;
   }catch(e){ return false; }
 }
-// "בלי אינטרנט" רק כשה-service worker כבר שולט בדף: הוא שמר את שאר הקבצים.
+// "בלי אינטרנט" רק כשהקבצים שבלעדיהם אין משחק כבר במטמון. service worker ששולט
+// בדף לא מספיק: ההתקנה שלו לא נכשלת על קובץ שלא ירד.
+const OFFLINE_FILES = ["./", "./vosk.js", "./words.js", "./cache-name.js"];
+let offlineReady = false;
+async function checkOffline(){
+  try{
+    const hits = await Promise.all(OFFLINE_FILES.map(u => caches.match(new URL(u, location.href).href, { ignoreSearch: true })));
+    offlineReady = hits.every(Boolean);
+  }catch(e){ offlineReady = false; }
+  if(offlineReady) renderSetup();
+}
 function renderSetup(){
   const line = $("setupModel"), ready = model !== null;
-  const offline = "serviceWorker" in navigator && !!navigator.serviceWorker.controller;
+  if(ready && !offlineReady) checkOffline();
+  const offline = offlineReady;
   $("setupBar").hidden = ready || !!modelError;
   $("setupBar").firstChild.style.width = $("fill").style.width || "0";
   line.textContent = ready ? (offline ? "✓ במכשיר. מעכשיו המשחק עובד גם בלי אינטרנט." : "✓ מוכן.")
@@ -3895,6 +3930,13 @@ function renderSetup(){
 function setupLine(id, text, kind = ""){
   $(id).textContent = text;
   $(id).className = "setup-line" + (kind ? " " + kind : "");
+}
+// באייפון ובאייפד לאפליקציה שעל מסך הבית יש אחסון משלה, נפרד מספארי: מה שירד
+// והוגדר כאן בספארי לא עובר אליה. לכן שם ההתקנה באה קודם, וההכנה נעשית מהאייקון.
+function setupForIOS(){
+  if(!isIOS || isStandalone) return;
+  $("setup").insertBefore($("setupInstall"), $("setup").children[1]);
+  setupLine("setupInstallText", "באייפד ובאייפון: קודם \"הוספה למסך הבית\" (שיתוף ⎋ בספארי), ואת ההכנה עושים מהאייקון שעל המסך. מה שיורד כאן בספארי לא עובר לאפליקציה שעל מסך הבית.");
 }
 function openSetup(){
   closePanel();
@@ -3909,8 +3951,8 @@ async function setupMic(){
   b.disabled = true;
   try{
     await ensureAudio();
-    // ▶ שנלחץ בינתיים כבר משתמש במיקרופון.
-    if(screen === "setup") releaseMic();
+    // ▶ שנלחץ בינתיים כבר משתמש במיקרופון; בכל מקום אחר הוא נסגר.
+    if(!starting && screen !== "game") releaseMic();
     micBlocked = false;
     setupLine("setupMic", "✓ המיקרופון מאושר.", "ok");
     b.hidden = true;
@@ -3945,9 +3987,16 @@ function setupVoice(){
   }, SPEECH_START_MS);
 }
 function finishSetup(){
-  const name = $("setupName").value;
+  const name = $("setupName").value.trim().replace(/\s+/g, " ");
+  if(name){
+    addChild(name);
+    // השם לא נשמר (המקום נגמר): ההודעה כאן, ולא באזור המבוגר שאף אחד לא רואה.
+    if(childName() !== Array.from(name).slice(0, 20).join("")){
+      setupLine("setupNameNote", "לא הצלחנו לשמור את השם במכשיר הזה. אפשר למחוק אותו ולהמשיך בלי שם.", "bad");
+      return;
+    }
+  }
   $("setupName").value = "";
-  if(name.trim()) addChild(name);
   try{ localStorage.setItem(SETUP_KEY, "1"); }catch(e){}
   goDoor();
   $("play").focus({ preventScroll: true });
@@ -4268,6 +4317,7 @@ updateSoundUI();
 updateMatchUI();
 $("hebrewToggle").checked = hebrewEnabled;
 renderDoor();
+setupForIOS();
 setScreen(setupDue() ? "setup" : "door");
 loadModel();
 // הבדיקה אילו תמונות המכשיר מצייר, בזמן שמסך הפתיחה פנוי, ולא כשהילד כבר

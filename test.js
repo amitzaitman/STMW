@@ -264,7 +264,26 @@ async function main(){
   await cutPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
   await cutPage.waitForFunction(() => modelError !== "", null, { timeout: 15000 }).catch(() => {});
   const cut = await cutPage.evaluate(() => ({ error: modelError, online: navigator.onLine }));
+  // אחרי הורדה שנכשלה Vosk מוריד בעצמו, בלי פס: לא "100% עוד רגע…" לכל ההורדה.
+  const afterCut = await cutPage.evaluate(async () => {
+    fetchModel = async () => { throw new TypeError("Failed to fetch"); };
+    Vosk.Model = class { on(){} };
+    modelError = "";
+    loadModel();
+    await new Promise(r => setTimeout(r, 300));
+    return { text: $("loadtext").textContent, width: $("fill").style.width };
+  });
+  // והמקום במכשיר נגמר: Vosk לא יסתדר בלעדיו, וזה מה שכתוב.
+  const quota = await cutPage.evaluate(async () => {
+    fetchModel = async () => { throw new DOMException("full", "QuotaExceededError"); };
+    modelError = "";
+    // בלי התיקון loadModel מחכה ל-Vosk לנצח, וזה בדיוק הבאג.
+    await Promise.race([loadModel(), new Promise(r => setTimeout(r, 3000))]);
+    return modelError;
+  });
   await cutModel.close();
+  check("אחרי הורדה שנכשלה הפס לא מראה 100%", afterCut.text !== "עוד רגע…" && afterCut.width === "0%", afterCut);
+  check("כשהמקום נגמר בהורדה, כתוב שאין מקום, בלי לחכות ל-Vosk", quota.includes("מקום"), quota);
   check("הורדה שנקטעה — כתוב לבדוק את החיבור, לא את model.tar.gz",
     cut.online && cut.error.includes("החיבור") && !cut.error.includes("model.tar.gz"), cut);
 
@@ -426,6 +445,8 @@ async function main(){
       target: PRESETS.map(p => decide(farm, "sheep", "sheep", p)),
       withNeighbour: [["ship", "sheep"], ["sheep", "ship"]].map(said => decide(farm, "sheep", said, normal)),
       lenient: decide(farm, "sheep", "ship", lenient),
+      // מילים שנשמעות אותו דבר לילד דובר עברית (SOUNDALIKE) הן שכנות קרובות.
+      soundalike: decide(["tooth", "two", "dog"], "two", "tooth", lenient),
       // אותן אותיות, מילה אחרת: moon מול book, car ו-cake מול cat.
       far: [["book", "moon"], ["cat", "cake"], ["dog", "door"]].map(([target, said]) =>
         decide(["book", "moon", "cat", "cake", "dog", "door"], target, said, lenient)),
@@ -440,9 +461,19 @@ async function main(){
         listNeighbour.target.every(ok => ok === true), listNeighbour);
   check("מילת היעד מתקבלת גם לפני או אחרי שכנה מהרשימה באותה תוצאה",
         listNeighbour.withNeighbour.every(ok => ok === true), listNeighbour);
-  check("ברמה הסלחנית שכנה קרובה מהרשימה מתקבלת", listNeighbour.lenient === true, listNeighbour);
+  check("ברמה הסלחנית שכנה קרובה מהרשימה מתקבלת, גם כזו שנשמעת אותו דבר לדובר עברית",
+    listNeighbour.lenient === true && listNeighbour.soundalike === true, listNeighbour);
   check("ברמה הסלחנית מילה אחרת שרק חולקת אותיות עם היעד לא מתקבלת",
     listNeighbour.far.every(ok => ok === false), listNeighbour.far);
+  const hebrewOnly = await page.evaluate(() => {
+    const saved = { voices, sound: soundEnabled, refresh: refreshVoices };
+    voices = [{ lang: "he-IL", name: "Carmit", localService: true, voiceURI: "he" }];
+    refreshVoices = () => {};
+    soundEnabled = true;
+    try{ return speak("dog", EN) === null; }
+    finally { voices = saved.voices; soundEnabled = saved.sound; refreshVoices = saved.refresh; }
+  });
+  check("במכשיר עם קולות ובלי קול באנגלית המילה לא נאמרת בקול אחר", hebrewOnly);
   check("שכנה לא עוברת כשהיעד עצמו לא עובר באותו ביטחון",
     listNeighbour.weak.target === false && listNeighbour.weak.neighbour === false, listNeighbour.weak);
 
@@ -548,15 +579,22 @@ async function main(){
       out.inRound = roundWords().includes("flamingo") || sayRound({}, dayNumber(), 3).queue.includes("flamingo");
       words = [{ emoji: "🦩", word: "flamingo" }];
       out.onlyOne = roundWords().join();
+      words = saved;
+      renderCatalog();
+      out.inCatalog = !catalogItems.find(b => b.dataset.word === "flamingo").hidden;
+      // 🛹 הוא Emoji 11, מתחת ל-U+1F900, וגם הוא נבדק.
+      drawable("🛹");
+      out.skate = drawn.has("🛹");
       return out;
     } finally {
       drawn.delete("🦩");
       words = saved;
+      renderCatalog();
     }
   }).catch(e => ({ error: e.message }));
   check("אימוג'י שלא מצויר במכשיר לא מגיע לסבב ולבחירת התמונות, אלא אם אין אחר",
     undrawn.unknown === false && undrawn.flamingo && undrawn.dog && undrawn.inChoices === 0 && !undrawn.inRound
-      && undrawn.onlyOne === "flamingo", undrawn);
+      && undrawn.onlyOne === "flamingo" && !undrawn.inCatalog && undrawn.skate, undrawn);
 
   // בנייה מחדש מלאה נותנת את אותו מספר פריטים, אז נבדק שהצומת עצמו נשאר.
   const firstItem = await page.$("#catalog .catalog-item");
@@ -753,12 +791,16 @@ async function main(){
     out.preset = { notice: $("settingsNotice").textContent, error: $("settingsNotice").classList.contains("error"),
                    saved: localStorage.getItem("speech_match_config") };
     out.meta = $("panelMeta").textContent;
+    // מתפנה מקום והגדרה אחרת נשמרת: הרשימה עדיין לא נשמרה.
+    localStorage.removeItem("fill0");
+    $("btnLevelLenient").click();
+    out.metaLater = $("panelMeta").textContent;
     return out;
   });
   await fullCtx.close();
-  check("כשהמקום במכשיר נגמר, הוספה ושינוי הגדרה אומרים שלא נשמרו",
+  check("כשהמקום במכשיר נגמר, הוספה ושינוי הגדרה אומרים שלא נשמרו, גם אחרי שהגדרה אחרת נשמרה",
     full.error && full.notice.includes("לא הצלחנו לשמור") && full.saved === null
-      && full.preset.error && full.preset.saved === null && full.meta.includes("לא נשמר"), full);
+      && full.preset.error && full.preset.saved === null && full.meta.includes("לא נשמר") && full.metaLater.includes("לא נשמר"), full);
 
   // --------------------------------------------------------------
   group("מה נרשם לבד");
@@ -1376,7 +1418,7 @@ async function main(){
     try{
       const misses = sayMisses;
       await listen();
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 100 + FINAL_GRACE_MS + FINAL_ANSWER_MS + GOOD_MS + 300));
       return { active, won, agains, missed: sayMisses - misses,
                nudged: sayClasses.some(c => c.split(" ").includes("nudge")) };
     } finally {
@@ -1402,12 +1444,14 @@ async function main(){
   // עוד פעיל. נמדד מול המודל האמיתי, עם מילה מוקלטת שהתחילה 300ms לפני הסוף.
   const lateStart = await page.evaluate(async () => {
     const realWindow = listenWindowMs, realRetrieve = rec.retrieveFinalResult, realGood = good;
-    let won = false, t0 = 0;
+    let won = false, t0 = 0, cut = false;
     const asked = [];
     listenWindowMs = () => 100;
     good = () => { won = true; return realGood(); };
+    // בקשה באמצע המילה מאפסת את המפענח, והמילה כבר לא תחזור.
     rec.retrieveFinalResult = function(){
-      const at = performance.now() - t0, done = at >= 100 + 300;
+      const at = performance.now() - t0, done = at >= 100 + 300 && !cut;
+      if(at < 100 + 300) cut = true;
       asked.push(Math.round(at));
       setTimeout(() => this.dispatchEvent(new CustomEvent("result", { detail: { result:
         done ? { result: [{ word: word(), conf: 1 }], text: word() } : { text: "" } } })), 50);
@@ -1415,7 +1459,7 @@ async function main(){
     try{
       await listen();
       t0 = performance.now();
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 100 + FINAL_GRACE_MS + FINAL_ANSWER_MS + GOOD_MS + 300));
       return { won, asked, active };
     } finally {
       listenWindowMs = realWindow;
@@ -1447,10 +1491,10 @@ async function main(){
 
   // וכך גם מילה אחרת על המסך. בלי זה שאר החלון, או תוצאה סופית שמגיעה
   // באיחור, נשפטים מול המילה החדשה, והילד שומע "נסו שוב" על מילה שלא ניסה.
-  // ההמתנה בדף היא שרשרת של אותם שני טיימרים שסוגרים את החלון, כך שהיא
-  // נגמרת אחריהם גם כשהמכונה עמוסה. כל מה שהתמונה הייתה נאסף, כי "נסו שוב"
-  // נשאר עליה רק לרגע. גם הקריאות ל-again() ול-good() נספרות: עצירה שאומרת
-  // "נסו שוב" לפני ש-show() מנקה את התמונה לא משאירה עליה סימן.
+  // ההמתנה בדף היא החלון, FINAL_GRACE_MS ו-FINAL_ANSWER_MS, ועוד מרווח. כל מה
+  // שהתמונה הייתה נאסף, כי "נסו שוב" נשאר עליה רק לרגע. גם הקריאות ל-again()
+  // ול-good() נספרות: עצירה שאומרת "נסו שוב" לפני ש-show() מנקה את התמונה לא
+  // משאירה עליה סימן.
   const skipWhileListening = how => page.evaluate(async how => {
     const real = { listenWindowMs, again, good, words }, pic = $("card"), seen = [], calls = [];
     listenWindowMs = () => 200;
@@ -3725,13 +3769,17 @@ async function main(){
     uTest.lane("off");
     micBlocked = true;
     uTest.speech = "silent";
+    let cancels = 0;
+    speechSynthesis.cancel = () => { cancels++; };
     try{
       uTest.show("cat");
       const before = turn.step;
       uTest.choice(true).click();
       await uTest.wait(SPEECH_START_MS + 300);
-      return { before, mode, step: turn.step, spell: $("spell").checkVisibility(), say: isShown($("say")), broken: speechBroken };
+      // הקראה שתתחיל באיחור לא תישמע מעל הכרטיס של הכתיבה.
+      return { before, mode, step: turn.step, spell: $("spell").checkVisibility(), say: isShown($("say")), broken: speechBroken, cancels };
     } finally {
+      delete speechSynthesis.cancel;
       micBlocked = false;
       uTest.speech = "start";
       speechBroken = false;
@@ -3740,7 +3788,26 @@ async function main(){
     }
   });
   check("בלי מיקרופון, כשהקול מפסיק לעבוד, הסבב עובר לכתיבה",
-    deadEnd.before === "understand" && deadEnd.broken && deadEnd.mode === "spell" && deadEnd.spell, deadEnd);
+    deadEnd.before === "understand" && deadEnd.broken && deadEnd.mode === "spell" && deadEnd.spell && deadEnd.cancels > 0, deadEnd);
+  // אחרי שהמילה נשמעה, תזכורת של היד אומרת אותה שוב ועוברת על כל שלוש התמונות,
+  // גם בזמן שהיא נשמעת, ולא רק על האחרונה, שאולי היא התשובה.
+  const sweep = await page.evaluate(async () => {
+    uTest.lane("off");
+    uTest.speech = "hang";
+    try{
+      uTest.show("dog");
+      await uTest.wait(WORD_END_MS + 200);
+      const spots = new Set(), hand = $("hand");
+      const obs = new MutationObserver(() => { if(hand.classList.contains("tap")) spots.add(hand.style.left + "," + hand.style.top); });
+      obs.observe(hand, { attributes: true, attributeFilter: ["class"] });
+      speakStep(false);
+      demoOver([...$("choices").children].filter(b => !b.disabled), "pick");
+      await uTest.wait(3 * 700 + 200);
+      obs.disconnect();
+      return { spots: spots.size };
+    } finally { uTest.speech = "start"; }
+  });
+  check("תזכורת בשומעים ובוחרים עוברת על כל התמונות", sweep.spots === 3, sweep);
 
   // מילים חדשות שכבר הוצעו ולא נאמרו — רק בחרו תמונה, דילגו או שתקו — מפנות מקום
   // לאחרות. בלי זה, כשהמנוע עוד יורד, כל סבב היה אותן שתי מילים לנצח.
@@ -3785,8 +3852,10 @@ async function main(){
   // באזור המבוגר שנפתח בסוף סבב, החלפת סוג התרגול נשמרת ולא בונה סבב מאחוריו:
   // שום מילה לא נאמרת שם, ו"הסבב האחרון" שהמבוגר מסתכל עליו נשאר.
   const behindPanel = await page.evaluate(async () => {
-    const realSpeak = speak, said = [], chosen = chosenMode;
+    const real = { speak, canSpeak, sound: soundEnabled, words, i }, said = [], chosen = chosenMode;
     speak = text => { said.push(text); return null; };
+    canSpeak = () => true;
+    soundEnabled = true;
     showRoundEnd = realShowRoundEnd;
     try{
       round.tried = [word()];
@@ -3794,13 +3863,18 @@ async function main(){
       next();
       openPanel();
       setMode("spell");
+      // וגם רשימה חדשה ("▶ תרגלו רק את האלה"), שמתחילה סבב במילה הראשונה בו.
+      applyWords(PAIRS.slice(0, 6).map(([emoji, word]) => ({ emoji, word })), null, false);
       const out = { said: said.slice(), ended, chosen: chosenMode, tried: round.tried.length,
                     summary: getComputedStyle($("lastRoundSection")).display !== "none" };
       closePanel();
       setMode(chosen);
+      applyWords(real.words, real.i, false);
       return out;
     } finally {
-      speak = realSpeak;
+      speak = real.speak;
+      canSpeak = real.canSpeak;
+      soundEnabled = real.sound;
       showRoundEnd = () => newRound();
       if(screen !== "game") enterGame();
     }
@@ -3859,7 +3933,19 @@ async function main(){
     delete document.hidden;
     return out;
   });
+  // בקשת מיקרופון שלא נענית לעולם: ▶ לא נעלם לתמיד, והמשחק מתחיל בלעדיו.
+  const neverAnswers = await doorPage.evaluate(async () => {
+    if(screen !== "door") goDoor();
+    releaseMic();
+    micBlocked = false;
+    navigator.mediaDevices.getUserMedia = () => new Promise(() => {});
+    $("play").click();
+    await new Promise(r => setTimeout(r, MIC_GIVE_UP_MS + VOICES_GRACE_MS + 600));
+    return { screen, starting, playHidden: document.body.classList.contains("starting") };
+  }).catch(e => ({ error: e.message }));
   await doorCtx.close();
+  check("בקשת מיקרופון שלא נענית — אחרי המתנה המשחק מתחיל, ו-▶ לא נעלם לתמיד",
+    neverAnswers.screen === "game" && !neverAnswers.starting && !neverAnswers.playHidden, neverAnswers);
   check("מסך הפתיחה: רק ▶, 🔒, 🔄 וסוג התרגול, בלי מילה ובלי מיקרופון",
     atDoor.screen === "door" && !atDoor.mic && atDoor.word === ""
     && atDoor.buttons.join() === "lock,refresh,play,mixed,say,spell", atDoor);
@@ -3932,11 +4018,79 @@ async function main(){
     fresh();
     await new Promise(r => setTimeout(r, DEMO_FIRST_MS + 400));
     out.door = tapped();
+    // וגם לא מעל ההגדרות שנפתחו אחרי שהטיימר שלה כבר רץ.
+    fresh();
+    openPanel();
+    await new Promise(r => setTimeout(r, DEMO_FIRST_MS + 400));
+    out.panel = tapped();
+    closePanel();
     enterGame();
     return out;
   });
   check("היד לא מדגימה מעל שאלת המבוגר, ולא על ▶ מוסתר; במסך הפתיחה עצמו היא מדגימה",
-    !handQuiet.gate && !handQuiet.starting && handQuiet.door, handQuiet);
+    !handQuiet.gate && !handQuiet.starting && !handQuiet.panel && handQuiet.door, handQuiet);
+  // בכתיבה, אחרי מילה שגויה, היד מדגימה את המשבצת והאותיות, ולא את ⏭️.
+  const spellDemo = await page.evaluate(async () => {
+    const chosen = chosenMode;
+    setMode("spell");
+    turn.word = null;
+    show();
+    const target = word(), tiles = [...$("bank").children];
+    const first = tiles.find(t => t.dataset.letter !== target[0]);
+    for(const t of [first, ...tiles.filter(t => t !== first)]) tapTile(t);
+    await new Promise(r => setTimeout(r, WRONG_MS + 200));
+    demoSeen.delete("again");
+    idleState = "";
+    $("hand").classList.remove("tap");
+    armIdle();
+    await new Promise(r => setTimeout(r, DEMO_FIRST_MS + 200));
+    const r = $("next").getBoundingClientRect(), h = $("hand");
+    const out = { cue: cueNow(), tapped: h.classList.contains("tap"),
+                  onNext: Math.abs(parseFloat(h.style.left) + 14 - (r.left + r.width / 2)) < 2 && Math.abs(parseFloat(h.style.top) + 8 - (r.top + r.height / 2)) < 2 };
+    setMode(chosen);
+    return out;
+  });
+  check("בכתיבה, אחרי מילה שגויה, היד לא מדגימה ⏭️", spellDemo.cue === "again" && spellDemo.tapped && !spellDemo.onNext, spellDemo);
+  // הדלקת השמע באזור המבוגר שנפתח ממסך הפתיחה לא אומרת מילה שאינה על המסך.
+  const doorSound = await page.evaluate(() => {
+    const real = speak;
+    let spoken = 0;
+    speak = () => { spoken++; return null; };
+    try{
+      goDoor();
+      openPanel();
+      toggleSound();
+      toggleSound();
+      closePanel();
+      return { spoken, screen };
+    } finally { speak = real; enterGame(); }
+  });
+  check("הדלקת השמע מחוץ למשחק לא אומרת מילה", doorSound.spoken === 0, doorSound);
+  // קולות שמגיעים אחרי "אין קול" מורידים אותו מיד.
+  const voicesArrive = await page.evaluate(() => {
+    const real = { canSpeak, voices, refreshVoices, speak, sound: soundEnabled };
+    canSpeak = realStep.canSpeak;
+    speak = () => null;
+    soundEnabled = true;
+    voices = [];
+    refreshVoices = () => { voices = [{ name: "Test", lang: "en-US", localService: true, default: true, voiceURI: "test" }]; };
+    try{
+      turn.cue = "novoice";
+      turn.first = false;
+      speechSynthesis.dispatchEvent(new Event("voiceschanged"));
+      return { cue: turn.cue, again: noVoiceShown };
+    } finally { canSpeak = real.canSpeak; voices = real.voices; refreshVoices = real.refreshVoices; speak = real.speak; soundEnabled = real.sound; }
+  });
+  check("\"אין קול\" יורד כשהקולות מגיעים", voicesArrive.cue === null && voicesArrive.again === false, voicesArrive);
+  // מסד שלא עונה לא תוקע את הטעינה.
+  const idbHang = await page.evaluate(async () => {
+    const real = IDBFactory.prototype.open;
+    IDBFactory.prototype.open = function(){ return {}; };
+    const t0 = performance.now();
+    try{ return { extracted: await modelExtracted(), ms: Math.round(performance.now() - t0) }; }
+    finally { IDBFactory.prototype.open = real; }
+  });
+  check("IndexedDB שלא עונה — modelExtracted עונה \"לא\" אחרי IDB_WAIT_MS", idbHang.extracted === false && idbHang.ms < 6000, idbHang);
 
   // אייפד עם ספארי שלפני 17.4, בלי checkVisibility: היד שמדגימה עדיין מופיעה,
   // והדף לא זורק שגיאה בכל הדגמה.
@@ -4407,10 +4561,24 @@ async function main(){
   check("התקנה בהכנה מופיעה רק כשהדפדפן מציע אותה",
     setupInstallShown.shown === (setupInstallShown.prompt || setupInstallShown.ios), setupInstallShown);
   await setupPage.waitForFunction(() => model !== null, null, { timeout: 60000 });
-  const setupModel = await setupPage.evaluate(() => ({ text: $("setupModel").textContent, bar: $("setupBar").checkVisibility(),
-    offline: !!navigator.serviceWorker.controller }));
-  check("כשמנוע הדיבור במכשיר זה כתוב, בלי פס",
-    setupModel.text.startsWith("✓") && !setupModel.bar && setupModel.text.includes("בלי אינטרנט") === setupModel.offline, setupModel);
+  // "בלי אינטרנט" רק כשהקבצים שבלעדיהם אין משחק באמת במטמון.
+  const setupModel = await setupPage.evaluate(async () => {
+    const all = async () => (await Promise.all(OFFLINE_FILES.map(u => caches.match(new URL(u, location.href).href, { ignoreSearch: true })))).every(Boolean);
+    for(let k = 0; k < 50 && !$("setupModel").textContent.includes("בלי אינטרנט"); k++) await new Promise(r => setTimeout(r, 100));
+    const out = { text: $("setupModel").textContent, bar: $("setupBar").checkVisibility(), cached: await all() };
+    const c = await caches.open(CACHE_NAME), url = new URL("./words.js", location.href).href;
+    const copy = await c.match(url, { ignoreSearch: true });
+    await c.delete(url, { ignoreSearch: true });
+    offlineReady = false;
+    renderSetup();
+    await new Promise(r => setTimeout(r, 300));
+    out.missing = $("setupModel").textContent;
+    if(copy) await c.put(url, copy);
+    return out;
+  }).catch(e => ({ error: e.message, text: "", missing: "" }));
+  check("כשמנוע הדיבור במכשיר זה כתוב, בלי פס, ו\"בלי אינטרנט\" רק כשהקבצים במטמון",
+    setupModel.text.startsWith("✓") && !setupModel.bar && setupModel.cached && setupModel.text.includes("בלי אינטרנט")
+      && setupModel.missing.startsWith("✓") && !setupModel.missing.includes("בלי אינטרנט"), setupModel);
   // כל זרם שנפתח נספר, כי micStream === null לבדו לא אומר שהמיקרופון נסגר.
   await setupPage.evaluate(() => {
     const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -4453,7 +4621,60 @@ async function main(){
   const setupAgain = await setupPage.evaluate(() => { openPanel(); $("setupBtn").click();
     return { screen, overlay: !$("overlay").hidden }; });
   check("\"בדיקת המכשיר\" באזור המבוגר פותח את ההכנה שוב", setupAgain.screen === "setup" && !setupAgain.overlay, setupAgain);
+  // יש קולות, ואף אחד לא באנגלית: כתוב מיד שאין קול, בלי להקריא בקול אחר.
+  const setupHebrewVoice = await setupPage.evaluate(() => {
+    const real = { voices, refreshVoices }, synth = speechSynthesis;
+    let spoken = 0;
+    synth.speak = () => { spoken++; };
+    voices = [{ lang: "he-IL", name: "Carmit", localService: true, voiceURI: "he" }];
+    refreshVoices = () => {};
+    try{
+      setupVoice();
+      return { bad: $("setupVoice").classList.contains("bad"), spoken };
+    } finally { voices = real.voices; refreshVoices = real.refreshVoices; delete synth.speak; }
+  });
+  check("בדיקת קול בהכנה בלי קול באנגלית — כתוב מיד, בלי להקריא", setupHebrewVoice.bad && setupHebrewVoice.spoken === 0, setupHebrewVoice);
+  // "סיימנו" בזמן שבקשת המיקרופון עוד פתוחה: המיקרופון לא נשאר מקליט במסך הפתיחה.
+  const setupPending = await setupPage.evaluate(async () => {
+    releaseMic();
+    const opened = [], real = navigator.mediaDevices.getUserMedia;
+    navigator.mediaDevices.getUserMedia = c => new Promise(r => setTimeout(r, 800))
+      .then(() => real.call(navigator.mediaDevices, c)).then(st => { opened.push(st); return st; });
+    try{
+      setupMic();
+      finishSetup();
+      await new Promise(r => setTimeout(r, 1500));
+      return { screen, opened: opened.length, live: opened.flatMap(st => st.getTracks()).filter(t => t.readyState === "live").length };
+    } finally { navigator.mediaDevices.getUserMedia = real; }
+  });
+  check("\"סיימנו\" בזמן שהמיקרופון נפתח — הוא לא נשאר מקליט", setupPending.screen === "door" && setupPending.opened === 1 && setupPending.live === 0, setupPending);
+  // שם שלא נשמר כי המקום נגמר: כתוב בהכנה, וההכנה לא נגמרת בלעדיו.
+  const setupFull = await setupPage.evaluate(() => {
+    openSetup();
+    for(let size = 1 << 20, k = 0; size >= 1; ){
+      try{ localStorage.setItem("fill" + k++, "x".repeat(size)); }catch(e){ size >>= 1; }
+    }
+    $("setupName").value = "יואב";
+    finishSetup();
+    return { screen, note: $("setupNameNote").classList.contains("bad"), child: childName() };
+  }).catch(e => ({ error: e.message }));
+  check("שם שלא נשמר בהכנה — כתוב שם, וההכנה נשארת", setupFull.screen === "setup" && setupFull.note && setupFull.child !== "יואב", setupFull);
   await setupCtx.close();
+  // באייפד ובאייפון: קודם "הוספה למסך הבית", כי לאפליקציה שעל מסך הבית יש אחסון
+  // משלה, ומה שירד בספארי לא עובר אליה.
+  const iosCtx = await browser.newContext({ setup: true, serviceWorkers: "block", userAgent: safariMac, hasTouch: true });
+  await iosCtx.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel" });
+    Object.defineProperty(Navigator.prototype, "maxTouchPoints", { get: () => 5 });
+  });
+  await iosCtx.route("**/model.tar.gz", route => route.abort());
+  const iosPage = await iosCtx.newPage();
+  await iosPage.goto(base + "/index.html", { waitUntil: "domcontentloaded" });
+  const iosSetup = await iosPage.evaluate(() => ({ screen, first: $("setup").children[1].id, shown: $("setupInstall").checkVisibility(),
+    text: $("setupInstallText").textContent }));
+  await iosCtx.close();
+  check("באייפד, בהכנה, ההוספה למסך הבית באה קודם",
+    iosSetup.screen === "setup" && iosSetup.first === "setupInstall" && iosSetup.shown && iosSetup.text.includes("קודם"), iosSetup);
   // מכשיר שכבר שיחקו בו, מגרסה שלפני ההכנה, נפתח כרגיל במסך הפתיחה.
   const usedCtx = await browser.newContext({ setup: true, serviceWorkers: "block" });
   const usedPage = await usedCtx.newPage();
