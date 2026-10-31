@@ -18,7 +18,7 @@
       ["🐱","cat","קֶט",1],
       ["🐩","poodle","פּוּדֶל",1],
       ["🐭","mouse","מָאוּס",1],
-      ["🐹","hamster","הֶמְסְטֶר",1],
+      ["🐹","hamster","הֶמְסְטֶר",2],
       ["🐰","rabbit","רֶבִּיט",2],
       ["🐮","cow","קָאוּ",1],
       ["🐷","pig","פִּיג",1],
@@ -90,7 +90,7 @@
       ["🦀","crab","קְרֶבּ",1],
       ["🐢","turtle","טֶרְטֶל",2],
       ["🐸","frog","פְרוֹג",1],
-      ["🐊","crocodile","קְרוֹקוֹדַייל",1],
+      ["🐊","crocodile","קְרוֹקוֹדַייל",2],
       ["🦦","otter","אוֹטֶר",2],
       ["🦭","seal","סִיל",1]
     ]},
@@ -453,21 +453,24 @@
   // שאומר אותה נכון לא צריך אותו. שינוי ברשימה משפיע רק על מילים שעוד לא
   // נפגשו. כל מילה כאן חייבת להיות במאגר.
   const LOANWORDS = [
-    "hamster", "poodle", "llama", "gorilla", "zebra", "panda", "koala", "kangaroo", "giraffe", "unicorn",
-    "flamingo", "penguin", "dolphin", "crocodile",
+    "poodle", "llama", "gorilla", "zebra", "panda", "koala", "kangaroo", "giraffe", "unicorn",
+    "flamingo", "penguin", "dolphin",
     "banana", "mango", "kiwi", "melon", "lemon", "avocado", "broccoli",
     "pizza", "pasta", "sushi", "falafel", "pita", "taco", "burrito", "salad", "burger", "hotdog", "noodles", "steak",
     "pancake", "waffle", "bagel", "bacon", "donut", "cupcake", "popcorn", "chocolate",
-    "taxi", "tractor", "scooter", "helicopter", "ambulance",
+    "taxi", "tractor", "helicopter", "ambulance",
     "tennis", "puzzle", "yoyo", "balloon", "goal", "guitar", "music",
-    "radio", "tv", "toilet", "jeans", "shorts", "doctor", "bank", "baby", "student", "magnet", "cactus",
-    "robot", "ninja", "dinosaur", "dragon", "princess"
+    "radio", "jeans", "shorts", "doctor", "bank", "baby", "student", "magnet", "cactus",
+    "robot", "ninja", "dinosaur", "dragon"
   ];
 
-  // תמונות שנראות כמעט אותו דבר, אף שהמילים שונות: בשומעים ובוחרים הן לא
-  // יופיעו יחד, אחרת ילד שהבין את bear בוחר בצדק גם ב-🧸.
+  // תמונות שנראות כמעט אותו דבר, אף שהמילים שונות, או שהמילה ששומעים מתאימה
+  // לשתיהן (bird ו-🦆; 🥨 שילד קורא לו בייגלה): בשומעים ובוחרים הן לא יופיעו
+  // יחד, אחרת ילד שהבין את bear בוחר בצדק גם ב-🧸.
   const LOOKALIKE = [
-    ["bear", "teddy"], ["bowl", "rice"], ["bowl", "noodles"], ["bowl", "soup"], ["rice", "noodles"], ["clock", "watch"]
+    ["bear", "teddy"], ["bowl", "rice"], ["bowl", "noodles"], ["bowl", "soup"], ["rice", "noodles"], ["clock", "watch"],
+    ["bird", "chicken"], ["bird", "rooster"], ["bird", "chick"], ["bird", "duck"], ["bird", "turkey"],
+    ["bear", "panda"], ["bear", "koala"], ["pig", "boar"], ["ox", "bison"], ["bagel", "pretzel"], ["keyboard", "piano"]
   ];
 
   // מילים שנשמעות כמעט אותו דבר לילד שעברית היא שפת האם שלו, אף שהאותיות

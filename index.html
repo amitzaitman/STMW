@@ -18,7 +18,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <script src="./vosk.js"></script>
 <script src="./cache-name.js"></script>
-<script src="./words.js?v=12"></script>
+<script src="./words.js?v=13"></script>
 <style>
   /* המסך של הילד: בכל רגע דבר אחד בסגול ללחוץ עליו, ומה שאי אפשר להשתמש בו
      עכשיו לא על המסך. סגול = ללחוץ, טורקיז = מקשיב, ירוק = הצלחה, כתום =
@@ -965,7 +965,7 @@
           <span class="match-icon">🧺</span>
           <span class="match-title">הסל</span>
         </div>
-        <p id="basketEmpty" class="match-desc" hidden>כאן ייאספו המילים שהילד אומר נכון מהתמונה, בשני ימים שונים.</p>
+        <p id="basketEmpty" class="match-desc" hidden>כאן ייאספו המילים שהילד אמר מהתמונה, בלי לשמוע אותן ובלי כתב, בשני ימים שונים.</p>
         <div id="basketPics" role="group" aria-label="המילים בסל"></div>
       </div>
 
@@ -1003,6 +1003,7 @@
         </div>
 
         <p id="matchLevelDesc" class="match-desc"></p>
+        <p class="match-desc">המנוע בוחר איזו מילה מהרשימה הכי קרובה למה שנאמר. הוא לא מודד כמה ההגייה מדויקת, ולכן גם הגייה לא מדויקת של המילה הנכונה מתקבלת לעיתים קרובות, בכל רמה.</p>
 
         <div class="match-preset-group" role="radiogroup" aria-label="רמת התאמה לקול הילד">
           <button type="button" class="match-btn" id="btnLevelLenient" aria-label="רמת התאמה סלחנית: למתחילים, לחדר רועש או לילד שמתוסכל">
@@ -1369,12 +1370,12 @@ const MATCH_KEY = "speech_match_config";
 // אחרת "עוד פעם" נשמע שרירותי.
 const PRESETS = [
   { id: "lenient", btn: "btnLevelLenient", badge: "🌱 סלחנית", threshold: 45, listenMs: 4650,
-    desc: "סלחנית: למתחילים, לחדר רועש, או לילד שמתוסכל מהר. מקבלת את המילה גם כשההגייה לא מדויקת, ולפעמים גם מילה דומה מהרשימה." },
+    desc: "סלחנית: למתחילים, לחדר רועש, או לילד שמתוסכל מהר. מקבלת את המילה גם כשההגייה לא מדויקת, ולפעמים גם מילה דומה מהרשימה. מקשיבה יותר זמן." },
   { id: "normal",  btn: "btnLevelNormal",  badge: "⭐ רגילה",  threshold: 70, listenMs: 4100,
     desc: "רגילה (ברירת מחדל): המילה הנכונה, כשהיא נשמעת די ברור. דוחה חלק מההגיות השגויות." },
   { id: "strict",  btn: "btnLevelStrict",  badge: "🎯 מדויקת", threshold: 90, listenMs: 3600,
     clearer: true,
-    desc: "מדויקת: לחדר שקט ולילד שכבר בטוח בעצמו. המילה צריכה להישמע ברור מאוד. תופסת חלק משגיאות ההגייה, לא את כולן, ולפעמים דוחה גם הגייה נכונה." }
+    desc: "מדויקת: לחדר שקט ולילד שכבר בטוח בעצמו. המילה צריכה להישמע ברור מאוד. תופסת חלק משגיאות ההגייה, לא את כולן, ולפעמים דוחה גם הגייה נכונה. מקשיבה פחות זמן, כך שילד שמהסס יקבל יותר \"לא שמעתי\"." }
 ];
 const DEFAULT_PRESET = PRESETS[1];
 
@@ -1391,7 +1392,8 @@ function setPreset(p){
 }
 
 function updateMatchUI(){
-  $("matchLevelBadge").textContent = `${preset.badge} (${preset.threshold}%)`;
+  // בלי האחוז: הוא נקרא כמו דיוק הגייה, והוא רק סף הביטחון של המנוע.
+  $("matchLevelBadge").textContent = preset.badge;
   $("matchLevelDesc").textContent = preset.desc;
   for(const p of PRESETS) $(p.btn).classList.toggle("active", p === preset);
 }
@@ -2207,7 +2209,7 @@ function finish(ok, info = {}){
   recordAttempt(word(), ok ? "ok" : "no", step, { tryNo, score: info.score, heard: info.heard });
   noteTried(word());
   round.said = true;
-  if(step === "clean" || step === "cleanText") addToRow(word());
+  if(step === "clean") addToRow(word());
   if(ok || step === "failed") turn.done = true;
   if(probe && step === "clean"){
     turn.step = "say";
@@ -2574,7 +2576,9 @@ function requeue(w){
   round.pocketed.push(w);
 }
 
-// row: מה שנאמר או נכתב בניסיון הראשון בלי עזרה, לאזור המבוגר. הילד לא רואה
+// row: מה שנאמר בניסיון הראשון בלי עזרה ובלי כתב על המסך (clean), או נכתב
+// בלי עזרה, לאזור המבוגר. אמירה כשהמילה כתובה מול העיניים היא אולי קריאה, ולכן
+// היא לא "לבד" (כמו cleanText בסולם). הילד לא רואה
 // את ההבדל.
 function addToRow(w){
   if(!round.row.includes(w)) round.row.push(w);
@@ -3369,8 +3373,8 @@ function renderPanel(){
 function renderLastRound(){
   const tried = round.child === childId ? round.tried : [], alone = tried.filter(w => round.row.includes(w));
   $("lastRoundSection").hidden = !tried.length;
-  $("lastRound").textContent = `לבד, בניסיון הראשון: ${alone.map(emojiFor).join(" ") || "—"}. ` +
-    `עם עזרה, בניסיון נוסף, או שלא הצליחו: ${tried.filter(w => !alone.includes(w)).map(emojiFor).join(" ") || "—"}.`;
+  $("lastRound").textContent = `לבד, בניסיון הראשון ובלי כתב על המסך: ${alone.map(emojiFor).join(" ") || "—"}. ` +
+    `עם הכתב על המסך, עם עזרה, בניסיון נוסף, או שלא הצליחו: ${tried.filter(w => !alone.includes(w)).map(emojiFor).join(" ") || "—"}.`;
 }
 
 // --- ילדים: בחירה, הוספה ומחיקה ---

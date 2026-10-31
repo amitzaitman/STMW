@@ -509,7 +509,7 @@ async function main(){
   await reload();
   check("הרמה שנבחרה נטענת בפתיחה הבאה ומסומנת", await page.evaluate(() =>
     preset.id === "strict" && $("btnLevelStrict").classList.contains("active") &&
-    $("matchLevelBadge").textContent === "🎯 מדויקת (90%)"));
+    $("matchLevelBadge").textContent === "🎯 מדויקת"));
 
   // --------------------------------------------------------------
   group("מאגר המילים");
@@ -564,6 +564,24 @@ async function main(){
   });
   check("תמונות שנראות אותו דבר ומילים שנשמעות אותו דבר לא באות יחד",
     alike.together === 0 && alike.confusable, alike);
+  // bird שנשמעת, ו-🦆 על המסך: שתי תשובות נכונות. ותמונות שילד ישראלי קורא
+  // להן בעברית בשם אחר (אוגר, תנין, קורקינט, טלוויזיה, נסיכה, שירותים) אינן
+  // מילים שאולות: בדיקת ❓ עליהן הייתה נכשלת ומסיימת את המסלול המהיר.
+  const birds = await page.evaluate(() => {
+    const saved = words;
+    try{
+      words = ["bird", "chicken", "rooster", "chick", "duck", "turkey", "dog", "cat", "sun", "car", "book"]
+        .map(w => ({ emoji: emojiFor(w), word: w }));
+      const farm = new Set(["chicken", "rooster", "chick", "duck", "turkey"]);
+      let seen = 0;
+      for(let k = 0; k < 200; k++) if(choicesFor("bird").some(w => farm.has(w))) seen++;
+      return seen;
+    } finally { words = saved; }
+  });
+  const notLoanwords = ["hamster", "crocodile", "scooter", "tv", "princess", "toilet"].filter(w => (wordsFile.LOANWORDS || []).includes(w));
+  const loanLevels = ["hamster", "crocodile"].map(w => wordsFile.PAIRS.find(p => p[1] === w)[3]);
+  check("bird לא באה עם עופות החווה, ומילים שבעברית קוראים להן אחרת אינן שאולות",
+    birds === 0 && notLoanwords.length === 0 && loanLevels.every(l => l === 2), { birds, notLoanwords, loanLevels });
   // אימוג'י שהמכשיר לא יודע לצייר מופיע כריבוע ריק. כאן כל אימוג'י מצויר, ולכן
   // הבדיקה של הציור נבדקת מול נקודת קוד שאין לה תמונה, והסינון מול 🦩 שמסומן
   // כלא מצויר.
@@ -811,13 +829,19 @@ async function main(){
   const rowAfter = how => page.evaluate(async how => {
     const synth = speechSynthesis, realSound = soundEnabled;
     synth.speak = () => {};
-    const accept = () => { active = true; finish(true, { score: 100 }); };
+    // בלי כתב על המסך, כמו מילה שהילד כבר אומר: אחרת זו אולי קריאה, ולא "לבד".
+    const accept = (veil = true) => {
+      if(veil) for(const id of ["word", "wordHe"]) $(id).classList.add("veiled");
+      active = true;
+      finish(true, { score: 100 });
+    };
     try{
       newRound();
       const out = { target: word(), emoji: words[i].emoji };
       if(how === "clean" || how === "fresh") accept();
       if(how === "heard"){ playCurrentWord(); accept(); }
       if(how === "second"){ active = true; finish(false, { score: 0 }); accept(); }
+      if(how === "text"){ reveal(); accept(false); }
       if(how === "twice"){ accept(); turn.word = null; show(); accept(); }
       out.card = $("card").className;
       out.picture = $("picture").textContent;
@@ -841,6 +865,8 @@ async function main(){
     heardRow.card === "good" && heardRow.picture === heardRow.emoji && heardRow.row === "", heardRow);
   const secondRow = await rowAfter("second");
   check("הצלחה בניסיון השני נראית אותו דבר, ולא נרשמת כלבד", secondRow.card === "good" && secondRow.row === "", secondRow);
+  const textRow = await rowAfter("text");
+  check("הצלחה כשהמילה כתובה על המסך נראית אותו דבר, ולא נרשמת כלבד", textRow.card === "good" && textRow.row === "", textRow);
   const twiceRow = await rowAfter("twice");
   check("מילה שחוזרת בסבב נרשמת פעם אחת", twiceRow.row === twiceRow.emoji, twiceRow);
   const freshRow = await rowAfter("fresh");
@@ -2585,12 +2611,14 @@ async function main(){
     !freshList.ended && freshList.inSet && freshList.cheers === 1 && freshList.pace === 2, freshList);
 
   // מה שהילד עשה בפועל מגיע למסך הסיום, ומה שהיה לבד נרשם לאזור המבוגר:
-  // אמירה נקייה, ולא אמירה בניסיון השני; כתיבה נקייה.
+  // אמירה נקייה, ולא אמירה בניסיון השני; כתיבה נקייה. dog כבר נאמרה לבד ביום
+  // קודם, ולכן היא מוצגת בלי כתב, ואמירה שלה היא שליפה ולא קריאה.
   const played = await page.evaluate(async ([P, L]) => {
     const { plan, say, wait } = roundTest, synth = speechSynthesis;
     const pics = () => [...$("roundPics").children].map(b => b.dataset.word + (round.row.includes(b.dataset.word) ? "+" : ""));
     synth.speak = () => {};
     localStorage.removeItem(P); localStorage.removeItem(L);
+    localStorage.setItem(P, JSON.stringify({ v: 1, w: { dog: { met: 1, seen: 1, box: 1, due: 1, ok: [1], n: 1, k: 1, got: 1 } } }));
     try{
       plan(["dog", "sun"]);
       await say("dog");
