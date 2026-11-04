@@ -1729,29 +1729,54 @@ async function main(){
     const dropped = ladderStep(ladderStep(undefined, "cleanText", 98), "failed", 99);
     const peekedAgain = ladderStep(dropped, "cleanText", 100);
     const thenClean = ladderStep(peekedAgain, "clean", 100);
-    return { a, b, c, d, back, helped, wrote, text, textThenPicture, nextDay, peekedAgain, thenClean };
+    // מילה בתיבה 3 שנשכחה: לא התקבלה בניסיון הראשון, ובסבב מאוחר יותר אותו יום נאמרה לבד.
+    const boxed = { met: 80, seen: 99, box: 3, due: 100, ok: [95, 99], n: 6, k: 5, got: 90 };
+    const missed = ladderStep(boxed, "miss", 100);
+    const missedThenClean = ladderStep(missed, "clean", 100);
+    const missedTomorrow = ladderStep(missedThenClean, "clean", 101);
+    const askedToHear = ladderStep(boxed, "helped", 100);
+    const failedThenClean = ladderStep(ladderStep(boxed, "failed", 100), "clean", 100);
+    const freshMiss = ladderStep(undefined, "miss", 100);
+    const known = ladderStep(undefined, "known", 100);
+    return { a, b, c, d, back, helped, wrote, text, textThenPicture, nextDay, peekedAgain, thenClean,
+             missed, missedThenClean, missedTomorrow, askedToHear, failedThenClean, freshMiss, known };
   });
   const L1 = ladder;
-  check("הצלחה נקייה ראשונה מעלה לתיבה 1 ומסמנת שהילד הצליח",
+  check("הצלחה נקייה ראשונה מעלה לתיבה 1 ומסמנת שהילד הצליח, ויום הלימוד לא נספר כיום של \"אמר\"",
     L1.a.met === 100 && L1.a.box === 1 && L1.a.got === 100 && L1.a.due === 101 && L1.a.n === 1 && L1.a.k === 1
-      && JSON.stringify(L1.a.ok) === "[100]", L1.a);
+      && L1.a.ok.length === 0, L1.a);
   check("הצלחה חוזרת באותו יום נספרת ולא מעלה תיבה",
-    L1.b.box === 1 && L1.b.n === 2 && L1.b.k === 2 && JSON.stringify(L1.b.ok) === "[100]", L1.b);
-  check("הצלחה נקייה ביום אחר — שני ימים של \"אמר\"",
-    L1.c.box === 2 && L1.c.due === 103 && JSON.stringify(L1.c.ok) === "[100,101]", L1.c);
+    L1.b.box === 1 && L1.b.n === 2 && L1.b.k === 2 && L1.b.ok.length === 0, L1.b);
+  check("הצלחה נקייה ביום אחר — יום ראשון של \"אמר\", ותיבה למעלה",
+    L1.c.box === 2 && L1.c.due === 103 && JSON.stringify(L1.c.ok) === "[101]", L1.c);
   check("שתי אמירות שלא התקבלו מורידות תיבה, ומה שהילד כבר הצליח נשאר",
-    L1.d.box === 1 && L1.d.due === 106 && L1.d.got === 100 && L1.d.ok.length === 2, L1.d);
+    L1.d.box === 1 && L1.d.due === 106 && L1.d.got === 100 && L1.d.ok.length === 1 && L1.d.lapse === 105, L1.d);
   check("שעון שחזר אחורה נחשב לאותו יום ולא מקדם",
-    L1.back.seen === 100 && L1.back.box === 1 && JSON.stringify(L1.back.ok) === "[100]", L1.back);
+    L1.back.seen === 100 && L1.back.box === 1 && L1.back.ok.length === 0, L1.back);
   check("הצלחה אחרי עזרה נספרת ולא מקדמת",
     L1.helped.box === L1.c.box && L1.helped.k === L1.c.k && L1.helped.n === L1.c.n + 1, L1.helped);
   check("הצלחה כשהמילה כתובה על המסך מסמנת שהצליח ומחזירה את המילה מחר, בלי יום של \"אמר\"",
     L1.text.got === 100 && L1.text.box === 1 && L1.text.due === 101 && L1.text.ok.length === 0 && L1.text.k === 1, L1.text);
-  check("ובאותו יום מהתמונה — יום של \"אמר\", בלי לעלות שוב תיבה",
-    JSON.stringify(L1.textThenPicture.ok) === "[100]" && L1.textThenPicture.box === 1 && L1.textThenPicture.due === 101,
+  check("ובאותו יום מהתמונה — עדיין יום הלימוד: בלי יום של \"אמר\" ובלי לעלות שוב תיבה",
+    L1.textThenPicture.ok.length === 0 && L1.textThenPicture.box === 1 && L1.textThenPicture.due === 101,
     L1.textThenPicture);
-  check("ולמחרת מהתמונה — היום השני, ותיבה למעלה",
-    JSON.stringify(L1.nextDay.ok) === "[100,101]" && L1.nextDay.box === 2 && L1.nextDay.due === 103, L1.nextDay);
+  check("ולמחרת מהתמונה — יום של \"אמר\", ותיבה למעלה",
+    JSON.stringify(L1.nextDay.ok) === "[101]" && L1.nextDay.box === 2 && L1.nextDay.due === 103, L1.nextDay);
+  check("מילה שנשכחה חוזרת מחר, בלי לרדת תיבה",
+    L1.missed.lapse === 100 && L1.missed.due === 101 && L1.missed.box === 3, L1.missed);
+  check("ואם נאמרה לבד מאוחר יותר באותו יום — לא עולה תיבה ולא נכנסת לסל",
+    L1.missedThenClean.box === 3 && L1.missedThenClean.due === 101
+      && JSON.stringify(L1.missedThenClean.ok) === "[95,99]", L1.missedThenClean);
+  check("ולמחרת, לבד מהתמונה — עולה כרגיל",
+    L1.missedTomorrow.box === 4 && JSON.stringify(L1.missedTomorrow.ok) === "[99,101]", L1.missedTomorrow);
+  check("גם בקשה לשמוע מילה שכבר אמר לבד היא שכחה",
+    L1.askedToHear.lapse === 100 && L1.askedToHear.due === 101 && L1.askedToHear.box === 3, L1.askedToHear);
+  check("מילה שירדה תיבה לא חוזרת אליה מהצלחה באותו יום",
+    L1.failedThenClean.box === 2 && L1.failedThenClean.due === 101, L1.failedThenClean);
+  check("ניסיון שלא התקבל במילה שעוד לא הצליחו בה אינו שכחה",
+    L1.freshMiss.lapse === undefined && L1.freshMiss.got === undefined, L1.freshMiss);
+  check("מילה חדשה שהילד אמר בבדיקה מהתמונה — ידע אותה קודם, והיום נספר כיום של \"אמר\"",
+    L1.known.got === 100 && L1.known.box === 1 && JSON.stringify(L1.known.ok) === "[100]", L1.known);
   check("הצלחה עם כתב במילה שכבר הצליחה לא מעלה תיבה, וגם אחריה התיבה עולה פעם אחת ביום",
     L1.peekedAgain.box === 0 && L1.thenClean.box === 1 && JSON.stringify(L1.thenClean.ok) === "[100]", L1);
   check("כתיבה נקייה מסמנת שהילד כותב את המילה, ולא נוגעת בסולם של האמירה",
@@ -2050,6 +2075,31 @@ async function main(){
       && planned.fresh.every(x => !["dog", "fish", "cat", "apple"].includes(x)), planned);
   check("כל מילה חדשה חוזרת עוד פעם בסבב, כמה מילים אחריה",
     planned.places.every(p => p.length === 2 && p[1] - p[0] >= planned.gap), planned);
+
+  // קודם חזרות, אחר כך מילים חדשות: החזרות שהגיע זמנן ומילים שעוד לא הצליחו
+  // בהן נכנסות לפני המילים החדשות, ומילים חדשות נעצרות כשיש LEARNING_MAX כאלה.
+  const reviewsFirst = await page.evaluate(() => {
+    const day = 300;
+    const knownDue = x => ({ met: 280, seen: 299, box: 2, due: 299, ok: [290, 295], n: 4, k: 3, got: 285 });
+    const tried = x => ({ met: 299, seen: 299, box: 0, due: 300, ok: [], n: 2, k: 0 });
+    const build = (dueWords, triedWords) => {
+      const w = {};
+      for(const x of dueWords) w[x] = knownDue(x);
+      for(const x of triedWords) w[x] = tried(x);
+      return sayRound(w, day, 3);
+    };
+    const sixDue = ["dog", "sun", "moon", "book", "lion", "apple"];
+    const crowded = build(sixDue, []);
+    const fourTried = build(["dog"], ["sun", "moon", "book", "lion"]);
+    const threeTried = build(["dog"], ["sun", "moon", "book"]);
+    return { crowded, fourTried, threeTried, sixDue, max: LEARNING_MAX,
+             missingDue: sixDue.filter(x => !crowded.queue.includes(x)) };
+  });
+  check("חזרות שהגיע זמנן נכנסות לפני מילים חדשות, וממלאות את הסבב בלעדיהן",
+    reviewsFirst.missingDue.length === 0 && reviewsFirst.crowded.fresh.length === 1, reviewsFirst.crowded);
+  check("ארבע מילים שעוד לא הצליחו בהן עוצרות מילים חדשות, ושלוש לא",
+    reviewsFirst.max === 4 && reviewsFirst.fourTried.fresh.length === 0 && reviewsFirst.threeTried.fresh.length > 0
+      && ["sun", "moon", "book", "lion"].every(x => reviewsFirst.fourTried.queue.includes(x)), reviewsFirst);
 
   // מאתיים סבבים ממצבים אקראיים של התקדמות וקצב.
   // הזוגות כתובים כאן, ולא דרך confusable(), כדי שהבדיקה לא תסמוך על מה שהיא בודקת.
