@@ -2290,6 +2290,9 @@ function again(clearer = false){
 // "נחזור לזה": הכרטיס נופל לכיס, ואחרי רגע בא הבא. שונה בבירור מהצלחה.
 function toPocket(){
   const mine = shownCount;
+  turn.dropped = true;
+  round.drops = (round.drops || 0) + 1;
+  if(round.drops === BRAKE_DROPS) brake();
   setCard("fall");
   $("pocket").hidden = false;
   turn.cue = "pocket";
@@ -2297,6 +2300,15 @@ function toPocket(){
   setTimeout(()=>{ if(mine === shownCount) next(); }, AGAIN_MS);
 }
 function setCard(cls){ $("card").className = cls; }
+// הבלם: מה שנשאר בסבב יוצא ממנו, ובמקומו מילה אחת שהילד כבר אומר, מהתיבה
+// הגבוהה, שלא נפלה לכיס בסבב הזה. כשאין כזו הסבב נגמר אחרי הכרטיס שעל המסך.
+function brake(){
+  const w = readStore(PROGRESS_KEY).data.w;
+  const sure = roundWords().filter(x => w[x] && w[x].got !== undefined && x !== word()
+      && !round.requeued.includes(x) && w[x].lapse !== dayNumber())
+    .sort((a, b) => w[b].box - w[a].box)[0];
+  round.queue = round.queue.slice(0, round.at + 1).concat(sure ? [sure] : []);
+}
 // ⏭️ של הילד נרשם ביומן, כדי לדעת על אילו מילים מוותרים. מילה שכבר
 // הוכרעה, כמו ⏭️ בזמן ההצלחה, אינה ויתור.
 function skipWord(){
@@ -2308,8 +2320,8 @@ function skipWord(){
 // --- סבב: כמה מילים, ואז מסך סיום ---
 // המילים באות מהרשימה שבתרגול, והדקדוק של המנוע נשאר כל הרשימה, כך שהזיהוי
 // לא משתנה. סדר הסבב באמירה (sayRound): מילה שהילד כבר אמר לבד ביום קודם,
-// כדי להתחיל בהצלחה; מילים שהגיע יומן לחזור; מילים שניסה ועוד לא הצליח בהן
-// לבד; ועד pace מילים חדשות, הקלות קודם, מנושאים שונים. כל מילה חדשה חוזרת
+// כדי להתחיל בהצלחה; מילים שניסה ועוד לא הצליח בהן לבד; מילים שהגיע יומן
+// לחזור; ובמקום שנשאר עד pace מילים חדשות, הקלות קודם, מנושאים שונים. כל מילה חדשה חוזרת
 // עוד פעם בהמשך הסבב, כדי שהילד ישלוף אותה אחרי כמה מילים אחרות. אף שתי
 // מילים בסבב לא דומות זו לזו (confusable): ship ו-sheep באותו סבב מתחרות
 // בזיכרון, והמנוע מבלבל ביניהן. כשאין מספיק, הסבב מתמלא במילים שהילד כבר
@@ -2322,6 +2334,13 @@ function skipWord(){
 const ROUND_SIZE = 8, RECHECK_GAP = 3;
 // כמה מילים שהילד ניסה ועוד לא הצליח בהן עוצרות מילים חדשות. ניחוש, לכוונון מהיומן.
 const LEARNING_MAX = 4;
+// בלם לסבב קשה. ילד שהמנוע לא מבין מקבל סבב שמתארך בכל כישלון, וקו הסיום
+// מתרחק דווקא ממנו. לכן מהכיס חוזרות בכל סבב לכל היותר POCKET_MAX מילים (השאר
+// חוזרות מחר, בסולם); אחרי BRAKE_DROPS כרטיסים רצופים בכיס באה מילה אחת שהילד
+// כבר אומר, והסבב נגמר; ומילה שנכשלה (SAY_TRIES אמירות שלא התקבלו) ב-STUCK_DAYS
+// ימים שונים ועוד לא הצליחו בה נחה REST_DAYS ימים מהכישלון האחרון: היא לא
+// בסבב ולא נספרת ב-LEARNING_MAX. הכל ניחושים, לכוונון מהיומן.
+const POCKET_MAX = 2, BRAKE_DROPS = 2, STUCK_DAYS = 3, REST_DAYS = 3;
 const PACE_MIN = 1, PACE_MAX = 3, PACE_START = 2;
 const PACE_WINDOW = 30, PACE_MIN_TRIES = 10, PACE_UP = 0.85, PACE_DOWN = 0.75;
 // queue: המילים של הסבב לפי הסדר, ו-at: איפה אוחזים. row: מה שנאמר או נכתב
@@ -2423,13 +2442,13 @@ function shuffle(list){
 // הוצעה, ובין אלה שהוצעו קודם זו שהוצעה מזמן. אחרת, כשהמנוע עוד יורד או
 // שהמיקרופון חסום, וגם כשילד מדלג תמיד על אותה מילה, כל סבב היה פותח באותן
 // מילים חדשות לנצח.
-function sayRound(w, day, pace, offered = new Map()){
+function sayRound(w, day, pace, offered = new Map(), resting = new Set()){
   const list = shuffle(roundWords());
   const rec = x => w[x];
   const known = list.filter(x => rec(x) && rec(x).got !== undefined);
   const due = known.filter(x => rec(x).due <= day).sort((a, b) => rec(a).due - rec(b).due);
   const opener = known.filter(x => rec(x).got < day).sort((a, b) => rec(b).box - rec(a).box).slice(0, 1);
-  const learning = list.filter(x => rec(x) && rec(x).n && rec(x).got === undefined)
+  const learning = list.filter(x => rec(x) && rec(x).n && rec(x).got === undefined && !resting.has(x))
     .sort((a, b) => rec(a).seen - rec(b).seen);
   const fillers = known.filter(x => !due.includes(x)).sort((a, b) => rec(a).box - rec(b).box);
   // sort יציב, אז בתוך אותה רמה הסדר הוא של הרשימה.
@@ -2539,12 +2558,28 @@ function startRound(){
   renderMode();
   const data = readStore(PROGRESS_KEY).data;
   const mixedSpell = mode === "spell" && mixedSpellRound;
-  const offered = new Map(readStore(LOG_KEY).data.a.map((e, k) => [e[2], k]));
-  const built = mode === "say" ? sayRound(data.w, dayNumber(), paceOf(data), offered) : { queue: spellRound(data.w, mixedSpell), fresh: [] };
+  const log = readStore(LOG_KEY).data.a, day = dayNumber();
+  const offered = new Map(log.map((e, k) => [e[2], k]));
+  const built = mode === "say" ? sayRound(data.w, day, paceOf(data), offered, restingWords(data.w, log, day)) : { queue: spellRound(data.w, mixedSpell), fresh: [] };
   // סבב כתיבה משולב בלי אף מילה שהילד אומר (מילה נמחקה מהרשימה): אמירה במקומו.
   if(!built.queue.length && mixedSpell){ mixedSpellRound = false; mode = "say"; return startRound(); }
   round = { queue: built.queue, at: -1, row: [], tried: [], fresh: built.fresh, requeued: [], seen: [], said: false,
             basket: basketWords().map(b => b.word), pocketed: [], child: childId };
+}
+
+// מילים שנחות: עוד לא הצליחו בהן, ונכשלו ב-STUCK_DAYS ימים שונים, האחרון
+// מהם לפני פחות מ-REST_DAYS ימים. מהיומן, כך שאין שדה חדש בהתקדמות.
+function restingWords(w, log, day){
+  const failed = new Map();
+  for(const e of log){
+    if(e[3] !== "say" || e[4] !== "no" || e[5] < SAY_TRIES) continue;
+    if(!failed.has(e[2])) failed.set(e[2], new Set());
+    failed.get(e[2]).add(e[0]);
+  }
+  const out = new Set();
+  for(const [x, days] of failed)
+    if(!(w[x] && w[x].got !== undefined) && days.size >= STUCK_DAYS && day - Math.max(...days) < REST_DAYS) out.add(x);
+  return out;
 }
 
 // המילה הבאה בסבב, או null כשהוא נגמר. כל שינוי ברשימה בונה סבב חדש, כך
@@ -2571,7 +2606,10 @@ function nextInRound(){
 
 // keepTurn: המילה שעל המסך נשארת אותו תור אם הסבב החדש נפתח בה, כמו כשהרשימה
 // משתנה והמילה נשארת (ראו newTurn).
+// drops: כמה כרטיסים רצופים נגמרו בכיס (toPocket, ומשם הבלם). כל כרטיס שנגמר
+// אחרת מאפס.
 function next(keepTurn = false){
+  if(!turn.dropped) round.drops = 0;
   if(!keepTurn) turn.word = null;
   const w = nextInRound();
   if(w === null) return endRound();
@@ -2580,10 +2618,11 @@ function next(keepTurn = false){
 }
 
 // מילה שלא התקבלה פעמיים חוזרת פעם אחת, RECHECK_GAP מקומות אחרי זו שעל
-// המסך. כשנשארו פחות מילים בסבב היא לא חוזרת בו: הסולם מחזיר אותה מחר.
+// המסך. כשנשארו פחות מילים בסבב, או שכבר חזרו POCKET_MAX מילים, היא לא חוזרת
+// בו: הסולם מחזיר אותה מחר.
 function requeue(w){
   if(!round.pocketed) round.pocketed = [];
-  if(round.requeued.includes(w)) return;
+  if(round.requeued.includes(w) || round.requeued.length >= POCKET_MAX) return;
   round.requeued.push(w);
   if(round.queue.some((x, k) => k > round.at && x === w)) return round.pocketed.push(w);
   if(round.queue.length < round.at + RECHECK_GAP) return;

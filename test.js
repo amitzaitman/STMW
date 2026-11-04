@@ -2274,6 +2274,89 @@ async function main(){
   check("קרוב לסוף הסבב היא לא חוזרת בו", requeueRun.short.join() === "dog,sun", requeueRun);
   check("מילה שהתקבלה בניסיון השני לא חוזרת", requeueRun.oneMiss.join() === "dog,sun,lion,book", requeueRun);
 
+  // בלם לסבב קשה: תקרה למה שחוזר מהכיס, ויציאה במילה מוכרת אחרי שני כרטיסים
+  // רצופים בכיס.
+  const brakeRun = await page.evaluate(async ([P, L]) => {
+    localStorage.removeItem(P); localStorage.removeItem(L);
+    const synth = speechSynthesis;
+    synth.speak = () => {};
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const missTwice = async () => {
+      for(let k = 0; k < 2; k++){
+        await listen();
+        rec.dispatchEvent(new CustomEvent("result", { detail: { result: { result: [{ word: "zzz", conf: 1 }], text: "zzz" } } }));
+        await wait(AGAIN_MS + 150);
+      }
+    };
+    const plan = queue => {
+      round = { queue: queue.slice(), at: -1, row: [], tried: [], fresh: [], requeued: [], seen: [] };
+      shownWord = null;
+      next();
+    };
+    const list = roundWords();
+    const [a, b, c, d, e, f, g, h] = list;
+    try{
+      // שלוש מילים בכיס, עם ⏭️ ביניהן: רק שתיים חוזרות, והבלם לא נעצר.
+      plan([a, b, c, d, e, f, g, h]);
+      await missTwice(); skipWord();
+      await missTwice(); skipWord();
+      await missTwice();
+      const out = { capped: round.queue.slice(), list: [a, b, c, d, e, f, g, h], max: POCKET_MAX };
+      // שתי מילים רצופות בכיס, ו-h מילה שהילד כבר אומר: היא באה, והסבב נגמר.
+      localStorage.setItem(P, JSON.stringify({ v: 1, w: { [h]: { met: 1, seen: 1, box: 3, due: 400, ok: [1, 2], n: 4, k: 4, got: 1 } } }));
+      plan([a, b, c, d]);
+      await missTwice();
+      await missTwice();
+      out.braked = round.queue.slice();
+      out.next = word();
+      // בלי מילה מוכרת הסבב נגמר אחרי הכרטיס שעל המסך.
+      localStorage.removeItem(P);
+      plan([a, b, c, d]);
+      await missTwice();
+      out.midway = round.queue.slice();
+      await missTwice();
+      out.bare = round.queue.slice();
+      return out;
+    } finally {
+      delete synth.speak;
+      localStorage.removeItem(P); localStorage.removeItem(L);
+    }
+  }, [P, L]);
+  {
+    const [a, b, c, d, e, f, g, h] = brakeRun.list;
+    check("מהכיס חוזרות לכל היותר שתי מילים בסבב",
+      brakeRun.max === 2 && brakeRun.capped.filter(x => x === a).length === 2 && brakeRun.capped.filter(x => x === c).length === 2
+        && brakeRun.capped.filter(x => x === d).length === 1, brakeRun);
+    check("אחרי שני כרטיסים רצופים בכיס באה מילה שהילד כבר אומר, והסבב נגמר בה",
+      brakeRun.braked.join() === [a, b, h].join() && brakeRun.next === h, brakeRun);
+    check("ובלי מילה כזו הסבב נגמר — אבל כרטיס אחד בכיס לא עוצר אותו",
+      brakeRun.midway.length > 2 && brakeRun.bare.join() === [a, b].join(), brakeRun);
+  }
+
+  // מילה תקועה נחה: נכשלה בשלושה ימים שונים ועוד לא הצליחו בה.
+  const rest = await page.evaluate(() => {
+    const fail = (day, word, tryNo = 2) => [day, 0, word, "say", "no", tryNo, "", null, "", "normal", 1];
+    const log = [fail(10, "dog"), fail(11, "dog"), fail(14, "dog"),
+                 fail(10, "cat"), fail(11, "cat"),                         // רק שני ימים
+                 fail(10, "sun"), fail(11, "sun"), fail(12, "sun"),          // כבר הצליחו בה
+                 fail(10, "moon", 1), fail(11, "moon", 1), fail(12, "moon", 1)]; // ניסיון ראשון בלבד
+    const w = { sun: { got: 13 } };
+    const tried = { met: 10, seen: 14, box: 0, due: 15, ok: [], n: 6, k: 0 };
+    const list = roundWords().slice(0, 5);
+    const progress = Object.fromEntries(list.map(x => [x, { ...tried }]));
+    return {
+      day15: [...restingWords(w, log, 15)], day16: [...restingWords(w, log, 16)], day17: [...restingWords(w, log, 17)],
+      // ארבע מילים תקועות, אחת מהן נחה: מילים חדשות כבר לא נעצרות.
+      blocked: sayRound(progress, 15, 2, new Map(), new Set()).fresh.length,
+      freed: sayRound(progress, 15, 2, new Map(), new Set(list.slice(0, 2))),
+      resting: list.slice(0, 2)
+    };
+  });
+  check("מילה שנכשלה בשלושה ימים ועוד לא הצליחו בה נחה שלושה ימים מהכישלון האחרון",
+    rest.day15.join() === "dog" && rest.day16.join() === "dog" && rest.day17.length === 0, rest);
+  check("מילה שנחה לא בסבב, ולא עוצרת מילים חדשות",
+    rest.blocked === 0 && rest.freed.fresh.length > 0 && rest.resting.every(x => !rest.freed.queue.includes(x)), rest);
+
   // מילה שהילד כבר אמר לבד מוצגת בלי כתב, כדי שישלוף אותה מהתמונה. רק הצלחה
   // כזו נספרת ליום של "אמר". אמירה שלא התקבלה מחזירה את הכתב, כדוגמה גם בלי שמע.
   const veil = await page.evaluate(async ([P, L]) => {
