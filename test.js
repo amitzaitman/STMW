@@ -395,17 +395,17 @@ async function main(){
   // ש-finish קיבל (undefined כשלא הוחלט כלום). מצב הדף חוזר אחרי כל קריאה.
   await page.evaluate(() => {
     window.decide = (list, target, said, p, conf = 1) => {
-      const saved = { words, i, active, preset, finish };
+      const saved = { words, i, listenPhase, preset, finish };
       let now;
       try {
         words = list.map(w => ({emoji: "", word: w}));
         i = list.indexOf(target);
         finish = ok => { now = ok; };
         preset = p;
-        active = true;
+        listenPhase = "open";
         processRecognition({ result: { result: [].concat(said).map(word => ({ word, conf })) } });
       } finally {
-        words = saved.words; i = saved.i; active = saved.active;
+        words = saved.words; i = saved.i; listenPhase = saved.listenPhase;
         preset = saved.preset; finish = saved.finish;
       }
       return now;
@@ -832,7 +832,7 @@ async function main(){
     // בלי כתב על המסך, כמו מילה שהילד כבר אומר: אחרת זו אולי קריאה, ולא "לבד".
     const accept = (veil = true) => {
       if(veil) for(const id of ["word", "wordHe"]) $(id).classList.add("veiled");
-      active = true;
+      listenPhase = "open";
       finish(true, { score: 100 });
     };
     try{
@@ -840,7 +840,7 @@ async function main(){
       const out = { target: word(), emoji: words[i].emoji };
       if(how === "clean" || how === "fresh") accept();
       if(how === "heard"){ playCurrentWord(); accept(); }
-      if(how === "second"){ active = true; finish(false, { score: 0 }); accept(); }
+      if(how === "second"){ listenPhase = "open"; finish(false, { score: 0 }); accept(); }
       if(how === "text"){ reveal(); accept(false); }
       if(how === "twice"){ accept(); turn.word = null; show(); accept(); }
       out.card = $("card").className;
@@ -1464,6 +1464,32 @@ async function main(){
   check("בלי תשובה מהמנוע החלון נסגר בלי \"נסו שוב\" ולא נחשב ניסיון",
     !lateNothing.won && !lateNothing.active && lateNothing.agains === 0 && lateNothing.missed === 0, lateNothing);
   check("חלון שנגמר בלי מילה — 🎤 פועם פעם אחת", lateNothing.nudged && !lateRight.nudged, { lateNothing, lateRight });
+  // שלבי ההקשבה בסדר שלהם, ועצירה באמצע לא משאירה טיימר שמקדם שלב אחר כך.
+  const phases = await page.evaluate(async () => {
+    const realWindow = listenWindowMs, realEnter = enterListen, seen = [];
+    listenWindowMs = () => 100;
+    enterListen = (phase, ...rest) => { seen.push(phase); return realEnter(phase, ...rest); };
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    try{
+      await listen();
+      await wait(100 + FINAL_GRACE_MS + FINAL_ANSWER_MS + 200);
+      const full = seen.splice(0);
+      await listen();
+      await wait(150);
+      const inGrace = listenPhase;
+      stopListening();
+      await wait(FINAL_GRACE_MS + FINAL_ANSWER_MS + 200);
+      return { full, inGrace, after: listenPhase, stopped: seen };
+    } finally {
+      listenWindowMs = realWindow;
+      enterListen = realEnter;
+      stopListening();
+    }
+  });
+  check("הקשבה עוברת open → grace → final → idle",
+    phases.full.join() === "open,grace,final,idle", phases);
+  check("עצירה באמצע ההקשבה לא משאירה טיימר שמקדם שלב",
+    phases.inGrace === "grace" && phases.after === "idle" && phases.stopped.join() === "open,grace,idle", phases);
   // ילד שמתחיל את המילה ממש בסוף החלון. עד שהיא נגמרת, בקשה לתוצאה סופית
   // מחזירה "" וחותכת אותה. כאן המילה נגמרת 300ms אחרי סוף החלון: מי שמבקש
   // כבר בסוף החלון מפסיד אותה, ומי שמבקש בסוף ההמתנה מקבל אותה כשהניסיון
@@ -3323,13 +3349,13 @@ async function main(){
     uTest.lane("off");
     voices = [];
     uTest.show("ship");
-    opening = true;
+    listenPhase = "opening";
     refreshVoices = () => { voices = [uTest.voice]; };
     try{
       speechSynthesis.dispatchEvent(new Event("voiceschanged"));
       out.opening = turn.step;
     } finally {
-      opening = false;
+      listenPhase = "idle";
       refreshVoices = () => {};
       voices = [uTest.voice];
     }
@@ -3856,13 +3882,13 @@ async function main(){
     await ensureAudio();
     const chunks = [];
     rec = { acceptWaveformFloat: (samples, rate) => chunks.push([samples.length, rate]), retrieveFinalResult(){}, remove(){} };
-    active = true;
+    listenPhase = "open";
     let level = 0;
     for(let k = 0; k < 40; k++){
       await new Promise(r => setTimeout(r, 20));
       level = Math.max(level, parseFloat($("say").style.getPropertyValue("--level")) || 0);
     }
-    active = false;
+    listenPhase = "idle";
     return { node: procNode && procNode.constructor.name, chunks: chunks.length, size: chunks.length && chunks[0][0],
              rate: chunks.length && chunks[0][1] === ctx.sampleRate, level };
   }).catch(e => ({ error: e.message }));

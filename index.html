@@ -1343,7 +1343,23 @@ let i = 0;
 
 let model = null, rec = null;
 let ctx = null, srcNode = null, procNode = null, sinkNode = null, micStream = null;
-let active = false, timer = null;
+// ההקשבה תמיד באחד מהשלבים האלה, ולכל שלב לכל היותר טיימר אחד:
+// idle → opening (המיקרופון נפתח, listen) → idle, ומשם שוב listen
+// idle → open (החלון) → grace (סוף החלון, closeWindow) → final (ביקשנו תוצאה
+// סופית, askFinal) → idle (quietEnd)
+// open, grace ו-final → idle ב-stopListening: תוצאה, מילה אחרת, הדף ירד.
+// כל מעבר עובר ב-enterListen ומבטל את הטיימר של השלב הקודם, כך שטיימר ישן
+// לא יורה בשלב אחר. active ו-opening נגזרים מהשלב, ולכן אי אפשר לכתוב אליהם.
+let listenPhase = "idle", listenTimer = null;
+function enterListen(phase, ms, then){
+  clearTimeout(listenTimer);
+  listenTimer = then ? setTimeout(then, ms) : null;
+  listenPhase = phase;
+}
+Object.defineProperties(window, {
+  active: { get: () => listenPhase === "open" || listenPhase === "grace" || listenPhase === "final" },
+  opening: { get: () => listenPhase === "opening" }
+});
 const SOUND_KEY = "sound_enabled";
 // דלוק כברירת מחדל: המשחק נשען על המילה שנשמעת. רק מבוגר מכבה, באזור שלו,
 // והבחירה נשמרת. הקראה קורית רק אחרי ▶, אז אין כאן ניגון אוטומטי.
@@ -2110,24 +2126,23 @@ function audioReady(){
 // בינתיים לא פותחת זרם שני, שאף אחד לא היה סוגר. המחיר: בקשת הרשאה שלא
 // נענית לעולם (בפיירפוקס, כשסוגרים אותה בלחיצה מחוץ לחלון) משאירה את 🎤 בלי
 // תגובה עד טעינה מחדש. עדיף על שני מיקרופונים פתוחים מנגיעה כפולה.
-let opening = false;
 
 async function listen(){
   // בשלב "להבין" אין 🎤 על המסך. מקלדת או קריאה ישירה רק משמיעות שוב.
   if(turn.step === "understand") return speakStep(true);
   if(!model) return;
-  if(active || opening) return;
+  if(listenPhase !== "idle") return;
   if(!audioReady()){
-    opening = true;
+    enterListen("opening");
     const mine = shownCount;
     try{ await ensureAudio(); }
     catch(err){
-      opening = false;
+      enterListen("idle");
       micBlocked = true;
       renderStatus();
       return goGrownup();
     }
-    finally{ opening = false; }
+    finally{ enterListen("idle"); }
     // בזמן ההמתנה הדף ירד מהמסך — releaseMic כבר רץ ולא מצא מה לסגור — או
     // שמשהו אחר הוצג: ⏭️, מעבר לכתיבה, קפיצה מהרשימה, סוף הסבב. בכל אלה הנגיעה
     // הייתה במילה שכבר לא על המסך. וגם כשההגדרות נפתחו בינתיים: הילד לא רואה
@@ -2140,11 +2155,10 @@ async function listen(){
   // לפני — נעצרת, אחרת המיקרופון שומע את הדף אומר את המילה ומזכה בה.
   // echoCancellation לא מבטל את speechSynthesis בכל דפדפן.
   if("speechSynthesis" in window) speechSynthesis.cancel();
-  active = true;
+  enterListen("open", listenWindowMs(), closeWindow);
   turn.cue = null;
   $("say").classList.remove("nudge");
   $("say").classList.add("listening");
-  timer = setTimeout(closeWindow, listenWindowMs());
   ui();
 }
 
@@ -2162,12 +2176,14 @@ async function listen(){
 // לרשום ויתור: כל שתיקה כבר נרשמה ביומן.
 const FINAL_GRACE_MS = 500, FINAL_ANSWER_MS = 500, QUIET_HELP = 2, QUIET_GIVE_UP = 3;
 function closeWindow(){
-  if(!active) return;
-  timer = setTimeout(()=>{
-    if(!active) return;
-    if(rec) rec.retrieveFinalResult();
-    timer = setTimeout(quietEnd, FINAL_ANSWER_MS);
-  }, FINAL_GRACE_MS);
+  if(listenPhase === "open") enterListen("grace", FINAL_GRACE_MS, askFinal);
+}
+// השלב מתחלף לפני הבקשה: תשובה שמגיעה ממנה כבר מוצאת את final, ו-stopListening
+// שלה מבטל את quietEnd.
+function askFinal(){
+  if(listenPhase !== "grace") return;
+  enterListen("final", FINAL_ANSWER_MS, quietEnd);
+  if(rec) rec.retrieveFinalResult();
 }
 function quietEnd(){
   if(!stopListening()) return;
@@ -2193,8 +2209,7 @@ function nudgeSay(){
 // מחזיר false אם לא הייתה הקשבה לעצור.
 function stopListening(){
   if(!active) return false;
-  active = false;
-  clearTimeout(timer);
+  enterListen("idle");
   // מאפס את המפענח כדי שהניסיון הבא יתחיל נקי. התוצאה שחוזרת מכאן נבלעת כי active כבר כבוי.
   if(rec) rec.retrieveFinalResult();
   $("say").classList.remove("listening");
