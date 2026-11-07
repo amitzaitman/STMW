@@ -1557,7 +1557,7 @@ function show(){
   if(fresh && turn.step === "understand") introduce();
   // בכתיבה המילה נאמרת כשהיא מופיעה, כהכתבה. היא לא עזרה: כתיבה נקייה לא
   // תלויה בשמיעה.
-  if(fresh && mode === "spell" && canSpeak() && $("overlay").hidden){ turn.heard = true; sayWord(); }
+  if(fresh && mode === "spell" && canSpeak()){ turn.heard = true; sayWord(); }
   // הצגה מחדש של מילה שכבר הוכרעה — שינוי ברשימה בחלון אחר, הדלקת התעתיק —
   // מבטלת את המעבר שההצלחה תזמנה (shownCount), ואין ⏭️ גדול שיוציא ממנה. לכן
   // היא ממשיכה לבד.
@@ -2145,10 +2145,9 @@ async function listen(){
     finally{ enterListen("idle"); }
     // בזמן ההמתנה הדף ירד מהמסך — releaseMic כבר רץ ולא מצא מה לסגור — או
     // שמשהו אחר הוצג: ⏭️, מעבר לכתיבה, קפיצה מהרשימה, סוף הסבב. בכל אלה הנגיעה
-    // הייתה במילה שכבר לא על המסך. וגם כשההגדרות נפתחו בינתיים: הילד לא רואה
-    // את המילה, ו-openPanel כבר רץ ולא מצא הקשבה לעצור.
+    // הייתה במילה שכבר לא על המסך.
     if(document.hidden){ releaseMic(); return; }
-    if(shownCount !== mine || !$("overlay").hidden) return;
+    if(shownCount !== mine) return;
   }
 
   // הקראה שעוד נשמעת — המילה אחרי אמירה שלא התקבלה, או 🔊 שהילד לחץ רגע
@@ -2892,11 +2891,9 @@ function renderStep(){
 
 // המילה נאמרת מעצמה כשהשלב מתחיל, אם כבר נגעו בדף. דפדפן לא מדבר לפני נגיעה
 // ראשונה, ואז 🔊 פועם.
-// מתחת להגדרות הפתוחות הילד לא רואה את התמונות, ולכן המילה נאמרת כשהן נסגרות.
 function introduce(){
   const ua = navigator.userActivation;
   if(ua && !ua.hasBeenActive) return nudgeButton("playWord");
-  if(!$("overlay").hidden) return;
   speakStep(false);
 }
 
@@ -2939,8 +2936,7 @@ function speakStep(byTap){
   };
   u.addEventListener("start", () => {
     settled = true;
-    // מתחת להגדרות הילד לא רואה את התמונות; כשהן ייסגרו המילה תיאמר שוב.
-    if(mine !== shownCount || !$("overlay").hidden) return;
+    if(mine !== shownCount) return;
     turn.heard = true;
     if(!turn.said) turn.saidAt = performance.now();
     turn.said = true;
@@ -3555,7 +3551,8 @@ function setBehindInert(on, keep = $("overlay")){
   for(const child of document.body.children) child.inert = on && child !== keep;
 }
 
-// נפתחת רק ממסכי מנוחה, דרך 🔒 ושאלת המספר. מה שהמיקרופון שומע מאחוריה —
+// נפתחת רק ממסכי מנוחה, דרך 🔒 ושאלת המספר: במשחק 🔒 מופיע רק בסוף הסבב,
+// ושום מילה לא מוצגת או נאמרת מתחת לאזור המבוגר. לכן קוד התור לא בודק אותו. מה שהמיקרופון שומע מאחוריה —
 // המורה מדברת, 🔊 ברשימה — אינו ניסיון של הילד, ולכן גם כאן ההקשבה נעצרת.
 function openPanel(){
   stopListening();

@@ -3480,26 +3480,10 @@ async function main(){
   // מה שקורה לצד השלב: ההגדרות, חלון אחר, קולות והקראה שמגיעים באיחור.
   const aside = await page.evaluate(async () => {
     const out = {};
-    // ⚙️ בזמן שהמיקרופון עוד נפתח: ההקשבה לא מתחילה מתחת להגדרות.
-    const real = { audioReady, ensureAudio };
-    setSound(false);
+    // 🔒 לא מופיע באמצע תור, ולכן אזור המבוגר לא נפתח מעל מילה. קוד התור סומך על זה.
     uTest.lane("off");
     uTest.show("dog");
-    audioReady = () => false;
-    ensureAudio = () => new Promise(r => setTimeout(r, 200));
-    try{
-      const opening = listen();
-      openPanel();
-      await opening;
-      out.panel = { step: turn.step, active, listening: $("say").classList.contains("listening") };
-    } finally {
-      audioReady = real.audioReady;
-      ensureAudio = real.ensureAudio;
-      stopListening();
-      closePanel();
-      enterGame();
-      setSound(true);
-    }
+    out.lockInTurn = $("lock").checkVisibility();
     // 🔊 של המורה ברשימה מבטל את המילה של "להבין" לפני שהתחילה, וזו לא תקלה.
     uTest.speech = "slow";
     uTest.show("cat");
@@ -3591,8 +3575,7 @@ async function main(){
     speechBroken = false;
     return out;
   });
-  check("⚙️ בזמן שהמיקרופון נפתח — לא מקשיבים מתחת להגדרות",
-    aside.panel.step === "say" && !aside.panel.active && !aside.panel.listening, aside);
+  check("🔒 לא מופיע באמצע תור", aside.lockInTurn === false, aside);
   check("🔊 ברשימת המילים בזמן \"להבין\" אינו תקלה בדיבור", aside.list.step === "understand" && !aside.list.broken, aside);
   check("הקראה שמתחילה באיחור מחזירה את \"להבין\" למילים הבאות, גם כשנגיעה נוספת ב-🔊 ביטלה אותה",
     aside.late.length === 2 && aside.late.every(l => l.step === "say" && l.broken && l.next === "understand"), aside);
