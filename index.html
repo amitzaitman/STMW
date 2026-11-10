@@ -71,6 +71,39 @@
   #dots i.done{background:#8A74EE}
   #dots i.now{background:var(--act); box-shadow:0 0 0 3px var(--act-soft)}
   body.ended #dots{visibility:hidden}
+  /* המסלול: אבן לכל כרטיס בתור ובסופו קן, והציפור עומדת על האבן של הכרטיס
+     שעל המסך וקופצת אבן בכל כרטיס, גם אחרי "נחזור לזה". מימין לשמאל, כמו
+     שקוראים. בלי תמונות ובלי מספרים, כמו הנקודות, ובאותם צבעים. הרווח בצד
+     הוא של 🏠 ושל 🔒. עד גובה 700 אין למסלול מקום (מילה ארוכה בכתיבה יורדת אל
+     שורת הכפתורים), ושם נשארות הנקודות והציפור שליד הבועה. */
+  #trail{position:relative; align-self:stretch; height:84px; flex:0 0 auto; margin-inline-end:52px; pointer-events:none}
+  #trail::before{content:""; position:absolute; left:8%; right:6%; top:65px; border-top:3px dashed var(--line)}
+  #trail i{
+    position:absolute; top:60px; width:min(30px, calc(86% / var(--n, 8) - 4px)); height:12px; border-radius:50%;
+    transform:translateX(-50%); background:#fff; border:2.5px solid #6A9084; transition:left .3s;
+  }
+  #trail i.done{background:#8A74EE; border-color:#8A74EE}
+  #trail i.now{border-color:var(--act); box-shadow:0 0 0 3px var(--act-soft)}
+  /* בלי transform, כדי שרק שפת הקן תהיה מעל הציפור והיא תשב בתוכו. */
+  #nest{position:absolute; left:8%; top:46px; width:48px; height:30px; margin-left:-24px}
+  #nest svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible}
+  #nest .front{z-index:2}
+  #walker{position:absolute; top:6px; width:52px; height:58px; transform:translateX(-50%); transition:left .5s ease-in-out, top .5s ease-in-out; z-index:1}
+  #walker.home{top:0}
+  #walker.hop{animation:walkHop .5s ease-in-out}
+  @keyframes walkHop{50%{transform:translateX(-50%) translateY(-16px)}}
+  #trail .bird{width:100%; height:100%; display:block}
+  @media (min-height: 701px){
+    #dots, #game .guide .bird{display:none}
+    #game .cue{border-radius:26px}
+  }
+  @media not all and (min-height: 701px){
+    #trail{display:none}
+  }
+  /* החגיגה מעל המסך: קונפטי, והעתק של התמונה שעף אל הציפור. */
+  #fx{position:fixed; inset:0; overflow:hidden; pointer-events:none; z-index:4}
+  #fx i{position:absolute; width:11px; height:13px; border-radius:3px}
+  #fx span{position:absolute; font-size:40px; line-height:1; transform-origin:center}
   #lock.holding, #refresh.holding, #home.holding{opacity:1; color:var(--act)}
   /* סוג התרגול במסך הפתיחה, חיוור כמו 🔒: מעורב, אומרים, כותבים. נגיעה רגילה
      לא עושה כלום, ולחיצה ארוכה בוחרת, כדי שילד לא יחליף בטעות. */
@@ -437,7 +470,8 @@
   }
   @media (prefers-reduced-motion: reduce){
     #card.pop, .big-play, .cue .ico, .pic.sticker, .pic.new, .pic.into, #card.again, #card.fall, #card.grow, .confetti i, #say.nudge, #say.appear .ico,
-    #playWord.nudge .ico, .bird .b-all, .cue.poke{animation:none !important}
+    #playWord.nudge .ico, .bird .b-all, .cue.poke, #walker.hop{animation:none !important}
+    #walker, #trail i{transition:none}
     .choice.fly{transition:none}
     /* היד שקופה, ורק האנימציה מראה אותה. כאן היא מופיעה ונעלמת במקום, בלי לזוז. */
     #hand.tap{animation:handShow 1.6s ease-in-out}
@@ -804,11 +838,19 @@
 </section>
 
 <section id="game" class="screen" aria-label="משחק">
+  <!-- כמה כרטיסים נשארו בסבב: אבנים וקן, בלי תמונות ובלי מספרים, ואי אפשר ללחוץ עליהם. -->
+  <div id="trail" aria-hidden="true">
+    <div id="nest">
+      <svg viewBox="0 0 48 30"><ellipse cx="24" cy="12" rx="22" ry="8" fill="#8A5A12"/></svg>
+      <svg class="front" viewBox="0 0 48 30"><path d="M2 12 Q24 44 46 12 Q24 20 2 12 Z" fill="#B7791F"/><path d="M8 18 L18 21 M30 22 L40 17 M20 25 L29 25" stroke="#8A5A12" stroke-width="2" stroke-linecap="round"/></svg>
+    </div>
+    <div id="walker"><svg class="bird" viewBox="0 0 96 104" data-pose="wait"></svg></div>
+  </div>
   <div class="guide">
     <svg class="bird" id="bird" viewBox="0 0 96 104" data-pose="wait" aria-hidden="true"></svg>
     <div id="cue" class="cue" aria-live="polite"></div>
   </div>
-  <!-- כמה מילים נשארו בסבב: נקודות, בלי תמונות ובלי מספרים, ואי אפשר ללחוץ עליהן. -->
+  <!-- במסך נמוך, במקום המסלול: נקודות. -->
   <div id="dots" aria-hidden="true"></div>
   <div id="stage">
     <div id="card">
@@ -853,6 +895,7 @@
   </div>
 </section>
 
+<div id="fx" aria-hidden="true"></div>
 <section id="grownup" class="screen" aria-label="קראו למבוגר">
   <div class="guide">
     <div class="cue" data-cue="grownup"></div>
@@ -1667,9 +1710,9 @@ function speak(text, lang){
 }
 
 // צליל קצר בהצלחה, מסונתז ב-Web Audio: אין קובץ להוריד ולשמור במטמון.
-// [תדר, השהיה בשניות]. הצלחה: דו-מי-סול עולים. אין צליל טעות: הרעידה, הכתב
+// [תדר, השהיה בשניות]. הצלחה: דו-מי-סול-דו עולים. אין צליל טעות: הרעידה, הכתב
 // שחוזר והמילה באנגלית אומרים "עוד לא" בלי לשמוע כמו עונש.
-const CHEER = { notes: [[1046.5, 0], [1318.5, 0.08], [1568, 0.16]], volume: 0.2 };
+const CHEER = { notes: [[1046.5, 0], [1318.5, 0.08], [1568, 0.16], [2093, 0.24]], volume: 0.2 };
 // תקתוק רך כשהילד מניח אות.
 const TICK = { notes: [[1760, 0]], volume: 0.05 };
 // "דינג" רך כשמנוע הזיהוי מוכן באמצע משחק: מכאן יש גם אמירה.
@@ -2256,6 +2299,7 @@ function good(){
   const mine = shownCount;
   chime(CHEER);
   ui();
+  celebrate($("picture"), words[i].emoji);
   setTimeout(()=>{ if(mine === shownCount) next(); }, GOOD_MS);
 }
 // אמירה שלא התקבלה. בפעם הראשונה הכרטיס רועד, בלי צליל טעות, הכתב של מילה
@@ -2730,6 +2774,7 @@ function showRoundEnd(){
   }, END_GUARD_MS);
   chime(ROUND_CHEER);
   ui();
+  burst($("roundPics"), 40);
 }
 function hideRoundEnd(){
   if(!ended) return;
@@ -3015,6 +3060,7 @@ function tapChoice(b){
   reveal();
   chime(CHEER);
   ui();
+  celebrate($("choices").querySelector(".right"), emojiFor(target));
   // לפי התור ולא לפי shownCount: הצגה מחדש של אותה מילה לא משאירה אותו תקוע.
   // next() ועזיבת המשחק משאירים את אותו אובייקט בלי מילה (turn.word).
   const t = turn;
@@ -3753,9 +3799,76 @@ function renderDots(){
   [...dots.children].forEach((d, k) => d.className = k < at ? "done" : k === at ? "now" : "");
 }
 
+// המסלול מצויר מאותו מצב כמו הנקודות, ובסוף הסבב הציפור בקן. היא קופצת רק
+// כשהתקדמה אבן אחת; בסבב חדש היא מופיעה בהתחלה, בלי לרחף אחורה לאורך המסלול.
+// מילה שחוזרת מהכיס מוסיפה אבן, והאבנים מתרווחות מחדש.
+let trailAt = -1;
+function renderTrail(){
+  if(screen !== "game") return;
+  const n = round.queue.length, at = ended ? n : Math.max(0, Math.min(round.at, n)), trail = $("trail"), walker = $("walker");
+  let stones = [...trail.querySelectorAll("i")];
+  if(stones.length !== n){
+    stones.forEach(s => s.remove());
+    stones = Array.from({ length: n }, () => trail.insertBefore(document.createElement("i"), walker));
+  }
+  const left = k => (94 - 86 * k / Math.max(n, 1)) + "%";
+  trail.style.setProperty("--n", Math.max(n, 1));
+  stones.forEach((s, k) => { s.className = k < at ? "done" : k === at ? "now" : ""; s.style.left = left(k); });
+  walker.classList.toggle("home", n > 0 && at === n);
+  if(at === trailAt){ walker.style.left = left(at); return; }
+  const stepped = at === trailAt + 1;
+  trailAt = at;
+  walker.classList.remove("hop");
+  walker.style.transition = stepped ? "" : "none";
+  walker.style.left = left(at);
+  void walker.offsetWidth;
+  walker.style.transition = "";
+  if(stepped) walker.classList.add("hop");
+}
+
+// החגיגה של הצלחה: קונפטי שמתפזר מהתמונה, והעתק שלה שעף אל הציפור שעל
+// המסלול. התמונה עצמה נשארת במקומה. זה קישוט בלבד: הוא לא מעכב את הכרטיס
+// הבא, ואין אותו כשהמכשיר מבקש פחות תנועה. במסך נמוך, בלי מסלול, אין מעוף.
+const BURST_COLORS = ["#6C4CF1", "#14B8A6", "#FFB020", "#B7A6FF", "#2F855A"];
+function stillMotion(){ return !Element.prototype.animate || matchMedia("(prefers-reduced-motion: reduce)").matches; }
+function burst(from, count){
+  if(stillMotion() || !from || !visible(from)) return;
+  const r = from.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+  for(let k = 0; k < count; k++){
+    const p = document.createElement("i");
+    p.style.cssText = `left:${x}px; top:${y}px; background:${BURST_COLORS[k % BURST_COLORS.length]}` + (k % 3 ? "" : "; border-radius:50%");
+    $("fx").append(p);
+    const angle = Math.random() * Math.PI * 2, far = 60 + Math.random() * 120;
+    const dx = Math.cos(angle) * far, up = -50 - Math.random() * 110, spin = (Math.random() - .5) * 900;
+    p.animate([
+      { transform: "translate(0, 0) rotate(0deg)", opacity: 1 },
+      { transform: `translate(${dx * .7}px, ${up}px) rotate(${spin / 2}deg)`, opacity: 1, offset: .35 },
+      { transform: `translate(${dx}px, ${up + 300}px) rotate(${spin}deg)`, opacity: 0 }
+    ], { duration: 900 + Math.random() * 400, easing: "cubic-bezier(.2,.7,.4,1)" }).onfinish = () => p.remove();
+  }
+}
+function flyToBird(from, emoji){
+  if(stillMotion() || !emoji || !from || !visible(from) || !visible($("walker"))) return;
+  const a = from.getBoundingClientRect(), b = $("walker").getBoundingClientRect(), p = span("", emoji);
+  const x = a.left + a.width / 2 - 20, y = a.top + a.height / 2 - 20;
+  const dx = b.left + b.width / 2 - 20 - x, dy = b.top + b.height / 2 - 20 - y;
+  p.style.cssText = `left:${x}px; top:${y}px`;
+  $("fx").append(p);
+  p.animate([
+    { transform: "translate(0, 0) scale(1.6)", opacity: 1 },
+    { transform: `translate(${dx * .6}px, ${dy * .6 - 30}px) scale(1.1)`, opacity: 1, offset: .6 },
+    { transform: `translate(${dx}px, ${dy}px) scale(.3)`, opacity: 0 }
+  ], { duration: 650, easing: "cubic-bezier(.4,0,.3,1)" }).onfinish = () => p.remove();
+}
+function celebrate(from, emoji){
+  burst(from, 18);
+  flyToBird(from, emoji);
+}
+
 function ui(){
   renderStep();
   renderDots();
+  renderTrail();
   renderBadge();
   renderCue();
   renderDock();

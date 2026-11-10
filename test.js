@@ -3830,6 +3830,32 @@ async function main(){
   check("שורת נקודות: כמה מילים נשארו בסבב, בלי תמונות ובלי מספרים",
     dots.classes === "done,now,-,-" && dots.text === "" && dots.hidden === "true" && !dots.tappable, dots);
 
+  // המסלול מצויר מאותו תור: אבן לכל כרטיס מימין לשמאל, והציפור על האבן של
+  // הכרטיס שעל המסך. מילה שחוזרת מוסיפה אבן, ובסוף הסבב הציפור בקן. המיקום
+  // נמדד על המסך, אחרי שהמעבר נגמר. התור חוזר בסוף למה שהיה.
+  const trail = await page.evaluate(async () => {
+    const mid = el => { const r = el.getBoundingClientRect(); return r.left + r.width / 2; };
+    const stones = () => [...$("trail").querySelectorAll("i")], settle = () => new Promise(r => setTimeout(r, 700));
+    const on = el => Math.abs(mid($("walker")) - mid(el)) < 2;
+    const out = { shown: $("trail").checkVisibility(), hop: $("walker").classList.contains("hop") };
+    await settle();
+    out.classes = stones().map(s => s.className || "-").join();
+    out.rtl = mid(stones()[0]) > mid(stones()[1]) && mid(stones()[3]) > mid($("nest"));
+    out.onNow = on(stones()[1]);
+    out.text = $("trail").textContent.trim(); out.hidden = $("trail").getAttribute("aria-hidden"); out.tappable = !!$("trail").querySelector("button");
+    round.queue.push("dog"); ui(); await settle();
+    out.grown = stones().length; out.stillOnNow = on(stones()[1]);
+    round.queue.pop();
+    ended = true; ui(); await settle();
+    out.inNest = on($("nest")) && $("walker").classList.contains("home");
+    ended = false; ui(); await settle();
+    out.back = on(stones()[1]) && !$("walker").classList.contains("hop") && !$("walker").classList.contains("home");
+    return out;
+  });
+  check("המסלול: אבן לכל כרטיס, הציפור על האבן של הכרטיס שעל המסך וקופצת אליה, ובסוף הסבב היא בקן",
+    trail.shown && trail.hop && trail.classes === "done,now,-,-" && trail.rtl && trail.onNow && trail.text === "" && trail.hidden === "true"
+      && !trail.tappable && trail.grown === 5 && trail.stillOnNow && trail.inNest && trail.back, trail);
+
   // הטבעות סביב 🎤 זזות עם הקול שהמיקרופון שומע. המיקרופון המזויף של כרומיום
   // משמיע צפצוף, ולכן העוצמה גדולה מאפס בזמן ההקשבה, וחוזרת לאפס אחריה.
   const rings = await page.evaluate(async () => {
@@ -4698,6 +4724,28 @@ async function main(){
   });
   check("נקודות הסבב לפחות 3:1 מול הרקע, והנוכחית שונה מאלה שעברו",
     dotColors.done >= 3 && dotColors.now >= 3 && dotColors.rest >= 3 && dotColors.distinct, dotColors);
+
+  // המסלול תופס גובה, ולכן הוא רק במסך שיש בו מקום: עד גובה 700 נשארות
+  // הנקודות והציפור שליד הבועה, ומעליו המסלול בא במקומן, בלי לכסות את 🏠.
+  // נמדד מה שנראה, לא התכונה hidden: ה-CSS הוא שמחליף ביניהם.
+  const trailFit = [];
+  for(const vp of [[360, 700], [844, 390], [360, 701], [360, 780], [320, 720]]) trailFit.push(await at(vp, () => {
+    setMode("say"); i = words.findIndex(x => x.word === "cat"); turn.word = null; show();
+    round.queue = Array.from({ length: 12 }, (_, k) => words[k % words.length].word); round.at = 11; ui();
+    return { tall: innerHeight > 700, trail: $("trail").checkVisibility(), dots: $("dots").checkVisibility(), bird: $("bird").checkVisibility(),
+      walker: inView($("walker")), nest: inView($("nest")), home: onTop($("home")), say: onTop($("say")),
+      scroll: document.documentElement.scrollHeight - innerHeight };
+  }));
+  const trailFits = t => t.home === true && t.say === true && t.scroll <= 0
+    && (t.tall ? t.trail && !t.dots && !t.bird && t.walker && t.nest : !t.trail && t.dots && t.bird);
+  check("המסלול רק במסך גבוה מ-700, ושם הוא במקום הנקודות והציפור שליד הבועה; 🏠 ו-🎤 מקבלים את הנגיעה",
+    trailFit.every(trailFits), trailFit.filter(t => !trailFits(t)));
+  // ומיד מעל הסף, כשהמסלול כבר על המסך, מילה ארוכה בכתיבה עדיין נכנסת.
+  const spellTrail = [];
+  for(const vp of [[360, 701], [320, 701]]) for(const w of ["watermelon", "strawberry"]) spellTrail.push(await spellAt(vp, w));
+  check("בכתיבה עם המסלול, בטלפון נמוך, כל המשבצות והאותיות על המסך ומעל שורת הכפתורים",
+    spellTrail.every(s => s.hint === true && s.next === true && s.lettersOn && s.aboveDock && s.tilesFree),
+    spellTrail.filter(s => !(s.hint === true && s.next === true && s.lettersOn && s.aboveDock && s.tilesFree)));
 
   // ובמכשיר שמבקש פחות תנועה, היד שמדגימה הופיעה לאורך כל הדרך שקופה: רק
   // האנימציה שלה, שכובתה, הראתה אותה.
